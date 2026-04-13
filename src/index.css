@@ -1,0 +1,160 @@
+@import 'tailwindcss';
+
+/* Design Tokens */
+:root {
+  /* רקעים */
+  --bg-main: #f0f4ff;
+  --bg-sidebar: #1a2b5e;
+  --bg-card: #ffffff;
+  --bg-input: #f5f7ff;
+
+  /* מותג */
+  --blue-dark: #1a2b5e;
+  --blue-mid: #2563eb;
+  --blue-light: #eff4ff;
+  --orange: #f97316;
+  --orange-light: #fff3e8;
+
+  /* טקסט */
+  --text-dark: #0f172a;
+  --text-mid: #475569;
+  --text-light: #94a3b8;
+
+  /* סטטוס */
+  --success: #10b981;
+  --warning: #f97316;
+  --danger: #ef4444;
+  --info: #2563eb;
+
+  /* גבולות */
+  --border: #e2e8f0;
+  --border-dark: #cbd5e1;
+
+  /* תאימות לקוד קיים — אותה סמנטיקה, ערכים חדשים */
+  --bg: var(--bg-main);
+  --sidebar: var(--bg-sidebar);
+  --card: var(--bg-card);
+  --text: var(--text-dark);
+  --muted: var(--text-mid);
+  --accent: var(--blue-mid);
+}
+
+* {
+  font-family: 'Rubik', sans-serif !important;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  direction: rtl;
+  background: var(--bg-main);
+  color: var(--text-dark);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-dark);
+  border-radius: 3px;
+}
+
+input,
+select,
+textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text-dark);
+  font-family: 'Rubik', sans-serif !important;
+  font-size: 13px;
+  direction: rtl;
+  width: 100%;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--blue-mid);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* כפתורים גלובליים */
+button {
+  font-family: 'Rubik', sans-serif !important;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@keyframes hub-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.hub-toast-animate {
+  animation: hub-toast-in 0.35s ease-out both;
+}
+
+.hub-btn-primary {
+  background: var(--blue-mid);
+  color: #fff;
+  border: none;
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.hub-btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.hub-btn-secondary {
+  background: var(--blue-light);
+  color: var(--blue-mid);
+  border: 1px solid #bfdbfe;
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.hub-btn-secondary:hover {
+  background: #dbeafe;
+}
+
+.hub-btn-orange {
+  background: var(--orange);
+  color: #fff;
+  border: none;
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.hub-btn-orange:hover {
+  background: #ea6c0a;
+}
+
+.hub-btn-danger {
+  background: #fef2f2;
+  color: var(--danger);
+  border: 1px solid #fecaca;
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.hub-btn-danger:hover {
+  background: #fee2e2;
+}

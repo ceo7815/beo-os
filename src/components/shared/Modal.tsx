@@ -1,0 +1,59 @@
+import type { ReactNode } from 'react'
+
+export interface ModalProps {
+  isOpen: boolean
+  onClose: () => void
+  title: string
+  children: ReactNode
+  /** lg — תצוגה רחבה לתוכן ארוך (למשל משימה מלאה) */
+  size?: 'md' | 'lg'
+}
+
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
+  size = 'md',
+}: ModalProps) {
+  if (!isOpen) return null
+  const maxW = size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
+  return (
+    <div
+      className="fixed inset-0 z-[85] flex items-center justify-center p-4"
+      dir="rtl"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="absolute inset-0 bg-[rgba(15,23,42,0.5)] backdrop-blur-[4px]" />
+      <div
+        className={`relative z-10 w-full ${maxW} max-h-[min(90vh,880px)] rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] pb-4">
+          <h2
+            id="modal-title"
+            className="min-w-0 flex-1 text-start text-[17px] font-bold leading-snug text-[var(--text-dark)]"
+          >
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-light)] transition hover:bg-[var(--blue-light)] hover:text-[var(--text-dark)]"
+            aria-label="סגור"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="max-h-[min(65vh,640px)] overflow-y-auto text-[var(--text-dark)]">
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}

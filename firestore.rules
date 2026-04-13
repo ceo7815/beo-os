@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // מומלץ: להחמיר לפי תפקידים (custom claims) לפני production
+    //
+    // פרויקטים: שדה projectKind יכול להיות "client" או "internal".
+    // לפרויקט פנימי אין חובה לכלול clientId (מסמכים ישנים: גם type / projectKind).
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
