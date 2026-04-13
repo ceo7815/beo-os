@@ -490,8 +490,6 @@ function KanbanColumn({
 export function Tasks() {
   const { user } = useAuth()
   const { users: teamMembers } = useUsers()
-  const myRole =
-    teamMembers.find((m) => m.id === user?.uid)?.role ?? 'employee'
   const { clients } = useClients()
   const { suppliers } = useSuppliers()
   const { projects } = useProjects()
@@ -507,8 +505,18 @@ export function Tasks() {
   } = useTasks()
 
   const [q, setQ] = useState('')
+  /** מנהל על: null = כל הצוות; אחרת — תצוגת משימות אישית לאותו עובד */
+  const [viewAsUid, setViewAsUid] = useState<string | null>(null)
+  /** תאריך ייחוס לעמודות היום / מחר / באיחור / אחר כך (ברירת מחדל: היום האמיתי) */
+  const [boardAnchor, setBoardAnchor] = useState(() => todayYmd())
 
   const defaultAssigneeId = user?.uid ?? teamMembers[0]?.id ?? ''
+  const myRole =
+    teamMembers.find((m) => m.id === user?.uid)?.role ?? 'employee'
+  const canViewAsOthers = myRole === 'superadmin'
+
+  const assigneeForNewTask =
+    canViewAsOthers && viewAsUid ? viewAsUid : defaultAssigneeId
 
   const supplierById = useMemo(() => {
     const m = new Map<string, string>()
@@ -550,21 +558,29 @@ export function Tasks() {
     [memberById, projectById, supplierById, clientById],
   )
 
-  const today = todayYmd()
-  const tomorrow = addDaysYmd(today, 1)
+  const realToday = todayYmd()
+  const anchorTomorrow = addDaysYmd(boardAnchor, 1)
 
   const visibleTasks = useMemo(
     () =>
       user?.uid
-        ? tasks.filter((t) => taskVisibleToUser(t, user.uid, myRole))
+        ? tasks.filter((t) => taskVisibleToUser(t, user.uid, ''))
         : [],
-    [tasks, user?.uid, myRole],
+    [tasks, user?.uid],
   )
+
+  const perspectiveFiltered = useMemo(() => {
+    if (!viewAsUid) return visibleTasks
+    return visibleTasks.filter(
+      (t) =>
+        t.assigneeId === viewAsUid || inSharedForMeColumn(t, viewAsUid),
+    )
+  }, [visibleTasks, viewAsUid])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    if (!needle) return visibleTasks
-    return visibleTasks.filter((t) => {
+    if (!needle) return perspectiveFiltered
+    return perspectiveFiltered.filter((t) => {
       const proj = t.projectId ? projectRowById.get(t.projectId) : undefined
       const clientN = t.clientId
         ? (clientById.get(t.clientId) ?? '')
@@ -578,7 +594,7 @@ export function Tasks() {
         `${t.title} ${t.description || ''} ${clientN} ${projN}`.toLowerCase()
       return hay.includes(needle)
     })
-  }, [visibleTasks, q, clientById, projectById, projectRowById])
+  }, [perspectiveFiltered, q, clientById, projectById, projectRowById])
 
   const byBucket = useMemo(() => {
     const map: Record<TimeBucket, Task[]> = {
@@ -589,20 +605,20 @@ export function Tasks() {
       later: [],
       done: [],
     }
-    const uid = user?.uid ?? ''
+    const uidForShared = viewAsUid ?? user?.uid ?? ''
     for (const t of filtered) {
-      if (uid && inSharedForMeColumn(t, uid)) {
+      if (uidForShared && inSharedForMeColumn(t, uidForShared)) {
         map.sharedForMe.push(t)
         continue
       }
-      const b = bucketFor(t, today, tomorrow)
+      const b = bucketFor(t, boardAnchor, anchorTomorrow)
       map[b].push(t)
     }
     for (const k of Object.keys(map) as TimeBucket[]) {
       map[k].sort(sortInBucket)
     }
     return map
-  }, [filtered, today, tomorrow, user?.uid])
+  }, [filtered, boardAnchor, anchorTomorrow, viewAsUid, user?.uid])
 
   const openCount = useMemo(
     () => filtered.filter((t) => t.status !== 'done').length,
@@ -610,15 +626,15 @@ export function Tasks() {
   )
 
   const onNewTask = useCallback(() => {
-    if (!defaultAssigneeId) return
+    if (!assigneeForNewTask) return
     void (async () => {
       const id = await addTask({
         title: 'משימה חדשה',
         description: '',
         status: 'todo',
         priority: 'medium',
-        assigneeId: defaultAssigneeId,
-        dueDate: today,
+        assigneeId: assigneeForNewTask,
+        dueDate: boardAnchor,
         tags: [],
         reminders: [],
         sharedWithUserIds: [],
@@ -629,9 +645,22 @@ export function Tasks() {
       })
       if (id) setDrawerTaskId(id)
     })()
-  }, [addTask, defaultAssigneeId, setDrawerTaskId, today])
+  }, [addTask, assigneeForNewTask, boardAnchor, setDrawerTaskId])
 
   const errMsg = error?.message ?? null
+
+  const viewAsName = viewAsUid
+    ? (memberById.get(viewAsUid) ?? viewAsUid)
+    : null
+
+  const sortedMembers = useMemo(
+    () => [...teamMembers].sort((a, b) => a.name.localeCompare(b.name, 'he')),
+    [teamMembers],
+  )
+
+  const boardSubtitle = viewAsUid
+    ? `${openCount} פתוחות · משימות של ${viewAsName} (אחראי או משותפות) · לפי תאריך יעד ביחס לתאריך הייחוס`
+    : `${openCount} פתוחות · כל הצוות · לפי תאריך יעד ביחס לתאריך הייחוס`
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 px-6 py-8 md:px-8">
@@ -641,10 +670,7 @@ export function Tasks() {
             משימות
           </h1>
           <p className="mt-1 text-[13px] text-[var(--text-mid)]">
-            {openCount} פתוחות · לפי תאריך יעד
-            {myRole === 'superadmin'
-              ? ' · מנהל על רואה את כל המשימות'
-              : ' · שיתוף לביצוע לפי בחירת עובדים בעורך המשימה'}
+            {boardSubtitle}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -657,11 +683,95 @@ export function Tasks() {
           <button
             type="button"
             onClick={onNewTask}
-            disabled={!defaultAssigneeId}
+            disabled={!assigneeForNewTask}
             className="rounded-[10px] bg-[var(--orange)] px-4 py-2 text-[13px] font-bold text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             + משימה חדשה
           </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] md:grid-cols-2">
+        {canViewAsOthers ? (
+          <div>
+            <label
+              htmlFor="tasks-view-as"
+              className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]"
+            >
+              תצוגת משימות לפי עובד (מנהל על)
+            </label>
+            <select
+              id="tasks-view-as"
+              value={viewAsUid ?? ''}
+              onChange={(e) =>
+                setViewAsUid(e.target.value ? e.target.value : null)
+              }
+              className="w-full max-w-md rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px] text-[var(--text-dark)]"
+            >
+              <option value="">כל הצוות</option>
+              {sortedMembers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-[var(--text-light)]">
+              בוחרים עובד — רואים רק משימות שהוא אחראי עליהן או ששותפו איתו.
+            </p>
+          </div>
+        ) : (
+          <div className="text-[12px] text-[var(--text-mid)]">
+            <span className="font-semibold text-[var(--text-dark)]">
+              תצוגת צוות מלאה.
+            </span>{' '}
+            מנהל על יכול לסנן כאן לפי עובד.
+          </div>
+        )}
+        <div>
+          <p className="mb-2 text-[11px] font-bold text-[var(--text-mid)]">
+            תאריך ייחוס ללוח
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-[11px] font-semibold text-[var(--text-mid)]">
+              יום ספציפי
+              <input
+                type="date"
+                value={boardAnchor}
+                onChange={(e) =>
+                  setBoardAnchor(
+                    e.target.value && /^\d{4}-\d{2}-\d{2}$/.test(e.target.value)
+                      ? e.target.value
+                      : realToday,
+                  )
+                }
+                className="rounded-[10px] border border-[var(--border)] bg-white px-2 py-1.5 text-[13px] text-[var(--text-dark)]"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] font-semibold text-[var(--text-mid)]">
+              קפיצה לחודש (יום 1 בחודש)
+              <input
+                type="month"
+                value={boardAnchor.slice(0, 7)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v && /^\d{4}-\d{2}$/.test(v)) setBoardAnchor(`${v}-01`)
+                }}
+                className="rounded-[10px] border border-[var(--border)] bg-white px-2 py-1.5 text-[13px] text-[var(--text-dark)]"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setBoardAnchor(realToday)}
+              className="rounded-[10px] border border-[var(--border)] bg-[var(--blue-light)] px-3 py-2 text-[12px] font-bold text-[var(--blue-dark)] transition hover:bg-[#BFDBFE]"
+            >
+              חזרה להיום ({formatDateIL(realToday)})
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-[var(--text-light)]">
+            «היום» ו«מחר» בעמודות נקבעים לפי תאריך הייחוס — לא לפי לוח השנה
+            האמיתי. כך אפשר לתכנן משימות לחודש הבא (למשל לבחור חודש ולתזמן
+            יעדים בעמודה «אחר כך»).
+          </p>
         </div>
       </div>
 
@@ -677,10 +787,18 @@ export function Tasks() {
         <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TIME_COLUMNS.map((col) => {
             const list = byBucket[col.key]
+            const columnTitle =
+              col.key === 'today'
+                ? `${col.label} (${formatDateIL(boardAnchor)})`
+                : col.key === 'tomorrow'
+                  ? `${col.label} (${formatDateIL(anchorTomorrow)})`
+                  : col.key === 'overdue'
+                    ? `${col.label} (לפני ${formatDateIL(boardAnchor)})`
+                    : col.label
             return (
               <KanbanColumn
                 key={col.key}
-                title={col.label}
+                title={columnTitle}
                 count={list.length}
                 badgeColor={col.badgeColor}
               >

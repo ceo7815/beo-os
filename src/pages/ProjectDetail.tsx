@@ -4,6 +4,12 @@ import { useAuth } from '../contexts/AuthContext'
 import { formatDateIL } from '../lib/dates'
 import { priorityColor } from '../lib/priorityColor'
 import { INTERNAL_PROJECT_BADGE_COLOR } from '../lib/projectKind'
+import {
+  isRetainerProject,
+  retainerMonthLabelHe,
+  retainerMonthOptions,
+  RETAINER_ACCENT,
+} from '../lib/projectRetainer'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { useSuppliers } from '../hooks/useSuppliers'
@@ -140,7 +146,7 @@ export function ProjectDetail() {
   const { users: teamMembers } = useUsers()
   const defaultAssigneeId = user?.uid ?? teamMembers[0]?.id ?? ''
 
-  const { projects } = useProjects()
+  const { projects, updateProject } = useProjects()
   const { clients } = useClients()
   const { suppliers } = useSuppliers()
   const { tasks, cycleStatus, deleteTask, addTask } = useTasks()
@@ -152,6 +158,9 @@ export function ProjectDetail() {
   const [docModal, setDocModal] = useState(false)
   const [activeDocId, setActiveDocId] = useState<string | null>(null)
   const [taskDeleteId, setTaskDeleteId] = useState<string | null>(null)
+  const [retainerModal, setRetainerModal] = useState(false)
+  const [retainerMonth, setRetainerMonth] = useState('')
+  const [retainerNote, setRetainerNote] = useState('')
 
   const [taskForm, setTaskForm] = useState({
     title: '',
@@ -197,6 +206,22 @@ export function ProjectDetail() {
       .filter((t) => taskFilter === 'all' || t.status === taskFilter)
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   }, [tasks, id, taskFilter])
+
+  const retainerLogSorted = useMemo(() => {
+    const log = project?.retainerLog ?? []
+    return [...log].sort((a, b) => {
+      const c = b.month.localeCompare(a.month)
+      if (c !== 0) return c
+      return b.createdAt.localeCompare(a.createdAt)
+    })
+  }, [project?.retainerLog])
+
+  const retainerMonthChoices = useMemo(() => retainerMonthOptions(), [])
+
+  useEffect(() => {
+    if (!retainerModal || retainerMonthChoices.length === 0) return
+    setRetainerMonth((m) => m || retainerMonthChoices[0]!)
+  }, [retainerModal, retainerMonthChoices])
 
   const projectDocs = useMemo(() => {
     if (!id) return []
@@ -268,6 +293,27 @@ export function ProjectDetail() {
     setDocForm({ title: '', type: 'note' })
   }
 
+  const submitRetainerEntry = async () => {
+    if (!id) return
+    const cur = projects.find((p) => p.id === id)
+    if (!cur) return
+    const note = retainerNote.trim()
+    if (!retainerMonth || !note) return
+    const entry = {
+      id: crypto.randomUUID(),
+      month: retainerMonth.slice(0, 7),
+      note,
+      createdAt: new Date().toISOString(),
+    }
+    const ok = await updateProject(id, {
+      retainerLog: [...(cur.retainerLog ?? []), entry],
+    })
+    if (ok) {
+      setRetainerModal(false)
+      setRetainerNote('')
+    }
+  }
+
   const taskFilterBtns: { key: TaskFilter; label: string }[] = [
     { key: 'all', label: 'הכל' },
     { key: 'todo', label: 'לביצוע' },
@@ -278,47 +324,118 @@ export function ProjectDetail() {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
-      <header className="flex flex-col gap-4 border-b border-[var(--border)] pb-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/projects')}
-            className="text-sm font-medium text-[var(--text-mid)] hover:text-[var(--text-dark)]"
-          >
-            ← חזור
-          </button>
-          <span
-            className="inline-block h-3 w-3 rounded-full"
-            style={{ backgroundColor: project.color }}
-          />
-          <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">
-            {project.name}
-          </h1>
-          {project.type === 'internal' ? (
-            <Badge label="פנימי" color={INTERNAL_PROJECT_BADGE_COLOR} />
-          ) : (
-            <span className="text-sm text-[var(--text-mid)]">
-              {client?.name ?? 'לקוח לא ידוע'}
-            </span>
-          )}
-          {projectSupplier ? (
-            <span className="text-sm text-[var(--text-light)]">
-              · ספק: {projectSupplier.name}
-            </span>
-          ) : null}
-          <Badge
-            label={projectStatusLabels[project.status]}
-            color={projectStatusBadgeColor[project.status]}
-          />
-          <Badge
-            label={priorityLabels[project.priority]}
-            color={priorityColor(project.priority)}
-          />
+      <header className="space-y-3 border-b border-[var(--border)] pb-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/projects')}
+              className="text-sm font-medium text-[var(--text-mid)] hover:text-[var(--text-dark)]"
+            >
+              ← חזור
+            </button>
+            <span
+              className="inline-block h-3 w-3 rounded-full"
+              style={{ backgroundColor: project.color }}
+            />
+            <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">
+              {project.name}
+            </h1>
+            {project.type === 'internal' ? (
+              <Badge label="פנימי" color={INTERNAL_PROJECT_BADGE_COLOR} />
+            ) : (
+              <span className="text-sm text-[var(--text-mid)]">
+                {client?.name ?? 'לקוח לא ידוע'}
+              </span>
+            )}
+            {isRetainerProject(project) ? (
+              <Badge label="שוטף 🔄" color={RETAINER_ACCENT} />
+            ) : null}
+            {isRetainerProject(project) && project.startDate ? (
+              <span className="text-sm text-[var(--text-mid)]">
+                · פעיל מאז {formatDateIL(project.startDate)}
+              </span>
+            ) : null}
+            {projectSupplier ? (
+              <span className="text-sm text-[var(--text-light)]">
+                · ספק ביצוע: {projectSupplier.name}
+              </span>
+            ) : null}
+            <Badge
+              label={projectStatusLabels[project.status]}
+              color={projectStatusBadgeColor[project.status]}
+            />
+            <Badge
+              label={priorityLabels[project.priority]}
+              color={priorityColor(project.priority)}
+            />
+          </div>
         </div>
+        {project.description?.trim() ? (
+          <div>
+            <p className="mb-1 text-[11px] font-bold text-[var(--text-light)]">
+              תיאור הפרויקט
+            </p>
+            <p className="max-w-4xl whitespace-pre-wrap text-[14px] leading-relaxed text-[var(--text-mid)]">
+              {project.description.trim()}
+            </p>
+          </div>
+        ) : null}
       </header>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <section>
+        <div className="space-y-6">
+          {isRetainerProject(project) ? (
+            <section>
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2
+                  className="text-[15px] font-bold"
+                  style={{ color: RETAINER_ACCENT }}
+                >
+                  עדכונים וביקורות חודשיות
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setRetainerModal(true)}
+                  className="rounded-[10px] px-3 py-1.5 text-xs font-bold text-white transition hover:brightness-110"
+                  style={{ backgroundColor: RETAINER_ACCENT }}
+                >
+                  + עדכון חודשי
+                </button>
+              </div>
+              <div className="space-y-2">
+                {retainerLogSorted.length === 0 ? (
+                  <p className="text-sm text-[var(--text-mid)]">
+                    עדיין אין עדכונים — הוסיפו ראשון עם הכפתור למעלה.
+                  </p>
+                ) : (
+                  retainerLogSorted.map((e) => (
+                    <div
+                      key={e.id}
+                      className="rounded-[10px] border border-[var(--border)] bg-[#FAF5FF] px-3 py-2.5 shadow-[0_1px_6px_rgba(0,0,0,0.04)]"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[11px] font-bold text-white"
+                          style={{ backgroundColor: RETAINER_ACCENT }}
+                        >
+                          {retainerMonthLabelHe(e.month)}
+                        </span>
+                        <span className="text-[11px] text-[var(--text-light)] tabular-nums">
+                          {formatDateIL(e.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-[13px] text-[var(--text-dark)]">
+                        {e.note}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          <section>
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-[15px] font-bold text-[var(--blue-dark)]">משימות</h2>
             <button
@@ -410,7 +527,8 @@ export function ProjectDetail() {
               description="הוסיפו משימה חדשה כדי להתחיל לעקוב אחר העבודה."
             />
           ) : null}
-        </section>
+          </section>
+        </div>
 
         <section>
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -462,6 +580,57 @@ export function ProjectDetail() {
           ) : null}
         </section>
       </div>
+
+      <Modal
+        isOpen={retainerModal}
+        onClose={() => setRetainerModal(false)}
+        title="עדכון חודשי — Retainer"
+        bodyClassName="overflow-visible max-h-none"
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">חודש</label>
+            <select
+              value={retainerMonth}
+              onChange={(e) => setRetainerMonth(e.target.value)}
+            >
+              {retainerMonthChoices.map((ym) => (
+                <option key={ym} value={ym}>
+                  {retainerMonthLabelHe(ym)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              תיאור — מה בוצע
+            </label>
+            <textarea
+              rows={4}
+              placeholder="סיכום עבודה, אבני דרך, הערות…"
+              value={retainerNote}
+              onChange={(e) => setRetainerNote(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="hub-btn-secondary text-sm"
+              onClick={() => setRetainerModal(false)}
+            >
+              ביטול
+            </button>
+            <button
+              type="button"
+              className="rounded-[10px] px-4 py-2 text-sm font-bold text-white transition hover:brightness-110"
+              style={{ backgroundColor: RETAINER_ACCENT }}
+              onClick={() => void submitRetainerEntry()}
+            >
+              שמור
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={taskModal}

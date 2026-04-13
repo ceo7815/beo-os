@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToSupplier } from '../lib/firestoreMappers'
-import { resetSuppliersToHub } from '../lib/hubSupplier'
+import { ensureHubSupplierExists } from '../lib/hubSupplier'
 import { getDb } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
@@ -48,8 +48,8 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
       setError(null)
       return
     }
-    void resetSuppliersToHub().catch((e) => {
-      console.error('resetSuppliersToHub', e)
+    void ensureHubSupplierExists().catch((e) => {
+      console.error('ensureHubSupplierExists', e)
     })
     setLoading(true)
     const db = getDb()

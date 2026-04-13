@@ -2,14 +2,18 @@ import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore'
 import { Timestamp } from 'firebase/firestore'
 import type {
   Client,
+  CollectionTracking,
   Doc,
   DocType,
+  HostingRecord,
   Invoice,
   InvoiceStatus,
   Priority,
   Project,
+  ProjectBillingType,
   ProjectKind,
   ProjectStatus,
+  RetainerEntry,
   Supplier,
   Task,
   TaskActivity,
@@ -65,17 +69,59 @@ export function docToInvoice(d: QueryDocumentSnapshot<DocumentData>): Invoice {
   }
 }
 
+export function docToCollectionTracking(
+  d: QueryDocumentSnapshot<DocumentData>,
+): CollectionTracking {
+  const x = d.data()
+  const pd = x.paidDate
+  return {
+    id: d.id,
+    clientId: String(x.clientId ?? d.id),
+    lastRequestDate: String(x.lastRequestDate ?? '').slice(0, 10),
+    dueDate: String(x.dueDate ?? '').slice(0, 10),
+    paidDate:
+      typeof pd === 'string' && pd.trim() ? String(pd).slice(0, 10) : undefined,
+    note: typeof x.note === 'string' && x.note.trim() ? String(x.note) : undefined,
+    createdAt: timestampToIso(x.createdAt),
+    updatedAt: timestampToIso(x.updatedAt ?? x.createdAt),
+  }
+}
+
 export function docToClient(d: QueryDocumentSnapshot<DocumentData>): Client {
   const x = d.data()
+  const deptRaw = x.department
+  const department =
+    typeof deptRaw === 'string' && deptRaw.trim() ? deptRaw.trim() : undefined
   return {
     id: d.id,
     name: String(x.name ?? ''),
     contact: String(x.contact ?? ''),
     phone: String(x.phone ?? ''),
     email: String(x.email ?? ''),
+    department,
     status: (x.status === 'inactive' ? 'inactive' : 'active') as Client['status'],
     createdAt: timestampToIso(x.createdAt),
   }
+}
+
+function parseRetainerLog(value: unknown): RetainerEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const entries: RetainerEntry[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const id = String(o.id ?? '')
+    const monthRaw = String(o.month ?? '')
+    const month = monthRaw.slice(0, 7)
+    if (!id || !/^\d{4}-\d{2}$/.test(month)) continue
+    entries.push({
+      id,
+      month,
+      note: String(o.note ?? ''),
+      createdAt: timestampToIso(o.createdAt),
+    })
+  }
+  return entries.length ? entries : undefined
 }
 
 export function docToProject(d: QueryDocumentSnapshot<DocumentData>): Project {
@@ -95,10 +141,35 @@ export function docToProject(d: QueryDocumentSnapshot<DocumentData>): Project {
       ? String(rawCid).trim()
       : ''
   const clientId = clientIdStr ? clientIdStr : undefined
+  const projectType: ProjectBillingType =
+    x.projectType === 'retainer' ? 'retainer' : 'one-time'
+  const retainerAmount =
+    typeof x.retainerAmount === 'number' && !Number.isNaN(x.retainerAmount)
+      ? x.retainerAmount
+      : undefined
+  const subContractor =
+    typeof x.subContractor === 'string' && x.subContractor.trim()
+      ? x.subContractor.trim()
+      : undefined
+  const startDate =
+    typeof x.startDate === 'string' && x.startDate.trim()
+      ? x.startDate.slice(0, 10)
+      : undefined
+  const retainerLog = parseRetainerLog(x.retainerLog)
+  const description =
+    typeof x.description === 'string' && x.description.trim()
+      ? x.description.trim()
+      : undefined
   return {
     id: d.id,
     name: String(x.name ?? ''),
+    description,
     type,
+    projectType,
+    retainerAmount,
+    subContractor,
+    startDate,
+    retainerLog,
     clientId,
     supplierId: sid !== undefined && sid !== null && String(sid).trim()
       ? String(sid)
@@ -229,5 +300,33 @@ export function docToTeamMember(
     role: String(x.role ?? ''),
     email: typeof x.email === 'string' ? x.email : undefined,
     active: typeof x.active === 'boolean' ? x.active : true,
+  }
+}
+
+function ymdPart(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const p = value.slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(p) ? p : ''
+}
+
+export function docToHostingRecord(
+  d: QueryDocumentSnapshot<DocumentData>,
+): HostingRecord {
+  const x = d.data()
+  return {
+    id: d.id,
+    clientId: String(x.clientId ?? ''),
+    domain: String(x.domain ?? ''),
+    server: String(x.server ?? ''),
+    serverLocation: String(x.serverLocation ?? ''),
+    controlPanel: String(x.controlPanel ?? ''),
+    username: String(x.username ?? ''),
+    ipAddress: String(x.ipAddress ?? ''),
+    sslExpiry: ymdPart(x.sslExpiry),
+    domainExpiry: ymdPart(x.domainExpiry),
+    platform: String(x.platform ?? ''),
+    phpVersion: String(x.phpVersion ?? ''),
+    notes: String(x.notes ?? ''),
+    createdAt: timestampToIso(x.createdAt),
   }
 }

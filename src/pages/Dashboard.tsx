@@ -1,15 +1,18 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDateIL, todayYmd } from '../lib/dates'
+import { addDaysYmd, formatDateIL, todayYmd } from '../lib/dates'
 import { priorityColor } from '../lib/priorityColor'
 import { useClients } from '../hooks/useClients'
-import { useInvoices } from '../hooks/useInvoices'
+import { useCollectionTracking } from '../hooks/useCollectionTracking'
 import { useProjects } from '../hooks/useProjects'
+import { getCollectionTrackingStatus } from '../lib/collectionTrackingStatus'
+import { isRetainerProject } from '../lib/projectRetainer'
 import { taskVisibleToUser } from '../lib/taskVisibility'
 import { useTasks } from '../hooks/useTasks'
+import { useSuppliers } from '../hooks/useSuppliers'
 import { useUsers } from '../hooks/useUsers'
-import type { Priority, Project } from '../types'
+import type { Priority, Project, ProjectStatus } from '../types'
 import { Badge } from '../components/shared/Badge'
 import { ProgressBar } from '../components/shared/ProgressBar'
 
@@ -31,14 +34,6 @@ function KpiCard(props: {
   )
 }
 
-function formatILS(n: number): string {
-  return new Intl.NumberFormat('he-IL', {
-    style: 'currency',
-    currency: 'ILS',
-    maximumFractionDigits: 0,
-  }).format(n)
-}
-
 function ymdPart(s: string): string {
   return s.slice(0, 10)
 }
@@ -49,6 +44,14 @@ function daysLate(dueYmd: string, today: string): number {
   const due = Date.UTC(y, m - 1, d)
   const t = Date.UTC(yt, mt - 1, dt)
   return Math.max(0, Math.round((t - due) / 86400000))
+}
+
+function daysUntilDue(dueYmd: string, today: string): number {
+  const [y, m, d] = dueYmd.split('-').map(Number)
+  const [yt, mt, dt] = today.split('-').map(Number)
+  const due = Date.UTC(y, m - 1, d)
+  const t = Date.UTC(yt, mt - 1, dt)
+  return Math.round((due - t) / 86400000)
 }
 
 function priorityLabel(p: Priority): string {
@@ -62,13 +65,44 @@ function priorityLabel(p: Priority): string {
   }
 }
 
+function myOpenTasksPhrase(n: number): string {
+  if (n === 0) return 'אין משימות פתוחות שלך'
+  if (n === 1) return 'משימה אחת פתוחה שלך'
+  return `${n} משימות פתוחות שלך`
+}
+
+/** סה״כ פתוחות בפרויקט — כל המשימות גלויות לחברי הצוות */
+function projectOpenTasksPhrase(n: number): string {
+  if (n === 0) return 'אין משימות פתוחות בפרויקט'
+  if (n === 1) return 'משימה אחת פתוחה בפרויקט'
+  return `${n} משימות פתוחות בפרויקט`
+}
+
+/** פרויקטים שמוצגים בדשבורד — לא רק «פעיל», כדי שפרויקטים בתכנון (ברירת מחדל) יופיעו */
+const DASHBOARD_OPEN_STATUSES: ProjectStatus[] = ['planning', 'active', 'review']
+
+const dashboardStatusLabels: Record<ProjectStatus, string> = {
+  planning: 'תכנון',
+  active: 'פעיל',
+  review: 'בבדיקה',
+  done: 'הושלם',
+}
+
+const dashboardStatusBadgeColor: Record<ProjectStatus, string> = {
+  planning: '#2563EB',
+  active: '#2563EB',
+  review: '#F97316',
+  done: '#16A34A',
+}
+
 export function Dashboard() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { projects } = useProjects()
   const { tasks } = useTasks()
   const { clients } = useClients()
-  const { invoices } = useInvoices()
+  const { entries: collectionEntries } = useCollectionTracking()
+  const { suppliers } = useSuppliers()
   const { users: teamMembers } = useUsers()
 
   const myUid = user?.uid ?? ''
@@ -82,23 +116,40 @@ export function Dashboard() {
     [tasks, myUid, myRole],
   )
 
-  const taskScope = myRole === 'superadmin' ? tasks : visibleTasks
+  const taskScope = visibleTasks
 
   const kpis = useMemo(() => {
-    const activeProjects = projects.filter((p) => p.status === 'active').length
+    const projectsInProgress = projects.filter((p) => p.status !== 'done')
+      .length
     const openTasks = taskScope.filter((t) => t.status !== 'done').length
     const activeClients = clients.filter((c) => c.status === 'active').length
     const today = todayYmd()
     const overdue = taskScope.filter(
       (t) => t.status !== 'done' && t.dueDate.slice(0, 10) < today,
     ).length
-    return { activeProjects, openTasks, activeClients, overdue }
+    return { projectsInProgress, openTasks, activeClients, overdue }
   }, [projects, taskScope, clients])
 
-  const activeProjectList = useMemo(
-    () => projects.filter((p) => p.status === 'active'),
+  const openDashboardProjectList = useMemo(
+    () => projects.filter((p) => DASHBOARD_OPEN_STATUSES.includes(p.status)),
     [projects],
   )
+
+  const openOneTimeList = useMemo(
+    () => openDashboardProjectList.filter((p) => !isRetainerProject(p)),
+    [openDashboardProjectList],
+  )
+
+  const openRetainerList = useMemo(
+    () => openDashboardProjectList.filter((p) => isRetainerProject(p)),
+    [openDashboardProjectList],
+  )
+
+  const supplierById = useMemo(() => {
+    const m = new Map<string, string>()
+    suppliers.forEach((s) => m.set(s.id, s.name))
+    return m
+  }, [suppliers])
 
   const todayY = todayYmd()
 
@@ -123,50 +174,56 @@ export function Dashboard() {
     return m
   }, [clients])
 
-  const collectionYm = useMemo(() => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  }, [])
+  const todayForCollection = todayYmd()
 
-  const collectionKpis = useMemo(() => {
-    let toCollect = 0
-    let paidMonth = 0
-    let overdueCount = 0
-    for (const inv of invoices) {
-      if (inv.status === 'pending' || inv.status === 'overdue') {
-        toCollect += inv.amount
-      }
-      if (inv.status === 'paid') {
-        const pd = inv.paidDate ? ymdPart(inv.paidDate) : ''
-        if (pd.startsWith(collectionYm)) paidMonth += inv.amount
-      }
-      if (inv.status === 'overdue') overdueCount += 1
-    }
-    return { toCollect, paidMonth, overdueCount }
-  }, [invoices, collectionYm])
+  /** יעד תשלום בטווח היום עד כולל עוד 10 ימים — לא שולם ולא באיחור */
+  const collectionDueWithin10Days = useMemo(() => {
+    const today = todayForCollection
+    const limit = addDaysYmd(today, 10)
+    const out = collectionEntries.filter((row) => {
+      if (getCollectionTrackingStatus(row, today) !== 'pending') return false
+      const due = ymdPart(row.dueDate)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return false
+      return due >= today && due <= limit
+    })
+    out.sort((a, b) => ymdPart(a.dueDate).localeCompare(ymdPart(b.dueDate)))
+    return out
+  }, [collectionEntries, todayForCollection])
 
-  const urgentOverdueInvoices = useMemo(() => {
-    const today = todayYmd()
-    return invoices
-      .filter((i) => i.status === 'overdue')
-      .filter((i) => /^\d{4}-\d{2}-\d{2}$/.test(ymdPart(i.dueDate)))
-      .sort((a, b) => ymdPart(a.dueDate).localeCompare(ymdPart(b.dueDate)))
-      .slice(0, 3)
-      .map((inv) => ({
-        inv,
-        days: daysLate(ymdPart(inv.dueDate), today),
-      }))
-  }, [invoices])
+  /** כל הרשומות באיחור (לפי יעד) */
+  const collectionOverdueList = useMemo(() => {
+    const today = todayForCollection
+    const out = collectionEntries.filter((row) => {
+      if (getCollectionTrackingStatus(row, today) !== 'overdue') return false
+      const due = ymdPart(row.dueDate)
+      return /^\d{4}-\d{2}-\d{2}$/.test(due)
+    })
+    out.sort((a, b) => ymdPart(a.dueDate).localeCompare(ymdPart(b.dueDate)))
+    return out
+  }, [collectionEntries, todayForCollection])
 
-  /** משימות שאינן «הושלם», במסגרת הרשאות המשתמש */
-  const openTasksByProjectId = useMemo(() => {
+  /** משימות פתוחות **של המשתמש המחובר** (אחראי) לפי פרויקט */
+  const myOpenTasksByProjectId = useMemo(() => {
     const m = new Map<string, number>()
-    for (const t of taskScope) {
+    if (!myUid) return m
+    for (const t of tasks) {
+      if (!t.projectId || t.status === 'done') continue
+      if (t.assigneeId !== myUid) continue
+      if (!taskVisibleToUser(t, myUid, myRole)) continue
+      m.set(t.projectId, (m.get(t.projectId) ?? 0) + 1)
+    }
+    return m
+  }, [tasks, myUid, myRole])
+
+  /** סה״כ משימות פתוחות בפרויקט (כל המשימות הגלויות לצוות) */
+  const projectOpenTasksByProjectId = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const t of visibleTasks) {
       if (!t.projectId || t.status === 'done') continue
       m.set(t.projectId, (m.get(t.projectId) ?? 0) + 1)
     }
     return m
-  }, [taskScope])
+  }, [visibleTasks])
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-8 px-8 py-8">
@@ -181,8 +238,8 @@ export function Dashboard() {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
-          value={kpis.activeProjects}
-          label="פרויקטים פעילים"
+          value={kpis.projectsInProgress}
+          label="סה״כ פרויקטים בביצוע"
           borderColor="#2563EB"
         />
         <KpiCard
@@ -202,147 +259,292 @@ export function Dashboard() {
         />
       </section>
 
-      <section className="space-y-4">
-        <h2 className="text-[15px] font-bold text-[var(--blue-dark)]">גבייה</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div
-            className="rounded-[12px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-            style={{ borderTopWidth: 3, borderTopColor: '#2563EB' }}
-          >
-            <div className="text-[11px] font-semibold text-[var(--text-mid)]">
-              💰 לגבייה
-            </div>
-            <div className="mt-1 text-lg font-extrabold tabular-nums text-[var(--text-dark)]">
-              {formatILS(collectionKpis.toCollect)}
-            </div>
-            <div className="mt-0.5 text-[10px] text-[var(--text-light)]">סה״כ</div>
-          </div>
-          <div
-            className="rounded-[12px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-            style={{ borderTopWidth: 3, borderTopColor: '#10B981' }}
-          >
-            <div className="text-[11px] font-semibold text-[var(--text-mid)]">
-              ✅ שולם
-            </div>
-            <div className="mt-1 text-lg font-extrabold tabular-nums text-[var(--text-dark)]">
-              {formatILS(collectionKpis.paidMonth)}
-            </div>
-            <div className="mt-0.5 text-[10px] text-[var(--text-light)]">החודש</div>
-          </div>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-[15px] font-bold text-[var(--blue-dark)]">גבייה</h2>
           <button
             type="button"
             onClick={() => navigate('/collections')}
-            className="w-full rounded-[12px] border border-[var(--border)] bg-[var(--bg-card)] p-4 text-right shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition hover:border-[#EF4444]/40 hover:shadow-[0_4px_16px_rgba(239,68,68,0.12)]"
-            style={{ borderTopWidth: 3, borderTopColor: '#EF4444' }}
+            className="rounded-[10px] border border-[var(--border)] bg-[var(--blue-light)] px-3 py-1.5 text-[11px] font-bold text-[var(--blue-dark)] transition hover:bg-[#BFDBFE]"
           >
-            <div className="text-[11px] font-semibold text-[var(--text-mid)]">
-              ⚠️ באיחור
-            </div>
-            <div className="mt-1 text-lg font-extrabold tabular-nums text-[#EF4444]">
-              {collectionKpis.overdueCount}{' '}
-              <span className="text-sm font-bold text-[var(--text-mid)]">
-                חשבוניות
-              </span>
-            </div>
-            <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
-              לחץ לפתיחת מעקב גבייה
-            </div>
+            מעקב גבייה — פירוט ומחלקות →
           </button>
         </div>
-        <div className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-          <p className="mb-3 text-[12px] font-bold text-[var(--text-dark)]">
-            דחופות — באיחור
+        {collectionEntries.length === 0 ? (
+          <p className="text-[12px] text-[var(--text-mid)]">
+            אין לקוחות במעקב.{' '}
+            <button
+              type="button"
+              onClick={() => navigate('/collections')}
+              className="font-semibold text-[var(--blue-dark)] underline"
+            >
+              הוסיפו ממסך הגבייה
+            </button>
+            .
           </p>
-          {urgentOverdueInvoices.length === 0 ? (
-            <p className="text-sm text-[var(--text-mid)]">אין חשבוניות באיחור</p>
-          ) : (
-            <ul className="space-y-2">
-              {urgentOverdueInvoices.map(({ inv, days }) => (
-                <li
-                  key={inv.id}
-                  className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-2 text-sm last:border-0 last:pb-0"
-                >
-                  <span className="font-medium text-[var(--text-dark)]">
-                    {clientById.get(inv.clientId) ?? 'לקוח'}
-                  </span>
-                  <span className="tabular-nums text-[var(--text-mid)]">
-                    {formatILS(inv.amount)}
-                    <span className="me-2 text-[#EF4444]">
-                      {' '}
-                      · איחור {days} ימים
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <button
-            type="button"
-            onClick={() => navigate('/collections')}
-            className="mt-4 w-full rounded-lg border border-[var(--border)] py-2 text-center text-[13px] font-semibold text-[var(--blue-dark)] transition hover:bg-[var(--blue-light)]"
-          >
-            לכל הגבייה →
-          </button>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-[12px] border border-[var(--border)] border-s-[3px] border-s-[#EF4444] bg-[var(--bg-card)] p-3 shadow-[0_1px_6px_rgba(0,0,0,0.05)]">
+              <p className="text-[11px] font-bold text-[#EF4444]">
+                באיחור · {collectionOverdueList.length}
+              </p>
+              {collectionOverdueList.length === 0 ? (
+                <p className="mt-2 text-[12px] text-[var(--text-mid)]">אין</p>
+              ) : (
+                <ul className="mt-2 max-h-[240px] space-y-1.5 overflow-y-auto text-[12px]">
+                  {collectionOverdueList.map((row) => {
+                    const due = ymdPart(row.dueDate)
+                    const late = daysLate(due, todayForCollection)
+                    return (
+                      <li
+                        key={row.id}
+                        className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 border-b border-[var(--border)] pb-1.5 last:border-0 last:pb-0"
+                      >
+                        <span className="min-w-0 truncate font-medium text-[var(--text-dark)]">
+                          {clientById.get(row.clientId) ?? 'לקוח'}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-[11px] text-[#EF4444]">
+                          {late} ימים · {formatDateIL(row.dueDate)}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+            <div className="rounded-[12px] border border-[var(--border)] border-s-[3px] border-s-[#F59E0B] bg-[var(--bg-card)] p-3 shadow-[0_1px_6px_rgba(0,0,0,0.05)]">
+              <p className="text-[11px] font-bold text-[#B45309]">
+                יעד תוך 10 ימים (כולל היום) · {collectionDueWithin10Days.length}
+              </p>
+              {collectionDueWithin10Days.length === 0 ? (
+                <p className="mt-2 text-[12px] text-[var(--text-mid)]">אין</p>
+              ) : (
+                <ul className="mt-2 max-h-[240px] space-y-1.5 overflow-y-auto text-[12px]">
+                  {collectionDueWithin10Days.map((row) => {
+                    const due = ymdPart(row.dueDate)
+                    const left = daysUntilDue(due, todayForCollection)
+                    return (
+                      <li
+                        key={row.id}
+                        className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 border-b border-[var(--border)] pb-1.5 last:border-0 last:pb-0"
+                      >
+                        <span className="min-w-0 truncate font-medium text-[var(--text-dark)]">
+                          {clientById.get(row.clientId) ?? 'לקוח'}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-[11px] text-[var(--text-mid)]">
+                          {left === 0 ? 'היום' : `עוד ${left} ימים`} ·{' '}
+                          {formatDateIL(row.dueDate)}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
-      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div>
-          <h2 className="mb-4 text-[15px] font-bold text-[var(--blue-dark)]">
-            פרויקטים פעילים
-          </h2>
-          <div className="space-y-3">
-            {activeProjectList.map((p) => {
-              const clientName =
-                p.type === 'internal'
-                  ? 'פנימי'
-                  : p.clientId
-                    ? (clientById.get(p.clientId) ?? 'לקוח לא ידוע')
-                    : 'לקוח לא ידוע'
-              const openN = openTasksByProjectId.get(p.id) ?? 0
-              const openLabel =
-                openN === 0
-                  ? 'אין משימות פתוחות לביצוע'
-                  : openN === 1
-                    ? 'משימה אחת פתוחה לביצוע'
-                    : `${openN} משימות פתוחות לביצוע`
-              return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => navigate(`/projects/${p.id}`)}
-                className="w-full rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5 text-right shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition hover:border-[var(--blue-mid)] hover:shadow-[0_4px_20px_rgba(37,99,235,0.12)]"
-                style={{ borderTopWidth: 4, borderTopColor: p.color }}
+      <section className="space-y-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch">
+          <div
+            className="flex min-h-0 flex-col rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
+            style={{ borderTopWidth: 4, borderTopColor: '#2563EB' }}
+          >
+            <div className="mb-4 border-b border-[var(--border)] pb-3">
+              <h2 className="text-[15px] font-bold text-[var(--blue-dark)]">
+                פרויקטים פעילים
+              </h2>
+              <p className="mt-1 text-[11px] text-[var(--text-light)]">
+                חד־פעמיים · תכנון, פעיל או בבדיקה · {openOneTimeList.length}{' '}
+                פרויקטים
+              </p>
+            </div>
+            <div
+              role="region"
+              aria-label="רשימת פרויקטים חד־פעמיים — גלילה כשיש יותר משלושה"
+              className="flex min-h-0 max-h-[46rem] flex-1 flex-col overflow-y-auto overscroll-y-contain pe-1 [-ms-overflow-style:auto] [scrollbar-gutter:stable]"
+            >
+              <div className="flex flex-col gap-3">
+              {openOneTimeList.map((p) => {
+                const clientName =
+                  p.type === 'internal'
+                    ? 'פנימי'
+                    : p.clientId
+                      ? (clientById.get(p.clientId) ?? 'לקוח לא ידוע')
+                      : 'לקוח לא ידוע'
+                const myOpen = myOpenTasksByProjectId.get(p.id) ?? 0
+                const projOpen = projectOpenTasksByProjectId.get(p.id) ?? 0
+                const openLabel = `${myOpenTasksPhrase(myOpen)} · ${projectOpenTasksPhrase(projOpen)}`
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => navigate(`/projects/${p.id}`)}
+                    className="w-full rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5 text-right shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition hover:border-[var(--blue-mid)] hover:shadow-[0_4px_20px_rgba(37,99,235,0.12)]"
+                    style={{ borderTopWidth: 4, borderTopColor: p.color }}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="font-semibold text-[var(--text-dark)]">
+                        {p.name}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {p.status !== 'active' ? (
+                          <Badge
+                            label={dashboardStatusLabels[p.status]}
+                            color={dashboardStatusBadgeColor[p.status]}
+                          />
+                        ) : null}
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: p.color }}
+                        />
+                      </div>
+                    </div>
+                    {p.description?.trim() ? (
+                      <div className="mb-3 rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2">
+                        <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
+                          תיאור
+                        </p>
+                        <p
+                          className="line-clamp-4 text-[12px] leading-relaxed text-[var(--text-dark)]"
+                          title={p.description.trim()}
+                        >
+                          {p.description.trim()}
+                        </p>
+                      </div>
+                    ) : null}
+                    <div className="mb-3 space-y-1 text-[12px] leading-snug">
+                      <p className="font-bold text-[var(--blue-dark)]">
+                        {clientName}
+                      </p>
+                      <p className="text-[var(--text-mid)]">
+                        <span className="text-[var(--text-light)]">יעד: </span>
+                        {formatDateIL(p.dueDate)}
+                      </p>
+                      <p className="text-[var(--text-dark)]">{openLabel}</p>
+                    </div>
+                    <ProgressBar
+                      done={p.doneCount}
+                      total={p.taskCount}
+                      color={p.color}
+                      manualPercent={p.manualProgressPercent}
+                    />
+                  </button>
+                )
+              })}
+              {openOneTimeList.length === 0 ? (
+                <p className="text-sm text-[var(--text-mid)]">
+                  אין פרויקטים חד־פעמיים בתכנון, פעיל או בבדיקה
+                </p>
+              ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="flex min-h-0 flex-col rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
+            style={{ borderTopWidth: 4, borderTopColor: '#7C3AED' }}
+          >
+            <div className="mb-4 border-b border-[var(--border)] pb-3">
+              <h2
+                className="text-[15px] font-bold"
+                style={{ color: '#5B21B6' }}
               >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="font-semibold text-[var(--text-dark)]">
-                    {p.name}
-                  </span>
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: p.color }}
-                  />
-                </div>
-                <div className="mb-3 space-y-1 text-[12px] leading-snug">
-                  <p className="font-bold text-[var(--blue-dark)]">{clientName}</p>
-                  <p className="text-[var(--text-mid)]">
-                    <span className="text-[var(--text-light)]">יעד: </span>
-                    {formatDateIL(p.dueDate)}
-                  </p>
-                  <p className="text-[var(--text-dark)]">{openLabel}</p>
-                </div>
-                <ProgressBar
-                  done={p.doneCount}
-                  total={p.taskCount}
-                  color={p.color}
-                  manualPercent={p.manualProgressPercent}
-                />
-              </button>
-              )
-            })}
-            {activeProjectList.length === 0 ? (
-              <p className="text-sm text-[var(--text-mid)]">אין פרויקטים פעילים</p>
-            ) : null}
+                פרויקטים שוטפים
+              </h2>
+              <p className="mt-1 text-[11px] text-[var(--text-light)]">
+                עדכונים וביקורות חודשיות · {openRetainerList.length} פרויקטים
+              </p>
+            </div>
+            <div
+              role="region"
+              aria-label="רשימת פרויקטים שוטפים — גלילה כשיש יותר משלושה"
+              className="flex min-h-0 max-h-[46rem] flex-1 flex-col overflow-y-auto overscroll-y-contain pe-1 [-ms-overflow-style:auto] [scrollbar-gutter:stable]"
+            >
+              <div className="flex flex-col gap-3">
+              {openRetainerList.map((p) => {
+                const clientName =
+                  p.type === 'internal'
+                    ? 'פנימי'
+                    : p.clientId
+                      ? (clientById.get(p.clientId) ?? 'לקוח לא ידוע')
+                      : 'לקוח לא ידוע'
+                const myOpen = myOpenTasksByProjectId.get(p.id) ?? 0
+                const projOpen = projectOpenTasksByProjectId.get(p.id) ?? 0
+                const openLabel = `${myOpenTasksPhrase(myOpen)} · ${projectOpenTasksPhrase(projOpen)}`
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => navigate(`/projects/${p.id}`)}
+                    className="w-full rounded-[14px] border border-[var(--border)] bg-[#FAF5FF] p-5 text-right shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition hover:border-[#A78BFA] hover:shadow-[0_4px_20px_rgba(124,58,237,0.15)]"
+                    style={{ borderTopWidth: 4, borderTopColor: p.color }}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="font-semibold text-[var(--text-dark)]">
+                        {p.name}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {p.status !== 'active' ? (
+                          <Badge
+                            label={dashboardStatusLabels[p.status]}
+                            color={dashboardStatusBadgeColor[p.status]}
+                          />
+                        ) : null}
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: p.color }}
+                        />
+                      </div>
+                    </div>
+                    {p.description?.trim() ? (
+                      <div className="mb-3 rounded-[10px] border border-[#E9D5FF] bg-white/80 px-3 py-2">
+                        <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
+                          תיאור
+                        </p>
+                        <p
+                          className="line-clamp-4 text-[12px] leading-relaxed text-[var(--text-dark)]"
+                          title={p.description.trim()}
+                        >
+                          {p.description.trim()}
+                        </p>
+                      </div>
+                    ) : null}
+                    <div className="mb-3 space-y-1 text-[12px] leading-snug">
+                      <p className="font-bold text-[var(--blue-dark)]">
+                        {clientName}
+                      </p>
+                      <p className="text-[var(--text-mid)]">
+                        <span className="text-[var(--text-light)]">פעיל מאז </span>
+                        {p.startDate
+                          ? formatDateIL(p.startDate)
+                          : formatDateIL(p.dueDate)}
+                      </p>
+                      {p.supplierId ? (
+                        <p className="text-[11px] text-[var(--text-mid)]">
+                          ספק:{' '}
+                          {supplierById.get(p.supplierId) ?? p.supplierId}
+                        </p>
+                      ) : null}
+                      <p className="text-[var(--text-dark)]">{openLabel}</p>
+                    </div>
+                    <ProgressBar
+                      done={p.doneCount}
+                      total={p.taskCount}
+                      color={p.color}
+                      manualPercent={p.manualProgressPercent}
+                    />
+                  </button>
+                )
+              })}
+              {openRetainerList.length === 0 ? (
+                <p className="text-sm text-[var(--text-mid)]">
+                  אין פרויקטים שוטפים בתכנון, פעיל או בבדיקה
+                </p>
+              ) : null}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -394,9 +596,17 @@ export function Dashboard() {
                 <div className="mb-2 font-medium text-[var(--text-dark)]">
                   {t.title}
                 </div>
-                <div className="mb-2 text-xs text-[var(--text-mid)]">
+                <div className="mb-1 text-xs text-[var(--text-mid)]">
                   {proj?.name ?? 'פרויקט'}
                 </div>
+                {proj?.description?.trim() ? (
+                  <p
+                    className="mb-2 line-clamp-2 text-[10px] leading-snug text-[var(--text-light)]"
+                    title={proj.description.trim()}
+                  >
+                    {proj.description.trim()}
+                  </p>
+                ) : null}
                 <Badge label={priorityLabel(t.priority)} color={pc} />
                 <div className="mt-2 text-[11px] text-[var(--text-light)]">
                   יעד: {formatDateIL(t.dueDate)}

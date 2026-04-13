@@ -86,6 +86,7 @@ export async function seedClients(): Promise<void> {
     const iPhone = col('טלפון')
     const iMobile = col('נייד')
     const iContact = col('שם איש קשר')
+    const iDept = col('מחלקה')
     const iId = col('מזהה לקוח')
     if (iId < 0 || iName < 0) {
       console.warn('seedClients: כותרות CSV לא צפויות')
@@ -100,6 +101,8 @@ export async function seedClients(): Promise<void> {
       const email = firstEmail(cell(row, iMail))
       const phone = cell(row, iPhone) || cell(row, iMobile)
       const contact = cell(row, iContact)
+      const departmentRaw = iDept >= 0 ? cell(row, iDept) : ''
+      const department = departmentRaw || undefined
       await setDoc(
         doc(db, 'clients', id),
         {
@@ -107,6 +110,7 @@ export async function seedClients(): Promise<void> {
           contact: contact || name,
           phone: phone || '',
           email: email || '',
+          ...(department ? { department } : {}),
           status: 'active',
           createdAt: serverTimestamp(),
         },

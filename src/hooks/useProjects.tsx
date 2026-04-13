@@ -47,12 +47,21 @@ function buildProjectCreateDoc(
     projectKind: data.type,
     status: data.status,
     priority: data.priority,
-    dueDate: data.dueDate,
     ownerId: data.ownerId,
     color: data.color,
     taskCount: 0,
     doneCount: 0,
     createdAt: serverTimestamp(),
+  }
+  const billing = data.projectType ?? 'one-time'
+  docData.projectType = billing
+  if (billing === 'retainer') {
+    const sd = data.startDate?.slice(0, 10) ?? ''
+    docData.startDate = sd
+    docData.dueDate = sd || data.dueDate
+    docData.retainerLog = Array.isArray(data.retainerLog) ? data.retainerLog : []
+  } else {
+    docData.dueDate = data.dueDate
   }
   const trimmedClient = data.clientId?.trim()
   if (trimmedClient) {
@@ -72,6 +81,8 @@ function buildProjectCreateDoc(
       Math.max(0, Math.round(data.manualProgressPercent)),
     )
   }
+  const desc = data.description?.trim()
+  if (desc) docData.description = desc
   return docData
 }
 

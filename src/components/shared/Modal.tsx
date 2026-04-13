@@ -7,6 +7,11 @@ export interface ModalProps {
   children: ReactNode
   /** lg — תצוגה רחבה לתוכן ארוך (למשל משימה מלאה) */
   size?: 'md' | 'lg'
+  /**
+   * ברירת מחדל: גלילה פנימית עם גובה מקסימלי.
+   * לרשימות צפות (אוטו-השלמה) העבירו overflow-visible max-h-none — הגלילה תהיה על כל חלון המודל.
+   */
+  bodyClassName?: string
 }
 
 export function Modal({
@@ -15,6 +20,7 @@ export function Modal({
   title,
   children,
   size = 'md',
+  bodyClassName,
 }: ModalProps) {
   if (!isOpen) return null
   const maxW = size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
@@ -29,7 +35,7 @@ export function Modal({
     >
       <div className="absolute inset-0 bg-[rgba(15,23,42,0.5)] backdrop-blur-[4px]" />
       <div
-        className={`relative z-10 w-full ${maxW} max-h-[min(90vh,880px)] rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]`}
+        className={`relative z-10 w-full ${maxW} max-h-[min(90vh,880px)] overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
@@ -50,7 +56,13 @@ export function Modal({
             ✕
           </button>
         </div>
-        <div className="max-h-[min(65vh,640px)] overflow-y-auto text-[var(--text-dark)]">
+        <div
+          className={
+            bodyClassName?.trim()
+              ? `${bodyClassName} text-[var(--text-dark)]`
+              : 'max-h-[min(65vh,640px)] overflow-y-auto text-[var(--text-dark)]'
+          }
+        >
           {children}
         </div>
       </div>

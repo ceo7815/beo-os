@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deleteField } from 'firebase/firestore'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDateIL } from '../lib/dates'
+import { formatDateIL, todayYmd } from '../lib/dates'
+import { isRetainerProject, RETAINER_ACCENT } from '../lib/projectRetainer'
 import { HUB_SUPPLIER_ID } from '../lib/hubSupplier'
 import {
   INTERNAL_PROJECT_BADGE_COLOR,
@@ -18,6 +19,7 @@ import type {
   Client,
   Priority,
   Project,
+  ProjectBillingType,
   ProjectKind,
   ProjectStatus,
   Supplier,
@@ -64,12 +66,15 @@ const priorityLabels: Record<Priority, string> = {
 
 interface ProjectFormState {
   name: string
+  description: string
   type: ProjectKind
+  projectBillingType: ProjectBillingType
   clientId: string
   supplierId: string
   status: ProjectStatus
   priority: Priority
   dueDate: string
+  startDate: string
   ownerId: string
   color: string
 }
@@ -83,12 +88,15 @@ export function Projects() {
   const emptyForm = useCallback(
     (): ProjectFormState => ({
       name: '',
+      description: '',
       type: 'client',
+      projectBillingType: 'one-time',
       clientId: '',
       supplierId: '',
       status: 'planning',
       priority: 'medium',
       dueDate: '',
+      startDate: todayYmd(),
       ownerId: defaultOwnerId,
       color: PROJECT_COLORS[0],
     }),
@@ -173,14 +181,19 @@ export function Projects() {
 
   const openEdit = (p: Project) => {
     setEditingId(p.id)
+    const billing: ProjectBillingType =
+      p.projectType === 'retainer' ? 'retainer' : 'one-time'
     setForm({
       name: p.name,
+      description: p.description ?? '',
       type: p.type ?? 'client',
+      projectBillingType: billing,
       clientId: p.clientId ?? '',
       supplierId: p.supplierId ?? '',
       status: p.status,
       priority: p.priority,
-      dueDate: p.dueDate,
+      dueDate: p.dueDate?.slice(0, 10) ?? '',
+      startDate: p.startDate?.slice(0, 10) ?? todayYmd(),
       ownerId: p.ownerId,
       color: p.color,
     })
@@ -197,6 +210,16 @@ export function Projects() {
       pushToast('לפרויקט לקוח יש לבחור לקוח', 'error')
       return
     }
+    if (form.projectBillingType === 'one-time' && !form.dueDate.trim()) {
+      pushToast('נא לבחור תאריך יעד לפרויקט חד־פעמי', 'error')
+      return
+    }
+    if (form.projectBillingType === 'retainer') {
+      if (!form.startDate.trim()) {
+        pushToast('נא לבחור תאריך התחלה לפרויקט שוטף', 'error')
+        return
+      }
+    }
     const supplierPatch = form.supplierId
       ? { supplierId: form.supplierId }
       : { supplierId: deleteField() as unknown as string }
@@ -208,41 +231,90 @@ export function Projects() {
           : { clientId: deleteField() }
         : { clientId: form.clientId.trim() }
 
+    const editingProject = editingId
+      ? projects.find((x) => x.id === editingId)
+      : undefined
+
+    const descPatch = form.description.trim()
+      ? { description: form.description.trim() }
+      : { description: deleteField() as unknown as string }
+
     setSaving(true)
     try {
       if (editingId) {
-        const ok = await updateProject(editingId, {
-          name: form.name.trim(),
-          type: form.type,
-          ...clientPatchUpdate,
-          ...supplierPatch,
-          status: form.status,
-          priority: form.priority,
-          dueDate: form.dueDate,
-          ownerId: form.ownerId,
-          color: form.color,
-        })
+        let ok: boolean
+        if (form.projectBillingType === 'retainer') {
+          const start = form.startDate.slice(0, 10)
+          ok = await updateProject(editingId, {
+            name: form.name.trim(),
+            ...descPatch,
+            type: form.type,
+            ...clientPatchUpdate,
+            ...supplierPatch,
+            status: form.status,
+            priority: form.priority,
+            ownerId: form.ownerId,
+            color: form.color,
+            projectType: 'retainer',
+            retainerAmount: deleteField() as unknown as number,
+            subContractor: deleteField() as unknown as string,
+            startDate: start,
+            dueDate: start,
+            ...(editingProject?.projectType !== 'retainer'
+              ? { retainerLog: [] }
+              : {}),
+          } as Partial<Project>)
+        } else {
+          ok = await updateProject(editingId, {
+            name: form.name.trim(),
+            ...descPatch,
+            type: form.type,
+            ...clientPatchUpdate,
+            ...supplierPatch,
+            status: form.status,
+            priority: form.priority,
+            ownerId: form.ownerId,
+            color: form.color,
+            projectType: 'one-time',
+            dueDate: form.dueDate.slice(0, 10),
+            retainerAmount: deleteField() as unknown as number,
+            subContractor: deleteField() as unknown as string,
+            startDate: deleteField() as unknown as string,
+            retainerLog: deleteField() as unknown as [],
+          } as Partial<Project>)
+        }
         if (ok) setModalOpen(false)
       } else {
-        const newPayload: Omit<
-          Project,
-          'id' | 'createdAt' | 'taskCount' | 'doneCount'
-        > = {
-          name: form.name.trim(),
-          type: form.type,
-          status: form.status,
-          priority: form.priority,
-          dueDate: form.dueDate,
-          ownerId: form.ownerId,
-          color: form.color,
-          ...(form.type === 'client'
-            ? { clientId: form.clientId.trim() }
-            : form.clientId.trim()
-              ? { clientId: form.clientId.trim() }
+        const base: Omit<Project, 'id' | 'createdAt' | 'taskCount' | 'doneCount'> =
+          {
+            name: form.name.trim(),
+            ...(form.description.trim()
+              ? { description: form.description.trim() }
               : {}),
-          ...(form.supplierId ? { supplierId: form.supplierId } : {}),
+            type: form.type,
+            status: form.status,
+            priority: form.priority,
+            ownerId: form.ownerId,
+            color: form.color,
+            dueDate: form.dueDate.slice(0, 10),
+            projectType: form.projectBillingType,
+            ...(form.type === 'client'
+              ? { clientId: form.clientId.trim() }
+              : form.clientId.trim()
+                ? { clientId: form.clientId.trim() }
+                : {}),
+            ...(form.supplierId ? { supplierId: form.supplierId } : {}),
+          }
+        if (form.projectBillingType === 'retainer') {
+          const start = form.startDate.slice(0, 10)
+          base.projectType = 'retainer'
+          base.startDate = start
+          base.dueDate = start
+          base.retainerLog = []
+        } else {
+          base.projectType = 'one-time'
         }
-        const ok = await addProject(newPayload)
+        const ok = await addProject(base)
         if (ok) setModalOpen(false)
       }
     } finally {
@@ -371,6 +443,14 @@ export function Projects() {
                   <h2 className="text-lg font-bold text-[var(--text-dark)]">
                     {p.name}
                   </h2>
+                  {p.description?.trim() ? (
+                    <p
+                      className="mt-1 line-clamp-3 text-[12px] leading-snug text-[var(--text-mid)]"
+                      title={p.description.trim()}
+                    >
+                      {p.description.trim()}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-sm text-[var(--text-mid)]">
                     {isInternalProject(p)
                       ? 'פנימי'
@@ -387,6 +467,9 @@ export function Projects() {
                         label="פנימי"
                         color={INTERNAL_PROJECT_BADGE_COLOR}
                       />
+                    ) : null}
+                    {isRetainerProject(p) ? (
+                      <Badge label="שוטף 🔄" color={RETAINER_ACCENT} />
                     ) : null}
                     <Badge
                       label={statusLabels[p.status]}
@@ -453,7 +536,15 @@ export function Projects() {
                   <span>
                     {p.doneCount}/{p.taskCount} משימות
                   </span>
-                  <span>יעד: {formatDateIL(p.dueDate)}</span>
+                  <span>
+                    {isRetainerProject(p) && p.startDate ? (
+                      <>
+                        פעיל מאז {formatDateIL(p.startDate)}
+                      </>
+                    ) : (
+                      <>יעד: {formatDateIL(p.dueDate)}</>
+                    )}
+                  </span>
                   <Badge
                     label={priorityLabels[p.priority]}
                     color={priorityColor(p.priority)}
@@ -481,6 +572,19 @@ export function Projects() {
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              תיאור (אופציונלי)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="מה הפרויקט כולל — יוצג בכרטיס הפרויקט"
+              value={form.description}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, description: e.target.value }))
+              }
             />
           </div>
           <div>
@@ -519,6 +623,71 @@ export function Projects() {
               </button>
             </div>
           </div>
+          <div>
+            <span className="mb-1 block text-xs text-[var(--text-mid)]">
+              סוג התקשרות
+            </span>
+            <div className="flex rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] p-0.5">
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((f) => ({ ...f, projectBillingType: 'one-time' }))
+                }
+                className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
+                  form.projectBillingType === 'one-time'
+                    ? 'bg-white text-[var(--blue-mid)] shadow-sm'
+                    : 'text-[var(--text-mid)]'
+                }`}
+              >
+                חד־פעמי
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((f) => ({
+                    ...f,
+                    projectBillingType: 'retainer',
+                    startDate: f.startDate || todayYmd(),
+                  }))
+                }
+                className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
+                  form.projectBillingType === 'retainer'
+                    ? 'bg-white shadow-sm'
+                    : 'text-[var(--text-mid)]'
+                }`}
+                style={
+                  form.projectBillingType === 'retainer'
+                    ? { color: RETAINER_ACCENT }
+                    : undefined
+                }
+              >
+                שוטף 🔄
+              </button>
+            </div>
+          </div>
+          {form.projectBillingType === 'retainer' ? (
+            <div className="space-y-3 rounded-[10px] border border-[var(--border)] bg-[#FAF5FF] p-3">
+              <p className="text-[11px] font-bold" style={{ color: RETAINER_ACCENT }}>
+                פרויקט שוטף
+              </p>
+              <p className="text-[11px] leading-snug text-[var(--text-mid)]">
+                לניהול עדכונים וביקורות חודשיות. ספק משויך נבחר בשדה ״ספק ביצוע״ למטה
+                (פעם אחת בלבד).
+              </p>
+              <div>
+                <label className="mb-1 block text-xs text-[var(--text-mid)]">
+                  תאריך התחלה
+                </label>
+                <input
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, startDate: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
           <div>
             <label
               htmlFor="project-client-quick"
@@ -597,18 +766,20 @@ export function Projects() {
               </select>
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              תאריך יעד
-            </label>
-            <input
-              type="date"
-              value={form.dueDate}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, dueDate: e.target.value }))
-              }
-            />
-          </div>
+          {form.projectBillingType === 'one-time' ? (
+            <div>
+              <label className="mb-1 block text-xs text-[var(--text-mid)]">
+                תאריך יעד
+              </label>
+              <input
+                type="date"
+                value={form.dueDate}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, dueDate: e.target.value }))
+                }
+              />
+            </div>
+          ) : null}
           <div>
             <label className="mb-1 block text-xs text-[var(--text-mid)]">אחראי</label>
             <select

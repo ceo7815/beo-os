@@ -2,6 +2,8 @@ import { FirebaseError } from 'firebase/app'
 
 /** הסבר קצר בעברית לפי קוד — ליד המקור מ-Firebase */
 const FIRESTORE_HINT_HE: Record<string, string> = {
+  'already-exists':
+    'כפילות זמנית בלקוח Firestore (לרוב Web + מטמון). רעננו את הדף — הזריעה משתמשת ב־batch כדי למנוע זאת.',
   'permission-denied':
     'אין הרשאה: התחברו לחשבון ובדקו את חוקי האבטחה של Firestore לפרויקט.',
   'failed-precondition':

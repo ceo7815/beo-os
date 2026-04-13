@@ -2,9 +2,7 @@ import { useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { todayYmd } from '../lib/dates'
 import { priorityColor } from '../lib/priorityColor'
-import { taskVisibleToUser } from '../lib/taskVisibility'
 import { useTasks } from '../hooks/useTasks'
-import { useUsers } from '../hooks/useUsers'
 import type { Task } from '../types'
 
 function addDaysYmd(base: string, days: number): string {
@@ -28,18 +26,14 @@ export function QuickTasksSlider() {
   } = useTasks()
 
   const { user } = useAuth()
-  const { users: teamMembers } = useUsers()
   const uid = user?.uid ?? ''
-  const myRole = teamMembers.find((m) => m.id === uid)?.role ?? 'employee'
 
   const [quickTitle, setQuickTitle] = useState('')
 
+  /** רק משימות שהמשתמש המחובר מוגדר כאחראי עליהן */
   const mine = useMemo(
-    () =>
-      tasks.filter((t) =>
-        uid ? taskVisibleToUser(t, uid, myRole) : false,
-      ),
-    [tasks, uid, myRole],
+    () => (uid ? tasks.filter((t) => t.assigneeId === uid) : []),
+    [tasks, uid],
   )
 
   const today = todayYmd()

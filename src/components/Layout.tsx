@@ -168,6 +168,22 @@ export function Layout() {
                 ספקים
               </NavLink>
               <NavLink
+                to="/hosting"
+                className={({ isActive }) =>
+                  `${navBase} ${
+                    isActive
+                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
+                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                  }`
+                }
+              >
+                <span
+                  className="h-4 w-4 shrink-0 rounded bg-white/15"
+                  aria-hidden
+                />
+                מאגר אחסון
+              </NavLink>
+              <NavLink
                 to="/tasks"
                 className={({ isActive }) =>
                   `${navBase} ${

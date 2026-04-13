@@ -24,8 +24,10 @@ import {
   isFirebaseConfigured,
 } from '../lib/firebase'
 import { isFirestoreAutoSeedEnabled } from '../lib/firestoreSeedFlags'
+import { seedCloudflare } from '../lib/seedCloudflare'
 import { seedClients } from '../lib/seedClients'
 import { seedFirestore } from '../lib/seedData'
+import { seedHosting } from '../lib/seedHosting'
 import { useHubStore } from '../store/useStore'
 
 /**
@@ -54,6 +56,33 @@ function runSeedsAfterLogin(uid: string): void {
       await seedFirestore()
     } catch (e) {
       console.error('seedFirestore', e)
+    }
+  })()
+}
+
+/** מונע שתי זריעות במקביל (מפחית already-exists / Target ID already exists ב-Web) */
+let hostingSeedsChain: Promise<void> | null = null
+
+/**
+ * זרעת מאגר אחסון + Cloudflare — רץ אחרי התחברות (Firestore דורש auth).
+ * אידמפוטנטי: אם האוספים כבר מלאים — מדלג.
+ */
+function runHostingSeedsAfterLogin(uid: string): void {
+  if (!uid) return
+  if (hostingSeedsChain) return
+  hostingSeedsChain = (async () => {
+    try {
+      await ensureFirestoreReady()
+    } catch {
+      /* המשך */
+    }
+    try {
+      await seedHosting()
+      await seedCloudflare()
+    } catch (e) {
+      console.error('seedHosting / seedCloudflare', e)
+    } finally {
+      hostingSeedsChain = null
     }
   })()
 }
@@ -115,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             /* לדוגמה חוקי Firestore חוסמים קריאה — לא לחסום את המסך */
           }
           runSeedsAfterLogin(u.uid)
+          runHostingSeedsAfterLogin(u.uid)
         } else {
           csvSeedDoneForUid = null
           setCurrentUser(null)

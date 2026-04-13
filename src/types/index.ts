@@ -12,8 +12,32 @@ export interface Invoice {
   createdAt: string
 }
 
+/** מעקב גבייה ללקוח (מקור: חשבונית ירוקה חיצונית — כאן רק מעקב) */
+export interface CollectionTracking {
+  /** מזהה מסמך = clientId */
+  id: string
+  clientId: string
+  lastRequestDate: string
+  dueDate: string
+  paidDate?: string
+  note?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type ClientStatus = 'active' | 'inactive'
 export type ProjectKind = 'client' | 'internal'
+/** חד־פעמי מול שוטף (Retainer) */
+export type ProjectBillingType = 'one-time' | 'retainer'
+
+export interface RetainerEntry {
+  id: string
+  /** פורמט YYYY-MM */
+  month: string
+  note: string
+  createdAt: string
+}
+
 export type ProjectStatus = 'planning' | 'active' | 'review' | 'done'
 export type Priority = 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'doing' | 'done' | 'blocked'
@@ -103,14 +127,46 @@ export interface Client {
   contact: string
   phone: string
   email: string
+  /** מחלקה / קטגוריה ארגונית (לדוחות גבייה ודשבורד). `null` בשרת = נוקה במסמך */
+  department?: string | null
   status: ClientStatus
+  createdAt: string
+}
+
+/** רשומת אחסון — מאגר מידע בלבד (ללא תשלומים) */
+export interface HostingRecord {
+  id: string
+  clientId: string
+  domain: string
+  server: string
+  serverLocation: string
+  controlPanel: string
+  username: string
+  ipAddress: string
+  sslExpiry: string
+  domainExpiry: string
+  platform: string
+  phpVersion: string
+  notes: string
   createdAt: string
 }
 
 export interface Project {
   id: string
   name: string
+  /** תיאור קצר — מוצג בכרטיס הפרויקט */
+  description?: string
   type: ProjectKind
+  /** חד־פעמי (ברירת מחדל) או שוטף */
+  projectType?: ProjectBillingType
+  /** סכום חודשי בש״ח — רלוונטי ל־retainer */
+  retainerAmount?: number
+  /** ספק משנה (טקסט חופשי) */
+  subContractor?: string
+  /** תחילת ההתקשרות — רלוונטי ל־retainer */
+  startDate?: string
+  /** יומן עדכונים חודשיים */
+  retainerLog?: RetainerEntry[]
   /** לפרויקט לקוח — חובה; לפרויקט פנימי — אופציונלי */
   clientId?: string
   /** ספק ביצוע (אופציונלי) */

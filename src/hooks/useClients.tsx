@@ -74,10 +74,13 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
   const addClient = useCallback(async (data: Omit<Client, 'id' | 'createdAt'>) => {
     try {
       const db = getDb()
-      await addDoc(collection(db, 'clients'), {
-        ...data,
-        createdAt: serverTimestamp(),
-      })
+      await addDoc(
+        collection(db, 'clients'),
+        stripUndefined({
+          ...data,
+          createdAt: serverTimestamp(),
+        } as Record<string, unknown>),
+      )
       toastFsSuccess('הלקוח נוסף בהצלחה')
     } catch (e) {
       toastFsError('שגיאה בשמירת הלקוח', e, 'addClient')

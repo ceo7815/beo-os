@@ -1,16 +1,13 @@
 import type { Task } from '../types'
 
-/** מנהל על רואה הכל; אחרת אחראי, יוצר, שיתוף לכל הצוות (ישן), או ברשימת השיתוף */
+/**
+ * לוח המשימות משותף לכל הצוות באותו פרויקט Firebase — כל משתמש מחובר רואה את כל המשימות.
+ * שדות שיתוף (אחראי, משותפים, שיתוף לכל הצוות) משמשים לתצוגה ולעמודת «משותפות לביצוע», לא לסינון הסתרה.
+ */
 export function taskVisibleToUser(
-  task: Task,
+  _task: Task,
   currentUserId: string,
-  role: string,
+  _role: string,
 ): boolean {
-  if (role === 'superadmin') return true
-  if (!currentUserId) return false
-  if (task.assigneeId === currentUserId) return true
-  if (task.createdBy === currentUserId) return true
-  if (task.teamWideShared) return true
-  if (task.sharedWithUserIds.some((id) => id === currentUserId)) return true
-  return false
+  return Boolean(currentUserId)
 }

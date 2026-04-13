@@ -9,7 +9,7 @@ type Props = {
 }
 
 function haystack(c: Client): string {
-  return `${c.name} ${c.email} ${c.phone} ${c.contact}`.toLowerCase()
+  return `${c.name} ${c.email} ${c.phone} ${c.contact} ${c.department ?? ''}`.toLowerCase()
 }
 
 export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
@@ -98,7 +98,7 @@ export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder="הקלד לזיהוי מהיר — שם, אימייל או טלפון…"
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 bg-transparent py-0.5 text-sm text-[var(--text-dark)] outline-none placeholder:text-[var(--text-mid)]"
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls={id ? `${id}-listbox` : undefined}
@@ -144,7 +144,13 @@ export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
               >
                 <span className="font-semibold">{c.name}</span>
                 <span className="text-[11px] text-[var(--text-mid)]">
-                  {[c.email, c.phone].filter(Boolean).join(' · ') || '—'}
+                  {[
+                    c.department,
+                    c.email,
+                    c.phone,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || '—'}
                 </span>
               </button>
             </li>

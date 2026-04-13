@@ -18,6 +18,7 @@ interface ClientFormState {
   contact: string
   phone: string
   email: string
+  department: string
   status: ClientStatus
 }
 
@@ -26,6 +27,7 @@ const emptyForm: ClientFormState = {
   contact: '',
   phone: '',
   email: '',
+  department: '',
   status: 'active',
 }
 
@@ -63,6 +65,7 @@ export function Clients() {
       contact: c.contact,
       phone: c.phone,
       email: c.email,
+      department: c.department ?? '',
       status: c.status,
     })
     setErrors({})
@@ -78,12 +81,14 @@ export function Clients() {
       pushToast('נא לתקן שגיאות בטופס', 'error')
       return
     }
+    const departmentTrim = form.department.trim()
     if (editingId) {
       updateClient(editingId, {
         name: form.name.trim(),
         contact: form.contact.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
+        department: departmentTrim ? departmentTrim : null,
         status: form.status,
       })
     } else {
@@ -92,6 +97,7 @@ export function Clients() {
         contact: form.contact.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
+        ...(departmentTrim ? { department: departmentTrim } : {}),
         status: form.status,
       })
     }
@@ -150,6 +156,11 @@ export function Clients() {
                     <Badge label={statusLabel} color={statusColor} />
                   </div>
                   <p className="mt-1 text-sm text-[var(--text-mid)]">{c.contact}</p>
+                  {c.department ? (
+                    <p className="mt-0.5 text-[11px] font-semibold text-[var(--blue-mid)]">
+                      מחלקה: {c.department}
+                    </p>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap gap-3 text-sm">
                     <a
                       className="font-medium text-[var(--blue-mid)] hover:underline"
@@ -239,6 +250,18 @@ export function Clients() {
             <input
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              מחלקה (לדשבורד גבייה)
+            </label>
+            <input
+              value={form.department}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, department: e.target.value }))
+              }
+              placeholder="למשל: שיווק, הייטק, חשבונאות…"
             />
           </div>
           <div>
