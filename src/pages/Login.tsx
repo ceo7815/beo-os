@@ -148,7 +148,11 @@ export function Login() {
         <h1 className="text-[26px] font-extrabold text-[#0F172A]">
           שלום, ברוך הבא 👋
         </h1>
-        <p className="mb-9 mt-1 text-sm text-[#64748B]">התחבר כדי להמשיך</p>
+        <p className="mt-1 text-sm text-[#64748B]">התחבר כדי להמשיך</p>
+        <p className="mb-9 mt-3 max-w-md text-xs leading-relaxed text-[#94A3B8]">
+          כל דפדפן (וכן חלון גלישה פרטית) שומר התחברות בנפרד. כדי לראות את אותם
+          נתונים מ־localhost או ממחשב אחר — התחברו כאן באותו חשבון Google או אימייל.
+        </p>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-5">
           <div>
