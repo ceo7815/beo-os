@@ -12,13 +12,13 @@ import {
   collection,
   deleteDoc,
   doc,
-  onSnapshot,
+  getDocsFromServer,
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToInvoice } from '../lib/firestoreMappers'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { todayYmd } from '../lib/dates'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { Invoice, InvoiceStatus } from '../types'
@@ -74,42 +74,39 @@ export function InvoicesProvider({ children }: { children: ReactNode }) {
       return
     }
     setLoading(true)
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'invoices'),
-      (snap) => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(collection(db, 'invoices'))
+        if (cancelled) return
         const today = todayYmd()
         const mapped = snap.docs.map((d) => docToInvoice(d))
-
-        for (const d of snap.docs) {
-          const inv = docToInvoice(d)
-          const due = ymdFromField(inv.dueDate)
-          if (
-            inv.status === 'pending' &&
-            /^\d{4}-\d{2}-\d{2}$/.test(due) &&
-            due < today
-          ) {
-            void updateDoc(d.ref, { status: 'overdue' })
-          }
-        }
-
         setInvoices(withDisplayOverdue(mapped, today))
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('invoices snapshot', err)
         toastFsError('שגיאה בטעינת חשבוניות', err, 'invoices snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
-    return () => unsub()
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [user])
 
   const addInvoice = useCallback(async (data: NewInvoiceInput) => {
     try {
-      const db = getDb()
       await addDoc(collection(db, 'invoices'), {
         clientId: data.clientId,
         invoiceNumber: data.invoiceNumber.trim(),
@@ -129,7 +126,6 @@ export function InvoicesProvider({ children }: { children: ReactNode }) {
 
   const markAsPaid = useCallback(async (id: string) => {
     try {
-      const db = getDb()
       const paid = todayYmd()
       await updateDoc(doc(db, 'invoices', id), {
         status: 'paid',
@@ -143,7 +139,6 @@ export function InvoicesProvider({ children }: { children: ReactNode }) {
 
   const deleteInvoice = useCallback(async (id: string) => {
     try {
-      const db = getDb()
       await deleteDoc(doc(db, 'invoices', id))
       toastFsSuccess('החשבונית נמחקה')
     } catch (e) {

@@ -12,17 +12,15 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDocs,
-  onSnapshot,
+  getDocsFromServer,
   query,
   serverTimestamp,
   updateDoc,
   where,
 } from 'firebase/firestore'
-import { useAuth } from '../contexts/AuthContext'
 import { docToClient } from '../lib/firestoreMappers'
 import { deleteTasksAndDocsForProject } from '../lib/firestoreCascades'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { useHubStore } from '../store/useStore'
@@ -40,40 +38,45 @@ type ClientsContextValue = {
 const ClientsContext = createContext<ClientsContextValue | null>(null)
 
 export function ClientsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
-    if (!user) {
-      setClients([])
-      setLoading(false)
-      setError(null)
-      return
-    }
     setLoading(true)
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'clients'),
-      (snap) => {
+    let cancelled = false
+    const q = query(collection(db, 'clients'))
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(q)
+        if (cancelled) return
+        console.log('useClients snapshot:', snap.docs.length)
         setClients(snap.docs.map((d) => docToClient(d)))
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('clients snapshot', err)
         toastFsError('שגיאה בטעינת לקוחות', err, 'clients snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
-    return () => unsub()
-  }, [user])
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
 
   const addClient = useCallback(async (data: Omit<Client, 'id' | 'createdAt'>) => {
     try {
-      const db = getDb()
       await addDoc(
         collection(db, 'clients'),
         stripUndefined({
@@ -89,7 +92,6 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
 
   const updateClient = useCallback(async (id: string, data: Partial<Client>) => {
     try {
-      const db = getDb()
       await updateDoc(
         doc(db, 'clients', id),
         stripUndefined(data as Record<string, unknown>),
@@ -102,8 +104,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
 
   const deleteClient = useCallback(async (id: string) => {
     try {
-      const db = getDb()
-      const pSnap = await getDocs(
+      const pSnap = await getDocsFromServer(
         query(collection(db, 'projects'), where('clientId', '==', id)),
       )
       for (const p of pSnap.docs) {

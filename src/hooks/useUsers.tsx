@@ -7,10 +7,9 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore'
-import { useAuth } from '../contexts/AuthContext'
+import { collection, doc, getDocsFromServer, query, updateDoc } from 'firebase/firestore'
 import { docToTeamMember } from '../lib/firestoreMappers'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { TeamMember } from '../types'
 
@@ -27,40 +26,44 @@ type UsersContextValue = {
 const UsersContext = createContext<UsersContextValue | null>(null)
 
 export function UsersProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
   const [users, setUsers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
-    if (!user) {
-      setUsers([])
-      setLoading(false)
-      setError(null)
-      return
-    }
     setLoading(true)
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'users'),
-      (snap) => {
+    let cancelled = false
+    const q = query(collection(db, 'users'))
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(q)
+        if (cancelled) return
         setUsers(snap.docs.map((d) => docToTeamMember(d)))
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('users snapshot', err)
         toastFsError('שגיאה בטעינת משתמשים', err, 'users snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
-    return () => unsub()
-  }, [user])
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
 
   const updateUserRole = useCallback(async (uid: string, role: TeamRole) => {
     try {
-      const db = getDb()
       await updateDoc(doc(db, 'users', uid), { role })
       toastFsSuccess('התפקיד עודכן')
     } catch (e) {
@@ -70,7 +73,6 @@ export function UsersProvider({ children }: { children: ReactNode }) {
 
   const toggleUserActive = useCallback(async (uid: string, active: boolean) => {
     try {
-      const db = getDb()
       await updateDoc(doc(db, 'users', uid), { active })
       toastFsSuccess('סטטוס המשתמש עודכן')
     } catch (e) {

@@ -10,7 +10,7 @@ import {
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore'
-import { getDb } from './firebase'
+import { db } from './firebase'
 import { HUB_SUPPLIER_ID, HUB_SUPPLIER_NAME } from './hubSupplier'
 import type { Priority, ProjectStatus, TaskStatus } from '../types'
 
@@ -417,7 +417,6 @@ async function seedRichSingleClientPackIfNeeded(db: Firestore): Promise<void> {
  */
 export async function seedFirestore(): Promise<void> {
   try {
-    const db = getDb()
     await seedBaseFirestoreDemoIfNeeded(db)
     await seedRichSingleClientPackIfNeeded(db)
   } catch (e) {

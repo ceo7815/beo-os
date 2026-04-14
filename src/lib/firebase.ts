@@ -1,15 +1,8 @@
+import { initializeApp } from 'firebase/app'
+import { getAuth } from 'firebase/auth'
 import {
-  initializeApp,
-  getApp,
-  getApps,
-  type FirebaseApp,
-} from 'firebase/app'
-import { getAuth, type Auth } from 'firebase/auth'
-import {
-  connectFirestoreEmulator,
-  enableNetwork,
-  getFirestore,
-  type Firestore,
+  initializeFirestore,
+  memoryLocalCache,
 } from 'firebase/firestore'
 
 const firebaseConfig = {
@@ -21,72 +14,24 @@ const firebaseConfig = {
   appId: '1:961483294937:web:765583ea55dc05cfa416c8',
 }
 
-/**
- * אפליקציה יחידה — initializeApp רץ פעם אחת לפני כל שירות (Auth / Firestore).
- */
-function getOrInitApp(): FirebaseApp {
-  if (getApps().length === 0) {
-    return initializeApp(firebaseConfig)
-  }
-  return getApp()
-}
-
-const app = getOrInitApp()
-export default app
-
-export function getFirebaseApp(): FirebaseApp {
-  return app
-}
-
-export const auth: Auth = getAuth(app)
-
-let firestoreSingleton: Firestore | null = null
-
-function connectEmulatorIfConfigured(db: Firestore): void {
-  if (typeof window === 'undefined') return
-  const raw = import.meta.env.VITE_FIRESTORE_EMULATOR_HOST as
-    | string
-    | undefined
-  if (!raw?.trim()) return
-  const [hostPart, portPart] = raw.trim().split(':')
-  const host = hostPart || '127.0.0.1'
-  const port = portPart ? parseInt(portPart, 10) : 8080
-  if (Number.isNaN(port)) return
-  try {
-    connectFirestoreEmulator(db, host, port)
-  } catch {
-    /* כבר הופעל connectFirestoreEmulator לאותו מופע */
-  }
-}
-
-/** Firestore — ברירת מחדל של ה-SDK (פשוט ויציב לפריסה). */
-function createFirestore(): Firestore {
-  const db = getFirestore(app)
-  connectEmulatorIfConfigured(db)
-  return db
-}
-
-export function getDb(): Firestore {
-  if (!firestoreSingleton) {
-    firestoreSingleton = createFirestore()
-  }
-  return firestoreSingleton
-}
-
-/** תאימות: אותו מופע כמו getDb() */
-export const db = getDb()
+const app = initializeApp(firebaseConfig)
+export const auth = getAuth(app)
 
 /**
- * ממתין לרשת Firestore לפני כתיבה — מפחית "send was called before connect".
+ * זיכרון בלבד — נמנע ממצבי IndexedDB ששוברים את ה־SDK ("INTERNAL ASSERTION FAILED").
+ * לא קוראים ל־enableNetwork כאן: קריאות מקבילות אחרי התחברות גרמו ל־Unexpected state ב־10.14.
  */
+export const db = initializeFirestore(app, {
+  localCache: memoryLocalCache(),
+})
+
+/** מקום לריצה אסינכרונית אחרי התחברות — ללא enableNetwork (מסוכן במקביל). */
 export async function ensureFirestoreReady(): Promise<void> {
-  await enableNetwork(getDb())
-}
-
-export function getFirebaseAuth(): Auth {
-  return auth
+  await Promise.resolve()
 }
 
 export function isFirebaseConfigured(): boolean {
   return true
 }
+
+export default app

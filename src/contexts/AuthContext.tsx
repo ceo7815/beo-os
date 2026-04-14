@@ -105,6 +105,27 @@ async function ensureUserProfile(user: User): Promise<void> {
   })
 }
 
+function hubUserFromFirebaseUser(u: User): {
+  uid: string
+  name: string
+  email: string
+  role: string
+  avatar: string
+  color: string
+  active: boolean
+} {
+  const name = u.displayName?.trim() || u.email?.split('@')[0] || 'משתמש'
+  return {
+    uid: u.uid,
+    name,
+    email: u.email ?? '',
+    role: 'employee',
+    avatar: name.slice(0, 2),
+    color: '#2563EB',
+    active: true,
+  }
+}
+
 export interface AuthContextValue {
   user: User | null
   loading: boolean
@@ -139,9 +160,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           try {
             const snap = await getDoc(doc(db, 'users', u.uid))
-            if (snap.exists()) setCurrentUser({ uid: u.uid, ...snap.data() })
+            if (snap.exists()) {
+              setCurrentUser({ uid: u.uid, ...snap.data() })
+            } else {
+              setCurrentUser(hubUserFromFirebaseUser(u))
+            }
           } catch {
-            /* לדוגמה חוקי Firestore חוסמים קריאה — לא לחסום את המסך */
+            setCurrentUser(hubUserFromFirebaseUser(u))
           }
           runSeedsAfterLogin(u.uid)
           runHostingSeedsAfterLogin(u.uid)
@@ -182,7 +207,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, loading, firebaseReady, signInWithEmail, signInWithGoogle, signOutUser],
   )
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {loading ? (
+        <div
+          dir="rtl"
+          className="flex min-h-[100dvh] items-center justify-center bg-[#F0F4FF] text-base font-semibold text-[#1A2B5E]"
+        >
+          טוען...
+        </div>
+      ) : (
+        children
+      )}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth(): AuthContextValue {

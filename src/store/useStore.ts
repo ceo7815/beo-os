@@ -7,7 +7,7 @@ import {
   updateDoc as fsUpdateDoc,
 } from 'firebase/firestore'
 import { create } from 'zustand'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import type { HubStore, ToastType } from '../types'
 
@@ -37,7 +37,6 @@ export const useHubStore = create<HubStore>((set, get) => ({
   addDoc: (data) => {
     void (async () => {
       try {
-        const db = getDb()
         await fsAddDoc(collection(db, 'docs'), {
           ...data,
           updatedAt: serverTimestamp(),
@@ -53,7 +52,6 @@ export const useHubStore = create<HubStore>((set, get) => ({
   updateDoc: (id, data) => {
     void (async () => {
       try {
-        const db = getDb()
         await fsUpdateDoc(doc(db, 'docs', id), {
           ...stripUndefined(data as Record<string, unknown>),
           updatedAt: serverTimestamp(),
@@ -76,7 +74,6 @@ export const useHubStore = create<HubStore>((set, get) => ({
     }))
     void (async () => {
       try {
-        const db = getDb()
         await fsUpdateDoc(doc(db, 'docs', id), {
           content,
           updatedAt: serverTimestamp(),
@@ -90,7 +87,6 @@ export const useHubStore = create<HubStore>((set, get) => ({
   deleteDoc: (id) => {
     void (async () => {
       try {
-        const db = getDb()
         await fsDeleteDoc(doc(db, 'docs', id))
         get().pushToast('המסמך נמחק', 'success')
       } catch (e) {

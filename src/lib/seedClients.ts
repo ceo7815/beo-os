@@ -1,6 +1,6 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import clientsSeedCsv from './clients-seed.csv?raw'
-import { getDb } from './firebase'
+import { db } from './firebase'
 
 /** מפרסר CSV בסיסי (שדות במרכאות, כולל שורות מרובות בשדה) */
 function parseCsv(text: string): string[][] {
@@ -75,7 +75,6 @@ function firstEmail(raw: string): string {
  */
 export async function seedClients(): Promise<void> {
   try {
-    const db = getDb()
     const rows = parseCsv(clientsSeedCsv)
     if (rows.length < 2) return
 

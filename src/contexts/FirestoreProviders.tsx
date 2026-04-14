@@ -8,9 +8,14 @@ import { SuppliersProvider } from '../hooks/useSuppliers'
 import { HostingProvider } from '../hooks/useHosting'
 import { TasksProvider } from '../hooks/useTasks'
 import { UsersProvider } from '../hooks/useUsers'
+import { useAuth } from './AuthContext'
 
-/** ספקי Firestore + סנכרון docs — ילדים חייבים להשתמש ב-hooks */
+/** ספקי Firestore — רק אחרי auth מוכן ומשתמש מחובר. */
 export function FirestoreProviders() {
+  const { user, loading } = useAuth()
+
+  if (loading || !user) return null
+
   return (
     <UsersProvider>
       <SuppliersProvider>

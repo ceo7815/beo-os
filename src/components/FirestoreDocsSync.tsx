@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, getDocsFromServer } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { docToDoc } from '../lib/firestoreMappers'
 import { useHubStore } from '../store/useStore'
 
@@ -14,20 +14,31 @@ export function FirestoreDocsSync() {
       useHubStore.setState({ docs: [] })
       return
     }
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'docs'),
-      (snap) => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(collection(db, 'docs'))
+        if (cancelled) return
         useHubStore.setState({
           docs: snap.docs.map((d) => docToDoc(d)),
         })
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('docs snapshot', err)
         useHubStore.getState().pushToast('שגיאה בטעינת מסמכים', 'error')
-      },
-    )
-    return () => unsub()
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [user])
 
   return null

@@ -1,5 +1,5 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { getDb } from './firebase'
+import { db } from './firebase'
 
 /** מזהה קבוע לספק ביצוע ברירת המחדל */
 export const HUB_SUPPLIER_ID = 'supplier_hub_systems'
@@ -15,7 +15,6 @@ export async function ensureHubSupplierExists(): Promise<void> {
   if (ensureInFlight) return
   ensureInFlight = true
   try {
-    const db = getDb()
     await setDoc(
       doc(db, 'suppliers', HUB_SUPPLIER_ID),
       {

@@ -14,22 +14,19 @@ import {
   collectionGroup,
   deleteDoc,
   doc,
-  onSnapshot,
+  getDocsFromServer,
+  query,
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore'
 import { formatDateIL } from '../lib/dates'
 import { useAuth } from '../contexts/AuthContext'
-import {
-  activityDocToTaskActivity,
-  docToTask,
-  taskNoteDocToTaskNote,
-} from '../lib/firestoreMappers'
+import { docToTask, taskNoteDocToTaskNote } from '../lib/firestoreMappers'
 import {
   deleteActivitySubcollection,
   deleteTaskNotesSubcollection,
 } from '../lib/firestoreCascades'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
@@ -287,119 +284,92 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const tasksRef = useRef<Task[]>([])
 
   const tasks = useMemo(() => {
-    const merged = rawTasks.map((t) => ({
+    return rawTasks.map((t) => ({
       ...t,
       activity: activityByTaskId[t.id] ?? t.activity ?? [],
       manualNotes: notesByTaskId[t.id] ?? t.manualNotes ?? [],
     }))
-    tasksRef.current = merged
-    return merged
   }, [rawTasks, activityByTaskId, notesByTaskId])
 
   useEffect(() => {
-    if (!user) {
-      setRawTasks([])
-      setActivityByTaskId({})
-      setNotesByTaskId({})
-      setLoading(false)
-      setError(null)
-      return
-    }
+    tasksRef.current = tasks
+  }, [tasks])
+
+  useEffect(() => {
     setLoading(true)
-    const db = getDb()
-    const unsubTasks = onSnapshot(
-      collection(db, 'tasks'),
-      (snap) => {
-        setRawTasks(snap.docs.map((d) => docToTask(d)))
+    let cancelled = false
+    const q = query(collection(db, 'tasks'))
+
+    async function fetchNotesMap(
+      taskIds: Set<string>,
+    ): Promise<Record<string, TaskNote[]>> {
+      const notesMap: Record<string, TaskNote[]> = {}
+      try {
+        const notesSnap = await getDocsFromServer(
+          query(collectionGroup(db, 'taskNotes')),
+        )
+        for (const d of notesSnap.docs) {
+          const taskRef = d.ref.parent.parent
+          if (!taskRef) continue
+          const taskId = taskRef.id
+          if (!taskIds.has(taskId)) continue
+          const note = taskNoteDocToTaskNote(d, taskId)
+          if (!notesMap[taskId]) notesMap[taskId] = []
+          notesMap[taskId].push(note)
+        }
+        for (const tid of Object.keys(notesMap)) {
+          notesMap[tid].sort((a, b) =>
+            a.createdAt.localeCompare(b.createdAt),
+          )
+        }
+      } catch (noteErr) {
+        console.error('taskNotes collectionGroup', noteErr)
+      }
+      return notesMap
+    }
+
+    const load = async (includeNotes: boolean) => {
+      try {
+        const snap = await getDocsFromServer(q)
+        const taskList = snap.docs.map((d) => docToTask(d))
+        const taskIds = new Set(taskList.map((t) => t.id))
+
+        if (includeNotes) {
+          const notesMap = await fetchNotesMap(taskIds)
+          if (cancelled) return
+          setNotesByTaskId(notesMap)
+        }
+
+        if (cancelled) return
+        setActivityByTaskId({})
+        setRawTasks(taskList)
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('tasks snapshot', err)
         toastFsError('שגיאה בטעינת משימות', err, 'tasks snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
+      }
+    }
 
-    const unsubAct = onSnapshot(
-      collectionGroup(db, 'activity'),
-      (snap) => {
-        const map: Record<string, TaskActivity[]> = {}
-        for (const d of snap.docs) {
-          const parent = d.ref.parent
-          if (parent.id !== 'activity') continue
-          const taskRef = parent.parent
-          if (!taskRef) continue
-          const taskId = taskRef.id
-          const act = activityDocToTaskActivity(d, taskId)
-          const arr = map[taskId] ?? []
-          arr.push(act)
-          map[taskId] = arr
-        }
-        for (const k of Object.keys(map)) {
-          map[k].sort(
-            (a, b) =>
-              new Date(a.timestamp).getTime() -
-              new Date(b.timestamp).getTime(),
-          )
-        }
-        setActivityByTaskId(map)
-      },
-      (err) => {
-        console.error('activity collectionGroup', err)
-        toastFsError(
-          'שגיאה בטעינת היסטוריית משימות',
-          err,
-          'activity snapshot',
-        )
-      },
-    )
-
-    const unsubNotes = onSnapshot(
-      collectionGroup(db, 'taskNotes'),
-      (snap) => {
-        const map: Record<string, TaskNote[]> = {}
-        for (const d of snap.docs) {
-          const segs = d.ref.path.split('/')
-          if (
-            segs.length !== 4 ||
-            segs[0] !== 'tasks' ||
-            segs[2] !== 'taskNotes'
-          ) {
-            continue
-          }
-          const tid = segs[1]
-          const note = taskNoteDocToTaskNote(d, tid)
-          const arr = map[tid] ?? []
-          arr.push(note)
-          map[tid] = arr
-        }
-        for (const k of Object.keys(map)) {
-          map[k].sort(
-            (a, b) =>
-              new Date(a.createdAt).getTime() -
-              new Date(b.createdAt).getTime(),
-          )
-        }
-        setNotesByTaskId(map)
-      },
-      (err) => {
-        console.error('taskNotes collectionGroup', err)
-        toastFsError(
-          'שגיאה בטעינת הערות משימה',
-          err,
-          'taskNotes snapshot',
-        )
-      },
-    )
+    void load(true)
+    const tasksPollMs = 18_000
+    const notesPollMs = 50_000
+    const timerTasks = window.setInterval(() => {
+      void load(false)
+    }, tasksPollMs)
+    const timerNotes = window.setInterval(() => {
+      void load(true)
+    }, notesPollMs)
 
     return () => {
-      unsubTasks()
-      unsubAct()
-      unsubNotes()
+      cancelled = true
+      window.clearInterval(timerTasks)
+      window.clearInterval(timerNotes)
     }
-  }, [user])
+  }, [])
 
   const displayName = useCallback(() => {
     const u = user
@@ -415,7 +385,6 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         toastFsError('יש להתחבר כדי ליצור משימה', new Error('no user'), 'addTask')
         return null
       }
-      const db = getDb()
       const uid = user.uid
       const uname = displayName()
       try {
@@ -463,15 +432,28 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       }
       const trimmed = text.trim()
       if (!trimmed) return
-      const db = getDb()
       const uid = user.uid
       const uname = displayName()
       try {
-        await addDoc(collection(db, 'tasks', taskId, 'taskNotes'), {
+        const ref = await addDoc(collection(db, 'tasks', taskId, 'taskNotes'), {
           userId: uid,
           userName: uname,
           text: trimmed,
           createdAt: serverTimestamp(),
+        })
+        const newNote: TaskNote = {
+          id: ref.id,
+          taskId,
+          userId: uid,
+          userName: uname,
+          text: trimmed,
+          createdAt: new Date().toISOString(),
+        }
+        setNotesByTaskId((prev) => {
+          const list = [...(prev[taskId] ?? []), newNote].sort((a, b) =>
+            a.createdAt.localeCompare(b.createdAt),
+          )
+          return { ...prev, [taskId]: list }
         })
         toastFsSuccess('ההערה פורסמה')
       } catch (e) {
@@ -525,7 +507,6 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       const fsPatch = taskToFirestoreUpdate(patch)
       if (Object.keys(fsPatch).length === 0 && strings.length === 0) return
 
-      const db = getDb()
       try {
         const batch = writeBatch(db)
         const tref = doc(db, 'tasks', id)
@@ -552,7 +533,6 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   const deleteTask = useCallback(async (id: string) => {
     try {
-      const db = getDb()
       await deleteActivitySubcollection(id)
       await deleteTaskNotesSubcollection(id)
       await deleteDoc(doc(db, 'tasks', id))

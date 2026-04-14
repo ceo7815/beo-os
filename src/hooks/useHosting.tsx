@@ -12,13 +12,13 @@ import {
   collection,
   deleteDoc,
   doc,
-  onSnapshot,
+  getDocsFromServer,
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToHostingRecord } from '../lib/firestoreMappers'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { HostingRecord } from '../types'
@@ -72,28 +72,38 @@ export function HostingProvider({ children }: { children: ReactNode }) {
       return
     }
     setLoading(true)
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'hostingRecords'),
-      (snap) => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(collection(db, 'hostingRecords'))
+        if (cancelled) return
         setRecords(snap.docs.map((d) => docToHostingRecord(d)))
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('hostingRecords snapshot', err)
         toastFsError('שגיאה בטעינת מאגר אחסון', err, 'hostingRecords snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
-    return () => unsub()
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [user])
 
   const addRecord = useCallback(
     async (data: Omit<HostingRecord, 'id' | 'createdAt'>) => {
       try {
-        const db = getDb()
         const ref = await addDoc(collection(db, 'hostingRecords'), {
           ...buildFirestorePayload(data),
           createdAt: serverTimestamp(),
@@ -111,7 +121,6 @@ export function HostingProvider({ children }: { children: ReactNode }) {
   const updateRecord = useCallback(
     async (id: string, data: Partial<Omit<HostingRecord, 'id' | 'createdAt'>>) => {
       try {
-        const db = getDb()
         await updateDoc(
           doc(db, 'hostingRecords', id),
           stripUndefined(buildFirestorePayload(data)),
@@ -126,7 +135,6 @@ export function HostingProvider({ children }: { children: ReactNode }) {
 
   const deleteRecord = useCallback(async (id: string) => {
     try {
-      const db = getDb()
       await deleteDoc(doc(db, 'hostingRecords', id))
       toastFsSuccess('הרשומה נמחקה')
     } catch (e) {

@@ -12,14 +12,14 @@ import {
   collection,
   deleteDoc,
   doc,
-  onSnapshot,
+  getDocsFromServer,
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToSupplier } from '../lib/firestoreMappers'
 import { ensureHubSupplierExists } from '../lib/hubSupplier'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { Supplier } from '../types'
@@ -52,27 +52,37 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
       console.error('ensureHubSupplierExists', e)
     })
     setLoading(true)
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'suppliers'),
-      (snap) => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(collection(db, 'suppliers'))
+        if (cancelled) return
         setSuppliers(snap.docs.map((d) => docToSupplier(d)))
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('suppliers snapshot', err)
         toastFsError('שגיאה בטעינת ספקים', err, 'suppliers snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
-    return () => unsub()
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [user])
 
   const addSupplier = useCallback(async (data: Omit<Supplier, 'id' | 'createdAt'>) => {
     try {
-      const db = getDb()
       const ref = await addDoc(collection(db, 'suppliers'), {
         ...data,
         createdAt: serverTimestamp(),
@@ -87,7 +97,6 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
 
   const updateSupplier = useCallback(async (id: string, data: Partial<Supplier>) => {
     try {
-      const db = getDb()
       await updateDoc(
         doc(db, 'suppliers', id),
         stripUndefined(data as Record<string, unknown>),
@@ -100,7 +109,6 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
 
   const deleteSupplier = useCallback(async (id: string) => {
     try {
-      const db = getDb()
       await deleteDoc(doc(db, 'suppliers', id))
       toastFsSuccess('הספק נמחק')
     } catch (e) {

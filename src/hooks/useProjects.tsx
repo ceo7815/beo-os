@@ -12,14 +12,14 @@ import {
   collection,
   deleteDoc,
   doc,
-  onSnapshot,
+  getDocsFromServer,
+  query,
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
-import { useAuth } from '../contexts/AuthContext'
 import { docToProject } from '../lib/firestoreMappers'
 import { deleteTasksAndDocsForProject } from '../lib/firestoreCascades'
-import { ensureFirestoreReady, getDb } from '../lib/firebase'
+import { db, ensureFirestoreReady } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { useHubStore } from '../store/useStore'
@@ -111,7 +111,6 @@ type ProjectsContextValue = {
 const ProjectsContext = createContext<ProjectsContextValue | null>(null)
 
 export function ProjectsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
   const { tasks } = useTasks()
   const [rawProjects, setRawProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -123,36 +122,42 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
-    if (!user) {
-      setRawProjects([])
-      setLoading(false)
-      setError(null)
-      return
-    }
     setLoading(true)
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'projects'),
-      (snap) => {
+    let cancelled = false
+    const q = query(collection(db, 'projects'))
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(q)
+        if (cancelled) return
+        console.log('useProjects snapshot:', snap.docs.length)
         setRawProjects(snap.docs.map((d) => docToProject(d)))
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('projects snapshot', err)
         toastFsError('שגיאה בטעינת פרויקטים', err, 'projects snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
-    return () => unsub()
-  }, [user])
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
 
   const addProject = useCallback(
     async (data: Omit<Project, 'id' | 'createdAt' | 'taskCount' | 'doneCount'>) => {
       try {
         await ensureFirestoreReady()
-        const db = getDb()
         await addDoc(collection(db, 'projects'), buildProjectCreateDoc(data))
         toastFsSuccess('הפרויקט נוסף בהצלחה')
         return true
@@ -166,7 +171,6 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
   const updateProject = useCallback(async (id: string, data: Partial<Project>) => {
     try {
-      const db = getDb()
       await updateDoc(doc(db, 'projects', id), mapProjectUpdateForFirestore(data))
       toastFsSuccess('הפרויקט עודכן')
       return true
@@ -180,7 +184,6 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     try {
       await ensureFirestoreReady()
       await deleteTasksAndDocsForProject(id)
-      const db = getDb()
       await deleteDoc(doc(db, 'projects', id))
       const sel = useHubStore.getState().selectedProjectId
       if (sel === id) useHubStore.getState().setSelectedProject(null)

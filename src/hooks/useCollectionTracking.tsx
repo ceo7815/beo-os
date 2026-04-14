@@ -13,14 +13,14 @@ import {
   deleteField,
   doc,
   getDoc,
-  onSnapshot,
+  getDocsFromServer,
   serverTimestamp,
   setDoc,
   updateDoc,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToCollectionTracking } from '../lib/firestoreMappers'
-import { getDb } from '../lib/firebase'
+import { db } from '../lib/firebase'
 import { todayYmd } from '../lib/dates'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { CollectionTracking } from '../types'
@@ -64,27 +64,37 @@ export function CollectionTrackingProvider({
       return
     }
     setLoading(true)
-    const db = getDb()
-    const unsub = onSnapshot(
-      collection(db, 'collectionTracking'),
-      (snap) => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const snap = await getDocsFromServer(collection(db, 'collectionTracking'))
+        if (cancelled) return
         setEntries(snap.docs.map((d) => docToCollectionTracking(d)))
         setLoading(false)
         setError(null)
-      },
-      (err) => {
+      } catch (err) {
+        if (cancelled) return
         console.error('collectionTracking snapshot', err)
         toastFsError('שגיאה בטעינת מעקב גבייה', err, 'collectionTracking')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      },
-    )
-    return () => unsub()
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      void load()
+    }, 15000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
   }, [user])
 
   const upsertTracking = useCallback(async (data: CollectionTrackingInput) => {
     try {
-      const db = getDb()
       const ref = doc(db, 'collectionTracking', data.clientId)
       const snap = await getDoc(ref)
       const paidPatch =
@@ -116,7 +126,6 @@ export function CollectionTrackingProvider({
 
   const removeFromTracking = useCallback(async (clientId: string) => {
     try {
-      const db = getDb()
       await deleteDoc(doc(db, 'collectionTracking', clientId))
       toastFsSuccess('הוסר ממעקב הגבייה')
     } catch (e) {
@@ -126,7 +135,6 @@ export function CollectionTrackingProvider({
 
   const markPaid = useCallback(async (clientId: string) => {
     try {
-      const db = getDb()
       await updateDoc(doc(db, 'collectionTracking', clientId), {
         paidDate: todayYmd(),
         updatedAt: serverTimestamp(),
@@ -139,7 +147,6 @@ export function CollectionTrackingProvider({
 
   const clearPaid = useCallback(async (clientId: string) => {
     try {
-      const db = getDb()
       await updateDoc(doc(db, 'collectionTracking', clientId), {
         paidDate: deleteField(),
         updatedAt: serverTimestamp(),
