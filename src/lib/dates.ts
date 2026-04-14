@@ -8,15 +8,24 @@ export function todayYmd(): string {
 }
 
 /** פורמט ישראלי DD/MM/YYYY מתאריך ISO (YYYY-MM-DD או מלא) */
-export function formatDateIL(isoDate: string): string {
+export function formatDateIL(isoDate: string | null | undefined): string {
+  if (isoDate == null || typeof isoDate !== 'string') return ''
   const part = isoDate.slice(0, 10)
   const [y, m, d] = part.split('-')
   if (!y || !m || !d) return isoDate
   return `${d}/${m}/${y}`
 }
 
+/** ערך בטוח ל־input type=date (YYYY-MM-DD או ריק) */
+export function toDateInputYmd(due: string | null | undefined): string {
+  if (due == null || typeof due !== 'string') return ''
+  const s = due.trim().slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ''
+}
+
 /** תאריך ושעה בעברית (לרישום פעילות) */
-export function formatDateTimeIL(iso: string): string {
+export function formatDateTimeIL(iso: string | null | undefined): string {
+  if (iso == null || typeof iso !== 'string') return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleString('he-IL', {

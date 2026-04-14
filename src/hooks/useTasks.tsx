@@ -163,13 +163,18 @@ function collectActivityStrings(
     )
   }
   if (merged.dueDate !== prev.dueDate) {
+    const ymd =
+      typeof merged.dueDate === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(merged.dueDate.trim().slice(0, 10))
+        ? merged.dueDate.trim().slice(0, 10)
+        : ''
     out.push(
       logActivity(
         taskId,
         userId,
         userName,
         'due_changed',
-        formatDateIL(merged.dueDate),
+        ymd ? formatDateIL(ymd) : 'לא צוין',
       ).action,
     )
   }
@@ -335,14 +340,19 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         for (const k of Object.keys(map)) {
           map[k].sort(
             (a, b) =>
-              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+              new Date(a.timestamp).getTime() -
+              new Date(b.timestamp).getTime(),
           )
         }
         setActivityByTaskId(map)
       },
       (err) => {
         console.error('activity collectionGroup', err)
-        toastFsError('שגיאה בטעינת היסטוריית משימות', err, 'activity snapshot')
+        toastFsError(
+          'שגיאה בטעינת היסטוריית משימות',
+          err,
+          'activity snapshot',
+        )
       },
     )
 
@@ -368,14 +378,19 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         for (const k of Object.keys(map)) {
           map[k].sort(
             (a, b) =>
-              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+              new Date(a.createdAt).getTime() -
+              new Date(b.createdAt).getTime(),
           )
         }
         setNotesByTaskId(map)
       },
       (err) => {
         console.error('taskNotes collectionGroup', err)
-        toastFsError('שגיאה בטעינת הערות משימה', err, 'taskNotes snapshot')
+        toastFsError(
+          'שגיאה בטעינת הערות משימה',
+          err,
+          'taskNotes snapshot',
+        )
       },
     )
 

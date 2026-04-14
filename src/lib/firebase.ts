@@ -9,9 +9,6 @@ import {
   connectFirestoreEmulator,
   enableNetwork,
   getFirestore,
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
   type Firestore,
 } from 'firebase/firestore'
 
@@ -62,27 +59,11 @@ function connectEmulatorIfConfigured(db: Firestore): void {
   }
 }
 
-/**
- * בדפדפן: Firestore עם מטמון IndexedDB + סנכרון בין טאבים — הנתונים תמיד מתעדכנים מהשרת כשיש רשת.
- * ב-SSR/Node: getFirestore רגיל.
- */
+/** Firestore — ברירת מחדל של ה-SDK (פשוט ויציב לפריסה). */
 function createFirestore(): Firestore {
-  if (typeof window === 'undefined') {
-    return getFirestore(app)
-  }
-  try {
-    const db = initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
-    })
-    connectEmulatorIfConfigured(db)
-    return db
-  } catch {
-    const db = getFirestore(app)
-    connectEmulatorIfConfigured(db)
-    return db
-  }
+  const db = getFirestore(app)
+  connectEmulatorIfConfigured(db)
+  return db
 }
 
 export function getDb(): Firestore {

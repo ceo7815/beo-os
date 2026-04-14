@@ -190,6 +190,20 @@ export function docToProject(d: QueryDocumentSnapshot<DocumentData>): Project {
 
 const TASK_STATUSES: TaskStatus[] = ['todo', 'doing', 'done', 'blocked']
 
+/** תאריך יעד למשימה — תמיכה ב-Timestamp מ-Firestore ובמחרוזת YYYY-MM-DD */
+function coerceTaskDueDateYmd(raw: unknown): string {
+  if (raw instanceof Timestamp) {
+    return raw.toDate().toISOString().slice(0, 10)
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    const m = t.match(/^(\d{4}-\d{2}-\d{2})/)
+    if (m) return m[1]!
+    return ''
+  }
+  return ''
+}
+
 export function docToTask(d: QueryDocumentSnapshot<DocumentData>): Task {
   const x = d.data()
   const raw = (x.status ?? 'todo') as string
@@ -215,7 +229,7 @@ export function docToTask(d: QueryDocumentSnapshot<DocumentData>): Task {
     supplierId: sid !== undefined && sid !== null && String(sid).trim()
       ? String(sid)
       : undefined,
-    dueDate: String(x.dueDate ?? ''),
+    dueDate: coerceTaskDueDateYmd(x.dueDate),
     reminderDate:
       typeof x.reminderDate === 'string' ? x.reminderDate : undefined,
     tags: Array.isArray(x.tags) ? x.tags.map((t) => String(t)) : [],

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDateTimeIL, todayYmd } from '../lib/dates'
+import { formatDateTimeIL, todayYmd, toDateInputYmd } from '../lib/dates'
 import { boardStatusHe } from '../lib/boardTaskLabels'
 import { formatRelativeHebrew } from '../lib/relativeTimeHe'
 import { reminderBadgeHe } from '../lib/reminderBadgeHe'
@@ -364,7 +364,7 @@ export function TaskDrawer() {
                 </label>
                 <input
                   type="date"
-                  value={task.dueDate.slice(0, 10)}
+                  value={toDateInputYmd(task.dueDate)}
                   onChange={(e) => onDueChange(e.target.value)}
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                 />
