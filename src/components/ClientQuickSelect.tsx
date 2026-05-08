@@ -9,6 +9,8 @@ type Props = {
   /** לקוחות שיוצגו ברשימה אך לא ניתן לבחור (למשל כבר במעקב) */
   disabledClientIds?: Set<string>
   disabledClientHint?: string
+  /** מסגרת ורשימה בסגנון hub-select (למשל בקמפיינים) */
+  hubPanel?: boolean
 }
 
 function haystack(c: Client): string {
@@ -22,6 +24,7 @@ export function ClientQuickSelect({
   id,
   disabledClientIds,
   disabledClientHint = 'לא ניתן לבחור',
+  hubPanel,
 }: Props) {
   const selected = useMemo(
     () => clients.find((c) => c.id === value),
@@ -75,6 +78,11 @@ export function ClientQuickSelect({
       if (cur && s.trim() !== cur.name.trim()) onChange('')
     }
   }
+
+  const panelSurface =
+    hubPanel === true
+      ? 'rounded-[10px] border border-[#D1D5DB] bg-[#E8EDF4] py-0 shadow-[0_10px_36px_rgba(0,0,0,0.14)]'
+      : 'rounded-[10px] border border-[var(--border)] shadow-[0_12px_40px_rgba(0,0,0,0.12)]'
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -140,7 +148,7 @@ export function ClientQuickSelect({
         <ul
           id={id ? `${id}-listbox` : undefined}
           role="listbox"
-          className="absolute start-0 end-0 top-full z-20 mt-1 max-h-[min(22rem,55vh)] overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
+          className={`absolute start-0 end-0 top-full mt-1 max-h-[min(22rem,55vh)] overflow-y-auto ${hubPanel === true ? 'z-[100]' : 'z-20'} bg-[var(--bg-card)] py-1 ${panelSurface}`}
         >
           {filtered.map((c, i) => {
             const blocked = isPickDisabled(c)
@@ -156,7 +164,9 @@ export function ClientQuickSelect({
                       ? 'cursor-not-allowed opacity-55'
                       : i === hi
                         ? 'bg-[var(--blue-light)] text-[var(--blue-dark)]'
-                        : 'text-[var(--text-dark)] hover:bg-[var(--bg-input)]'
+                        : hubPanel === true
+                          ? 'bg-[#F4F6FA] text-[var(--text-dark)] hover:bg-white'
+                          : 'text-[var(--text-dark)] hover:bg-[var(--bg-input)]'
                   }`}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(c)}
@@ -184,7 +194,13 @@ export function ClientQuickSelect({
         </ul>
       ) : null}
       {open && needle && filtered.length === 0 ? (
-        <div className="absolute start-0 end-0 top-full z-20 mt-1 rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-mid)] shadow-md">
+        <div
+          className={`absolute start-0 end-0 top-full mt-1 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-mid)] ${
+            hubPanel === true
+              ? 'z-[100] rounded-[10px] border border-[#D1D5DB] bg-[#EEF2F6] shadow-[0_10px_36px_rgba(0,0,0,0.14)]'
+              : 'z-20 rounded-[10px] border border-[var(--border)] shadow-md'
+          }`}
+        >
           לא נמצאו לקוחות
         </div>
       ) : null}

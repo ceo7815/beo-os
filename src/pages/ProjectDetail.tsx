@@ -189,13 +189,11 @@ export function ProjectDetail() {
     [clients, project?.clientId],
   )
 
-  const projectSupplier = useMemo(
-    () =>
-      project?.supplierId
-        ? suppliers.find((s) => s.id === project.supplierId)
-        : undefined,
-    [suppliers, project?.supplierId],
-  )
+  const projectSupplier = useMemo(() => {
+    const sid = project?.supplierId?.trim()
+    if (!sid) return undefined
+    return suppliers.find((s) => s.id.trim() === sid)
+  }, [suppliers, project?.supplierId])
 
   const projectTasks = useMemo(() => {
     if (!id) return []
@@ -354,9 +352,9 @@ export function ProjectDetail() {
                 · פעיל מאז {formatDateIL(project.startDate)}
               </span>
             ) : null}
-            {projectSupplier ? (
+            {project.supplierId?.trim() ? (
               <span className="text-sm text-[var(--text-light)]">
-                · ספק ביצוע: {projectSupplier.name}
+                · ספק ביצוע: {projectSupplier?.name ?? 'לא ברשימה'}
               </span>
             ) : null}
             <Badge

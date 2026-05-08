@@ -3,7 +3,7 @@ import { deleteField } from 'firebase/firestore'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateIL, todayYmd } from '../lib/dates'
-import { toastFsError } from '../lib/fsToast'
+import { formatFirebaseErrorDetail } from '../lib/formatFirebaseError'
 import { uploadLeadQuotePdf } from '../lib/leadQuoteStorage'
 import { useLeads } from '../hooks/useLeads'
 import { useCampaigns } from '../hooks/useCampaigns'
@@ -11,7 +11,47 @@ import { useClients } from '../hooks/useClients'
 import { useUsers } from '../hooks/useUsers'
 import type { LeadQuoteChannel, LeadStatus } from '../types'
 import { Badge } from '../components/shared/Badge'
+import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
+
+/** ערך נשמר ב־Firestore בשדה `source` כשבוחרים מהרשימה הקבועה */
+const LEAD_SOURCE_BEO_SYSTEMS = 'Beo systems'
+
+const manualLeadSourcePresetOptions: HubDropdownOption[] = [
+  { value: LEAD_SOURCE_BEO_SYSTEMS, label: LEAD_SOURCE_BEO_SYSTEMS },
+]
+
+function ManualLeadSourceFields({
+  source,
+  onChange,
+  idPrefix,
+}: {
+  source: string
+  onChange: (next: string) => void
+  idPrefix: string
+}) {
+  const isBeo = source === LEAD_SOURCE_BEO_SYSTEMS
+  return (
+    <div className="space-y-2">
+      <HubDropdownSelect
+        id={`${idPrefix}-preset`}
+        value={isBeo ? LEAD_SOURCE_BEO_SYSTEMS : ''}
+        onChange={(v) => {
+          if (v === LEAD_SOURCE_BEO_SYSTEMS) onChange(LEAD_SOURCE_BEO_SYSTEMS)
+          else onChange('')
+        }}
+        options={manualLeadSourcePresetOptions}
+        emptyOption={{ label: 'מקור אחר (הקלדה בשדה למטה)' }}
+      />
+      <input
+        placeholder="מקור ליד חופשי (פייסבוק/המלצה/וואטסאפ…)"
+        value={isBeo ? '' : source}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={isBeo}
+      />
+    </div>
+  )
+}
 
 function isValidHttpUrl(s: string): boolean {
   try {
@@ -24,7 +64,6 @@ function isValidHttpUrl(s: string): boolean {
 
 const statusLabels: Record<LeadStatus, string> = {
   new: 'חדש',
-  handling: 'לטיפול',
   specification: 'בתהליך אפיון',
   quote_sent: 'נשלחה הצעת מחיר',
   follow_up: 'יש לבצע פולואפ',
@@ -33,12 +72,20 @@ const statusLabels: Record<LeadStatus, string> = {
 
 const statusColors: Record<LeadStatus, string> = {
   new: '#2563EB',
-  handling: '#0284C7',
   specification: '#7C3AED',
   quote_sent: '#D97706',
   follow_up: '#EA580C',
   closed: '#16A34A',
 }
+
+/** סדר תצוגה במסננים ובקוביות הסיכום */
+const LEAD_STATUSES_ORDERED: LeadStatus[] = [
+  'new',
+  'specification',
+  'quote_sent',
+  'follow_up',
+  'closed',
+]
 
 type StatusFilter = 'all' | LeadStatus
 
@@ -83,10 +130,10 @@ export function Leads() {
   const [linkSuggestOpen, setLinkSuggestOpen] = useState(false)
   const linkClientWrapRef = useRef<HTMLDivElement | null>(null)
   const [openActionLeadId, setOpenActionLeadId] = useState<string | null>(null)
-  const actionMenuRef = useRef<HTMLDivElement | null>(null)
   const [activityDraftById, setActivityDraftById] = useState<Record<string, string>>({})
   const [followUpDraftById, setFollowUpDraftById] = useState<Record<string, string>>({})
   const [clientNeedsViewerLeadId, setClientNeedsViewerLeadId] = useState<string | null>(null)
+  const [clientNeedsEditDraft, setClientNeedsEditDraft] = useState('')
   const [activityHistoryLeadId, setActivityHistoryLeadId] = useState<string | null>(null)
   const [sourcePickerLeadId, setSourcePickerLeadId] = useState<string | null>(null)
   const [sourcePickerMode, setSourcePickerMode] = useState<'campaign' | 'active_client' | 'manual'>('campaign')
@@ -98,8 +145,13 @@ export function Leads() {
   const [quoteChannelDraft, setQuoteChannelDraft] = useState<LeadQuoteChannel | ''>('')
   const [quoteVisualUrlDraft, setQuoteVisualUrlDraft] = useState('')
   const [quotePdfFile, setQuotePdfFile] = useState<File | null>(null)
+  const [quoteReturnByDraft, setQuoteReturnByDraft] = useState('')
   const [quoteModalError, setQuoteModalError] = useState('')
   const [quoteSubmitting, setQuoteSubmitting] = useState(false)
+  /** רק במסלול PDF — כדי להבחין בין עיכוב באחסון לבין עיכוב ב-Firestore */
+  const [quoteSubmitPhase, setQuoteSubmitPhase] = useState<'idle' | 'upload' | 'firestore'>(
+    'idle',
+  )
 
   useEffect(() => {
     const st = location.state as { openAdd?: boolean } | undefined
@@ -113,8 +165,10 @@ export function Leads() {
     setQuoteChannelDraft('')
     setQuoteVisualUrlDraft('')
     setQuotePdfFile(null)
+    setQuoteReturnByDraft('')
     setQuoteModalError('')
     setQuoteSubmitting(false)
+    setQuoteSubmitPhase('idle')
   }, [quoteModalLeadId])
 
   const quoteModalLead = useMemo(
@@ -124,6 +178,10 @@ export function Leads() {
   const leadDetailsLead = useMemo(
     () => leads.find((x) => x.id === leadDetailsLeadId) ?? null,
     [leads, leadDetailsLeadId],
+  )
+  const actionMenuLead = useMemo(
+    () => (openActionLeadId ? leads.find((x) => x.id === openActionLeadId) ?? null : null),
+    [leads, openActionLeadId],
   )
 
   const ownerId = user?.uid ?? users[0]?.id ?? ''
@@ -182,17 +240,6 @@ export function Leads() {
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!actionMenuRef.current) return
-      if (!actionMenuRef.current.contains(e.target as Node)) {
-        setOpenActionLeadId(null)
-      }
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [])
-
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
       if (!linkClientWrapRef.current) return
       if (!linkClientWrapRef.current.contains(e.target as Node)) {
         setLinkSuggestOpen(false)
@@ -230,6 +277,20 @@ export function Leads() {
     return undefined
   }
 
+  const statusCounts = useMemo(() => {
+    const counts: Record<LeadStatus, number> = {
+      new: 0,
+      specification: 0,
+      quote_sent: 0,
+      follow_up: 0,
+      closed: 0,
+    }
+    for (const l of leads) {
+      counts[l.status]++
+    }
+    return counts
+  }, [leads])
+
   const filtered = useMemo(() => {
     const text = q.trim().toLowerCase()
     return leads
@@ -252,6 +313,15 @@ export function Leads() {
     () => leads.find((l) => l.id === clientNeedsViewerLeadId) ?? null,
     [leads, clientNeedsViewerLeadId],
   )
+
+  useEffect(() => {
+    if (!clientNeedsViewerLeadId) {
+      setClientNeedsEditDraft('')
+      return
+    }
+    setClientNeedsEditDraft(clientNeedsViewerLead?.clientNeeds ?? '')
+  }, [clientNeedsViewerLeadId, clientNeedsViewerLead?.clientNeeds])
+
   const activityHistoryLead = useMemo(
     () => leads.find((l) => l.id === activityHistoryLeadId) ?? null,
     [leads, activityHistoryLeadId],
@@ -334,15 +404,19 @@ export function Leads() {
           ]
         : []),
     ]
-    await updateLead(leadId, {
-      ...(text ? { lastActivityText: text } : {}),
-      ...(followUpDate ? { nextFollowUpDate: nextFollowUp } : { nextFollowUpDate: undefined }),
-      lastActivityAt: nowIso,
-      activityLog: nextLog,
-      status: 'follow_up',
-    })
-    setActivityDraftById((prev) => ({ ...prev, [leadId]: '' }))
-    setOpenActionLeadId(null)
+    try {
+      await updateLead(leadId, {
+        ...(text ? { lastActivityText: text } : {}),
+        ...(followUpDate ? { nextFollowUpDate: nextFollowUp } : { nextFollowUpDate: undefined }),
+        lastActivityAt: nowIso,
+        activityLog: nextLog,
+        status: 'follow_up',
+      })
+      setActivityDraftById((prev) => ({ ...prev, [leadId]: '' }))
+      setOpenActionLeadId(null)
+    } catch {
+      /* toast כבר הוצג ב־updateLead */
+    }
   }
 
   const setLeadStatusWithLog = async (leadId: string, status: LeadStatus) => {
@@ -360,22 +434,29 @@ export function Leads() {
         ...(lead.nextFollowUpDate ? { nextFollowUpDate: lead.nextFollowUpDate } : {}),
       },
     ]
-    await updateLead(leadId, {
-      status,
-      activityLog: nextLog,
-      lastActivityText: `סטטוס שונה ל: ${statusLabels[status]}`,
-      lastActivityAt: nowIso,
-    })
-    setOpenActionLeadId(null)
+    try {
+      await updateLead(leadId, {
+        status,
+        activityLog: nextLog,
+        lastActivityText: `סטטוס שונה ל: ${statusLabels[status]}`,
+        lastActivityAt: nowIso,
+      })
+      setOpenActionLeadId(null)
+    } catch {
+      /* toast כבר הוצג ב־updateLead */
+    }
   }
 
   const applyQuoteSentWithLog = async (
     leadId: string,
     channel: LeadQuoteChannel,
+    quoteReturnByDate: string,
     opts: { pdfUrl?: string; pdfName?: string; visualUrl?: string },
   ) => {
     const lead = leads.find((x) => x.id === leadId)
-    if (!lead) return
+    if (!lead) {
+      throw new Error('הליד לא נמצא — רעננו את העמוד ונסו שוב')
+    }
     const nowIso = new Date().toISOString()
     let detail = ''
     if (channel === 'green_invoice') detail = ' · דרך חשבונית ירוקה'
@@ -396,6 +477,7 @@ export function Leads() {
     const base: Record<string, unknown> = {
       status: 'quote_sent',
       quoteChannel: channel,
+      quoteReturnByDate: quoteReturnByDate.slice(0, 10),
       activityLog: nextLog,
       lastActivityText: statusText,
       lastActivityAt: nowIso,
@@ -425,23 +507,30 @@ export function Leads() {
       setQuoteModalError('נא לבחור אופן שליחת ההצעה')
       return
     }
+    const returnBy = quoteReturnByDraft.trim()
+    if (!returnBy || !/^\d{4}-\d{2}-\d{2}$/.test(returnBy)) {
+      setQuoteModalError('נא לבחור תאריך חזרה ללקוח להצעת המחיר')
+      return
+    }
     if (quoteChannelDraft === 'pdf_file') {
       if (!quotePdfFile) {
         setQuoteModalError('נא להעלות קובץ PDF')
         return
       }
       setQuoteSubmitting(true)
+      setQuoteSubmitPhase('upload')
       try {
         const { url, fileName } = await uploadLeadQuotePdf(quoteModalLeadId, quotePdfFile)
-        await applyQuoteSentWithLog(quoteModalLeadId, 'pdf_file', {
+        setQuoteSubmitPhase('firestore')
+        await applyQuoteSentWithLog(quoteModalLeadId, 'pdf_file', returnBy, {
           pdfUrl: url,
           pdfName: fileName,
         })
       } catch (e) {
-        toastFsError('שגיאה בהעלאת PDF', e, 'uploadLeadQuotePdf')
-        setQuoteModalError(e instanceof Error ? e.message : 'שגיאה בהעלאה')
+        setQuoteModalError(formatFirebaseErrorDetail(e))
       } finally {
         setQuoteSubmitting(false)
+        setQuoteSubmitPhase('idle')
       }
       return
     }
@@ -453,7 +542,9 @@ export function Leads() {
       }
       setQuoteSubmitting(true)
       try {
-        await applyQuoteSentWithLog(quoteModalLeadId, 'visual_link', { visualUrl: u })
+        await applyQuoteSentWithLog(quoteModalLeadId, 'visual_link', returnBy, { visualUrl: u })
+      } catch (e) {
+        setQuoteModalError(formatFirebaseErrorDetail(e))
       } finally {
         setQuoteSubmitting(false)
       }
@@ -461,7 +552,9 @@ export function Leads() {
     }
     setQuoteSubmitting(true)
     try {
-      await applyQuoteSentWithLog(quoteModalLeadId, 'green_invoice', {})
+      await applyQuoteSentWithLog(quoteModalLeadId, 'green_invoice', returnBy, {})
+    } catch (e) {
+      setQuoteModalError(formatFirebaseErrorDetail(e))
     } finally {
       setQuoteSubmitting(false)
     }
@@ -476,13 +569,26 @@ export function Leads() {
     const next = window.prompt(`${label}:`, current ?? '')
     if (next === null) return
     const trimmed = next.trim()
-    await updateLead(leadId, {
-      [field]: trimmed || undefined,
-    })
+    try {
+      await updateLead(leadId, {
+        [field]: trimmed || undefined,
+      })
+    } catch {
+      /* toast כבר הוצג ב־updateLead */
+    }
   }
 
   const sourceLabel = (raw?: string) =>
     raw ? campaignNameById.get(raw) ?? clientNameById.get(raw) ?? raw : ''
+
+  /** שורת קטגוריה מעל שם המקור (מקמפיין / לקוח קיים / Beo systems / מקור חופשי) */
+  const sourceKindCaption = (raw?: string) => {
+    if (!raw) return ''
+    if (campaignNameById.has(raw)) return 'מקמפיין'
+    if (clientNameById.has(raw)) return 'לקוח קיים'
+    if (raw === LEAD_SOURCE_BEO_SYSTEMS) return 'Beo systems'
+    return 'מקור חופשי'
+  }
 
   const openSourcePicker = (leadId: string, current?: string) => {
     setSourcePickerLeadId(leadId)
@@ -514,12 +620,16 @@ export function Leads() {
         : sourcePickerMode === 'active_client'
           ? sourcePickerClientId
           : sourcePickerManual.trim()
-    await updateLead(sourcePickerLeadId, { source: next || undefined })
-    setSourcePickerLeadId(null)
-    setSourcePickerCampaignId('')
-    setSourcePickerClientId('')
-    setSourcePickerManual('')
-    setSourcePickerMode('campaign')
+    try {
+      await updateLead(sourcePickerLeadId, { source: next || undefined })
+      setSourcePickerLeadId(null)
+      setSourcePickerCampaignId('')
+      setSourcePickerClientId('')
+      setSourcePickerManual('')
+      setSourcePickerMode('campaign')
+    } catch {
+      /* toast כבר הוצג ב־updateLead */
+    }
   }
 
   return (
@@ -533,6 +643,54 @@ export function Leads() {
           {formOpen ? 'סגירה' : '+ ליד חדש'}
         </button>
       </header>
+
+      <section
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
+        aria-label="סיכום לידים לפי סטטוס"
+      >
+        <button
+          type="button"
+          onClick={() => setStatusFilter('all')}
+          className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
+            statusFilter === 'all'
+              ? 'border-[var(--blue-mid)] bg-[#EFF6FF] shadow-[0_1px_4px_rgba(37,99,235,0.15)]'
+              : 'border-[var(--border)] bg-[var(--bg-card)] hover:bg-[#F8FAFC]'
+          }`}
+        >
+          <span className="text-[11px] font-semibold text-[var(--text-mid)]">סה״כ לידים</span>
+          <span className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+            {leads.length}
+          </span>
+        </button>
+        {LEAD_STATUSES_ORDERED.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatusFilter(s)}
+            className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
+              statusFilter === s
+                ? 'shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
+                : 'border-[var(--border)] bg-[var(--bg-card)] hover:bg-[#F8FAFC]'
+            }`}
+            style={
+              statusFilter === s
+                ? {
+                    borderColor: statusColors[s],
+                    backgroundColor: `${statusColors[s]}14`,
+                  }
+                : undefined
+            }
+          >
+            <span className="text-[11px] font-semibold text-[var(--text-mid)]">{statusLabels[s]}</span>
+            <span
+              className="text-[22px] font-extrabold tabular-nums"
+              style={{ color: statusColors[s] }}
+            >
+              {statusCounts[s]}
+            </span>
+          </button>
+        ))}
+      </section>
 
       {formOpen ? (
         <section className="grid grid-cols-1 gap-3 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:grid-cols-2">
@@ -692,10 +850,10 @@ export function Leads() {
                 ))}
               </select>
             ) : (
-              <input
-                placeholder="מקור ליד חופשי (פייסבוק/המלצה/וואטסאפ...)"
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
+              <ManualLeadSourceFields
+                idPrefix="lead-new-manual"
+                source={source}
+                onChange={setSource}
               />
             )}
           </div>
@@ -721,7 +879,7 @@ export function Leads() {
         <button type="button" className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-primary' : 'border border-[var(--border)] bg-white text-[var(--text-mid)]'}`} onClick={() => setStatusFilter('all')}>
           הכל
         </button>
-        {(Object.keys(statusLabels) as LeadStatus[]).map((s) => (
+        {LEAD_STATUSES_ORDERED.map((s) => (
           <button
             key={s}
             type="button"
@@ -822,7 +980,12 @@ export function Leads() {
                         className="text-right hover:underline"
                         onClick={() => openSourcePicker(l.id, l.source)}
                       >
-                        {sourceLabel(l.source)}
+                        <span className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold text-[var(--text-light)]">
+                            {sourceKindCaption(l.source)}
+                          </span>
+                          <span className="break-words">{sourceLabel(l.source)}</span>
+                        </span>
                       </button>
                     ) : (
                       <button
@@ -931,109 +1094,13 @@ export function Leads() {
                   </td>
                   <td className="w-[9.5rem] min-w-[9.5rem] max-w-[9.5rem] overflow-visible px-2 py-3 align-top">
                     <div className="flex w-full min-w-0 max-w-full flex-col gap-1.5">
-                      <div
-                        className="relative block w-full min-w-0"
-                        ref={openActionLeadId === l.id ? actionMenuRef : null}
+                      <button
+                        type="button"
+                        onClick={() => setOpenActionLeadId(l.id)}
+                        className="w-full rounded-[8px] border border-[var(--border)] bg-white px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)]"
                       >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenActionLeadId((prev) => (prev === l.id ? null : l.id))
-                          }
-                          className="w-full rounded-[8px] border border-[var(--border)] bg-white px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)]"
-                        >
-                          פעולות ▾
-                        </button>
-                      {openActionLeadId === l.id ? (
-                        <div className="absolute start-0 z-50 mt-1 w-[min(320px,calc(100vw-1.5rem))] max-w-[86vw] rounded-[10px] border border-[var(--border)] bg-white p-2 shadow-[0_10px_24px_rgba(0,0,0,0.14)]">
-                          <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
-                            סטטוס ליד
-                          </p>
-                          <div className="mb-2 flex flex-wrap gap-1.5">
-                            {(Object.keys(statusLabels) as LeadStatus[]).map((s) => (
-                              <button
-                                key={s}
-                                type="button"
-                                onClick={() => {
-                                  if (s === 'quote_sent') {
-                                    setOpenActionLeadId(null)
-                                    setQuoteModalLeadId(l.id)
-                                    return
-                                  }
-                                  void setLeadStatusWithLog(l.id, s)
-                                }}
-                                className="rounded-[8px] border px-2 py-1 text-[10px] font-semibold"
-                                style={{
-                                  borderColor: statusColors[s],
-                                  color: l.status === s ? '#fff' : statusColors[s],
-                                  backgroundColor: l.status === s ? statusColors[s] : '#fff',
-                                }}
-                              >
-                                {statusLabels[s]}
-                              </button>
-                            ))}
-                          </div>
-                          <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
-                            מנהל לקוח (עובד מהמערכת)
-                          </p>
-                          <select
-                            className="mb-2 w-full"
-                            value={l.ownerId}
-                            onChange={(e) => {
-                              void updateLead(l.id, { ownerId: e.target.value })
-                              setOpenActionLeadId(null)
-                            }}
-                          >
-                            {users.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.name}
-                              </option>
-                            ))}
-                          </select>
-                          <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
-                            מעקב אוטומטי (שעה מתעדכנת אוטומטית)
-                          </p>
-                          <textarea
-                            rows={2}
-                            placeholder="לדוגמה: שלחתי הודעה, הלקוח ביקש לחזור בתאריך..."
-                            value={activityDraftById[l.id] ?? ''}
-                            onChange={(e) =>
-                              setActivityDraftById((prev) => ({
-                                ...prev,
-                                [l.id]: e.target.value,
-                              }))
-                            }
-                          />
-                          <input
-                            type="date"
-                            value={followUpDraftById[l.id] ?? l.nextFollowUpDate ?? ''}
-                            onChange={(e) =>
-                              setFollowUpDraftById((prev) => ({
-                                ...prev,
-                                [l.id]: e.target.value,
-                              }))
-                            }
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void saveFollowUp(l.id)}
-                            className="mb-2 w-full rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1.5 text-[10px] font-semibold text-[var(--blue-mid)]"
-                          >
-                            שמירת מעקב
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void deleteLead(l.id)
-                              setOpenActionLeadId(null)
-                            }}
-                            className="w-full rounded-[8px] border border-[#FECACA] bg-[#FEF2F2] px-2 py-1.5 text-[10px] font-semibold text-[#B91C1C]"
-                          >
-                            מחיקת ליד
-                          </button>
-                        </div>
-                      ) : null}
-                      </div>
+                        פעולות ▾
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -1058,6 +1125,115 @@ export function Leads() {
       ) : null}
 
       <Modal
+        isOpen={Boolean(openActionLeadId && actionMenuLead)}
+        onClose={() => setOpenActionLeadId(null)}
+        title={`פעולות · ${actionMenuLead?.name ?? ''}`}
+        size="lg"
+        bodyClassName="max-h-[min(85vh,720px)] overflow-y-auto overflow-x-hidden"
+      >
+        {actionMenuLead ? (
+          <div className="space-y-3">
+            <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">סטטוס ליד</p>
+            <div className="flex flex-wrap gap-1.5">
+              {LEAD_STATUSES_ORDERED.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    if (s === 'quote_sent') {
+                      setOpenActionLeadId(null)
+                      setQuoteModalLeadId(actionMenuLead.id)
+                      return
+                    }
+                    void setLeadStatusWithLog(actionMenuLead.id, s)
+                  }}
+                  className="rounded-[8px] border px-2 py-1 text-[10px] font-semibold"
+                  style={{
+                    borderColor: statusColors[s],
+                    color: actionMenuLead.status === s ? '#fff' : statusColors[s],
+                    backgroundColor: actionMenuLead.status === s ? statusColors[s] : '#fff',
+                  }}
+                >
+                  {statusLabels[s]}
+                </button>
+              ))}
+            </div>
+            <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
+              מנהל לקוח (עובד מהמערכת)
+            </p>
+            <select
+              className="w-full"
+              value={actionMenuLead.ownerId}
+              onChange={(e) => {
+                void updateLead(actionMenuLead.id, { ownerId: e.target.value }).catch(() => {})
+                setOpenActionLeadId(null)
+              }}
+            >
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+            <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
+              מעקב אוטומטי (שעה מתעדכנת אוטומטית)
+            </p>
+            <textarea
+              rows={2}
+              placeholder="לדוגמה: שלחתי הודעה, הלקוח ביקש לחזור בתאריך..."
+              value={activityDraftById[actionMenuLead.id] ?? ''}
+              onChange={(e) =>
+                setActivityDraftById((prev) => ({
+                  ...prev,
+                  [actionMenuLead.id]: e.target.value,
+                }))
+              }
+            />
+            <input
+              type="date"
+              value={
+                followUpDraftById[actionMenuLead.id] ??
+                actionMenuLead.nextFollowUpDate ??
+                ''
+              }
+              onChange={(e) =>
+                setFollowUpDraftById((prev) => ({
+                  ...prev,
+                  [actionMenuLead.id]: e.target.value,
+                }))
+              }
+            />
+            <button
+              type="button"
+              onClick={() => void saveFollowUp(actionMenuLead.id)}
+              className="w-full rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1.5 text-[10px] font-semibold text-[var(--blue-mid)]"
+            >
+              שמירת מעקב
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void deleteLead(actionMenuLead.id)
+                setOpenActionLeadId(null)
+              }}
+              className="w-full rounded-[8px] border border-[#FECACA] bg-[#FEF2F2] px-2 py-1.5 text-[10px] font-semibold text-[#B91C1C]"
+            >
+              מחיקת ליד
+            </button>
+            <div className="flex justify-end border-t border-[var(--border)] pt-3">
+              <button
+                type="button"
+                className="hub-btn-secondary text-sm"
+                onClick={() => setOpenActionLeadId(null)}
+              >
+                סגירה
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
         isOpen={Boolean(quoteModalLeadId)}
         onClose={() => {
           if (quoteSubmitting) return
@@ -1069,9 +1245,23 @@ export function Leads() {
       >
         <div className="min-w-0 space-y-4">
           <p className="break-words text-[13px] leading-relaxed text-[var(--text-mid)]">
-            חובה לבחור אופן שליחה. חשבונית ירוקה — בלי קובץ או קישור. PDF — העלאת קובץ בלבד. קישור
-            ויזואלי — כתובת מלאה (https).
+            חובה לבחור אופן שליחה ותאריך חזרה ללקוח. חשבונית ירוקה — בלי קובץ או קישור. PDF — העלאת קובץ
+            בלבד. קישור ויזואלי — כתובת מלאה (https).
           </p>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-[var(--text-mid)]">
+              תאריך חזרה ללקוח להצעת המחיר <span className="text-[#B91C1C]">*</span>
+            </label>
+            <input
+              type="date"
+              className="max-w-[280px]"
+              value={quoteReturnByDraft}
+              onChange={(e) => {
+                setQuoteReturnByDraft(e.target.value)
+                setQuoteModalError('')
+              }}
+            />
+          </div>
           <div className="space-y-3">
             <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[#2563EB] has-[:checked]:bg-[#EFF6FF]">
               <input
@@ -1178,7 +1368,15 @@ export function Leads() {
               disabled={quoteSubmitting}
               onClick={() => void confirmQuoteSent()}
             >
-              {quoteSubmitting ? 'שומר…' : 'אישור ועדכון סטטוס'}
+              {quoteSubmitting
+                ? quoteChannelDraft === 'pdf_file'
+                  ? quoteSubmitPhase === 'upload'
+                    ? 'מעלה קובץ…'
+                    : quoteSubmitPhase === 'firestore'
+                      ? 'שומר פרטים…'
+                      : 'שומר…'
+                  : 'שומר…'
+                : 'אישור ועדכון סטטוס'}
             </button>
           </div>
         </div>
@@ -1250,10 +1448,10 @@ export function Leads() {
               ))}
             </select>
           ) : (
-            <input
-              placeholder="מקור ליד חופשי"
-              value={sourcePickerManual}
-              onChange={(e) => setSourcePickerManual(e.target.value)}
+            <ManualLeadSourceFields
+              idPrefix="lead-edit-source"
+              source={sourcePickerManual}
+              onChange={setSourcePickerManual}
             />
           )}
           <div className="flex justify-end gap-2">
@@ -1275,18 +1473,36 @@ export function Leads() {
         isOpen={Boolean(clientNeedsViewerLead)}
         onClose={() => setClientNeedsViewerLeadId(null)}
         title={`צרכי לקוח${clientNeedsViewerLead ? ` · ${clientNeedsViewerLead.name}` : ''}`}
+        size="lg"
+        bodyClassName="min-h-0 max-h-[min(82vh,720px)] overflow-y-auto overflow-x-hidden"
       >
         <div className="space-y-3">
-          <p className="whitespace-pre-wrap rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] p-3 text-sm leading-relaxed text-[var(--text-dark)]">
-            {clientNeedsViewerLead?.clientNeeds ?? 'אין תוכן להצגה'}
-          </p>
-          <div className="flex justify-end">
+          <textarea
+            rows={14}
+            className="min-h-[220px] w-full resize-y rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] p-3 text-sm leading-relaxed text-[var(--text-dark)]"
+            placeholder="תארו את צרכי הלקוח…"
+            value={clientNeedsEditDraft}
+            onChange={(e) => setClientNeedsEditDraft(e.target.value)}
+          />
+          <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
-              className="hub-btn-primary text-sm"
+              className="hub-btn-secondary text-sm"
               onClick={() => setClientNeedsViewerLeadId(null)}
             >
               סגירה
+            </button>
+            <button
+              type="button"
+              className="hub-btn-primary text-sm"
+              onClick={() => {
+                if (!clientNeedsViewerLeadId) return
+                void updateLead(clientNeedsViewerLeadId, {
+                  clientNeeds: clientNeedsEditDraft.trim() || undefined,
+                }).catch(() => {})
+              }}
+            >
+              שמירה
             </button>
           </div>
         </div>
@@ -1336,7 +1552,16 @@ export function Leads() {
                   )}
                 </LeadDetailRow>
                 <LeadDetailRow label="מקור">
-                  {leadDetailsLead.source ? sourceLabel(leadDetailsLead.source) : '—'}
+                  {leadDetailsLead.source ? (
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-bold text-[var(--text-light)]">
+                        {sourceKindCaption(leadDetailsLead.source)}
+                      </span>
+                      <span className="break-words">{sourceLabel(leadDetailsLead.source)}</span>
+                    </span>
+                  ) : (
+                    '—'
+                  )}
                 </LeadDetailRow>
                 <LeadDetailRow label="מנהל תיק לקוח">
                   {ownerNameById.get(leadDetailsLead.ownerId) ?? 'לא משויך'}
@@ -1368,6 +1593,11 @@ export function Leads() {
                   אופן השליחה והקבצים / הקישורים השמורים על הליד.
                 </p>
                 <div>
+                  <LeadDetailRow label="תאריך חזרה ללקוח להצעת המחיר">
+                    {leadDetailsLead.quoteReturnByDate
+                      ? formatDateIL(leadDetailsLead.quoteReturnByDate)
+                      : '—'}
+                  </LeadDetailRow>
                   <LeadDetailRow label="אופן שליחה">
                     {leadDetailsLead.quoteChannel
                       ? quoteChannelLabels[leadDetailsLead.quoteChannel]

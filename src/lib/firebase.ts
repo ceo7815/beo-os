@@ -28,7 +28,8 @@ export const db = initializeFirestore(app, {
   localCache: memoryLocalCache(),
 })
 
-export const storage = getStorage(app)
+/** באקט ברירת המחדל של הפרויקט — מתאים לחוקי Storage שפורסמו ל־gs://…appspot.com */
+export const storage = getStorage(app, `gs://${firebaseConfig.projectId}.appspot.com`)
 
 /** מקום לריצה אסינכרונית אחרי התחברות — ללא enableNetwork (מסוכן במקביל). */
 export async function ensureFirestoreReady(): Promise<void> {

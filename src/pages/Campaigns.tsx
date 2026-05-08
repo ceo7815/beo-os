@@ -7,7 +7,9 @@ import { useCampaigns } from '../hooks/useCampaigns'
 import { useUsers } from '../hooks/useUsers'
 import { useAuth } from '../contexts/AuthContext'
 import type { Campaign, CampaignKind, CampaignPlatform, CampaignStatus } from '../types'
+import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { Badge } from '../components/shared/Badge'
+import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
 
 const platformLabels: Record<CampaignPlatform, string> = {
@@ -32,6 +34,19 @@ const statusColors: Record<CampaignStatus, string> = {
   paused: '#64748B',
   completed: '#0F766E',
 }
+
+const kindDropdownOptions: HubDropdownOption[] = [
+  { value: 'client', label: 'קמפיין ללקוח' },
+  { value: 'internal', label: 'קמפיין פנימי' },
+]
+
+const campaignPlatformOptions: HubDropdownOption[] = (
+  Object.keys(platformLabels) as CampaignPlatform[]
+).map((p) => ({ value: p, label: platformLabels[p] }))
+
+const campaignStatusOptions: HubDropdownOption[] = (
+  Object.keys(statusLabels) as CampaignStatus[]
+).map((s) => ({ value: s, label: statusLabels[s] }))
 
 type StatusFilter = 'all' | CampaignStatus
 
@@ -253,34 +268,39 @@ export function Campaigns() {
       {formOpen ? (
         <section className="grid grid-cols-1 gap-3 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:grid-cols-3">
           <input placeholder="שם קמפיין *" value={name} onChange={(e) => setName(e.target.value)} className="md:col-span-2" />
-          <select value={kind} onChange={(e) => setKind(e.target.value as CampaignKind)}>
-            <option value="client">קמפיין ללקוח</option>
-            <option value="internal">קמפיין פנימי</option>
-          </select>
-          <select value={platform} onChange={(e) => setPlatform(e.target.value as CampaignPlatform)}>
-            {(Object.keys(platformLabels) as CampaignPlatform[]).map((p) => (
-              <option key={p} value={p}>{platformLabels[p]}</option>
-            ))}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value as CampaignStatus)}>
-            {(Object.keys(statusLabels) as CampaignStatus[]).map((s) => (
-              <option key={s} value={s}>{statusLabels[s]}</option>
-            ))}
-          </select>
+          <HubDropdownSelect
+            id="campaign-new-kind"
+            value={kind}
+            onChange={(v) => setKind(v as CampaignKind)}
+            options={kindDropdownOptions}
+          />
+          <HubDropdownSelect
+            id="campaign-new-platform"
+            value={platform}
+            onChange={(v) => setPlatform(v as CampaignPlatform)}
+            options={campaignPlatformOptions}
+          />
+          <HubDropdownSelect
+            id="campaign-new-status"
+            value={status}
+            onChange={(v) => setStatus(v as CampaignStatus)}
+            options={campaignStatusOptions}
+          />
           <input type="number" placeholder="תקציב" value={budget} onChange={(e) => setBudget(e.target.value)} />
+          <div className="rounded-xl border-2 border-[#BFDBFE] bg-[var(--bg-main)] px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <ClientQuickSelect
+              id="campaign-new-client"
+              clients={clients}
+              value={clientId}
+              hubPanel
+              onChange={(id) => {
+                setClientId(id)
+                setProjectId('')
+              }}
+            />
+          </div>
           <select
-            value={clientId}
-            onChange={(e) => {
-              setClientId(e.target.value)
-              setProjectId('')
-            }}
-          >
-            <option value="">ללא לקוח</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-          <select
+            className="hub-select w-full min-w-0"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
             disabled={!clientId}
@@ -293,6 +313,7 @@ export function Campaigns() {
             ))}
           </select>
           <select
+            className="hub-select w-full min-w-0"
             value={supplierId}
             onChange={(e) => {
               const nextSupplierId = e.target.value
@@ -310,6 +331,7 @@ export function Campaigns() {
           </select>
           {shouldPickPerformerFromUsers ? (
             <select
+              className="hub-select w-full min-w-0"
               value={performerUserId}
               onChange={(e) => setPerformerUserId(e.target.value)}
             >
@@ -466,6 +488,7 @@ export function Campaigns() {
         isOpen={editModalOpen}
         onClose={closeEdit}
         title={`עריכת קמפיין${editName ? ` · ${editName}` : ''}`}
+        bodyClassName="overflow-visible max-h-none"
       >
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <input
@@ -474,94 +497,75 @@ export function Campaigns() {
             onChange={(e) => setEditName(e.target.value)}
             className="md:col-span-2"
           />
-          <select value={editKind} onChange={(e) => setEditKind(e.target.value as CampaignKind)}>
-            <option value="client">קמפיין ללקוח</option>
-            <option value="internal">קמפיין פנימי</option>
-          </select>
-          <select
+          <HubDropdownSelect
+            id="campaign-edit-kind"
+            value={editKind}
+            onChange={(v) => setEditKind(v as CampaignKind)}
+            options={kindDropdownOptions}
+          />
+          <HubDropdownSelect
+            id="campaign-edit-platform"
             value={editPlatform}
-            onChange={(e) => setEditPlatform(e.target.value as CampaignPlatform)}
-          >
-            {(Object.keys(platformLabels) as CampaignPlatform[]).map((p) => (
-              <option key={p} value={p}>
-                {platformLabels[p]}
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={(v) => setEditPlatform(v as CampaignPlatform)}
+            options={campaignPlatformOptions}
+          />
+          <HubDropdownSelect
+            id="campaign-edit-status"
             value={editStatus}
-            onChange={(e) => setEditStatus(e.target.value as CampaignStatus)}
-          >
-            {(Object.keys(statusLabels) as CampaignStatus[]).map((s) => (
-              <option key={s} value={s}>
-                {statusLabels[s]}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setEditStatus(v as CampaignStatus)}
+            options={campaignStatusOptions}
+          />
           <input
             type="number"
             placeholder="תקציב"
             value={editBudget}
             onChange={(e) => setEditBudget(e.target.value)}
           />
-          <select
-            value={editClientId}
-            onChange={(e) => {
-              setEditClientId(e.target.value)
-              setEditProjectId('')
-            }}
-          >
-            <option value="">ללא לקוח</option>
-            {clients.map((cl) => (
-              <option key={cl.id} value={cl.id}>
-                {cl.name}
-              </option>
-            ))}
-          </select>
-          <select
+          <div className="rounded-xl border-2 border-[#BFDBFE] bg-[var(--bg-main)] px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+            <ClientQuickSelect
+              id="campaign-edit-client"
+              clients={clients}
+              value={editClientId}
+              hubPanel
+              onChange={(id) => {
+                setEditClientId(id)
+                setEditProjectId('')
+              }}
+            />
+          </div>
+          <HubDropdownSelect
+            id="campaign-edit-project"
             value={editProjectId}
-            onChange={(e) => setEditProjectId(e.target.value)}
+            onChange={setEditProjectId}
+            options={projectsForEditClient.map((p) => ({ value: p.id, label: p.name }))}
+            emptyOption={{
+              label: editClientId ? 'ללא פרויקט' : 'בחר לקוח קודם',
+            }}
             disabled={!editClientId}
-          >
-            <option value="">{editClientId ? 'ללא פרויקט' : 'בחר לקוח קודם'}</option>
-            {projectsForEditClient.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <select
+          />
+          <HubDropdownSelect
+            id="campaign-edit-supplier"
             value={editSupplierId}
-            onChange={(e) => {
-              const next = e.target.value
-              setEditSupplierId(next)
-              const nm = supplierNameById.get(next) ?? ''
+            onChange={(v) => {
+              setEditSupplierId(v)
+              const nm = supplierNameById.get(v) ?? ''
               if (!nm.trim().includes('האב מערכות')) {
                 setEditPerformerUserId('')
               }
             }}
-          >
-            <option value="">ללא ספק</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+            emptyOption={{ label: 'ללא ספק' }}
+          />
           {shouldPickPerformerForEdit ? (
-            <select
+            <HubDropdownSelect
+              id="campaign-edit-performer"
               value={editPerformerUserId}
-              onChange={(e) => setEditPerformerUserId(e.target.value)}
-            >
-              <option value="">מבצע קמפיין (עובד מהמערכת)</option>
-              {users
+              onChange={setEditPerformerUserId}
+              options={users
                 .filter((u) => u.active !== false)
-                .map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-            </select>
+                .map((u) => ({ value: u.id, label: u.name }))}
+              emptyOption={{ label: 'מבצע קמפיין (עובד מהמערכת)' }}
+            />
           ) : null}
           <input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} />
           <input type="date" value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} />

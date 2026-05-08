@@ -1,0 +1,32 @@
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:5174",
+      "http://127.0.0.1:5174",
+      "https://hub-pos-f399c.web.app",
+      "https://hub-pos-f399c.firebaseapp.com"
+    ],
+    "method": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
+    "responseHeader": [
+      "Authorization",
+      "Content-Type",
+      "Content-Length",
+      "x-goog-resumable",
+      "x-goog-upload-status",
+      "x-goog-upload-url",
+      "x-goog-upload-command",
+      "x-goog-upload-offset",
+      "x-goog-upload-header-content-length",
+      "x-goog-upload-header-content-type",
+      "x-goog-meta-firebase-storage-download-tokens",
+      "x-firebase-storage-version",
+      "x-goog-hash",
+      "x-goog-generation",
+      "x-goog-metageneration",
+      "ETag"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

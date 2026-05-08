@@ -45,6 +45,36 @@ export function addDaysYmd(baseYmd: string, days: number): string {
   return `${yy}-${mm}-${dd}`
 }
 
+/**
+ * המופע השבועי הבא של weekday אחרי fromYmd (לא כולל אותו יום —
+ * אם מסמנים הושלם באותו יום כמו יום המשימה, המופע הבא הוא בעוד שבוע).
+ * targetDow כמו Date#getDay() ‏(0=ראשון … 6=שבת).
+ */
+export function nextWeeklyYmdAfter(fromYmd: string, targetDow: number): string {
+  const [y, m, d] = fromYmd.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  const dow = dt.getDay()
+  let delta = (targetDow - dow + 7) % 7
+  if (delta === 0) delta = 7
+  dt.setDate(dt.getDate() + delta)
+  const yy = dt.getFullYear()
+  const mm = String(dt.getMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+/** המופע הראשון של weekday על או אחרי anchorYmd (כולל anchor) */
+export function firstWeeklyOnOrAfter(anchorYmd: string, targetDow: number): string {
+  let ymd = anchorYmd
+  for (let step = 0; step < 7; step++) {
+    const [y, m, d] = ymd.split('-').map(Number)
+    const dt = new Date(y, m - 1, d)
+    if (dt.getDay() === targetDow) return ymd
+    ymd = addDaysYmd(ymd, 1)
+  }
+  return anchorYmd
+}
+
 /** תחילת יום קלנדרי ב-local (מילישניות) לפי YYYY-MM-DD */
 export function startOfDayMsFromYmd(ymd: string): number {
   const [y, m, d] = ymd.split('-').map(Number)

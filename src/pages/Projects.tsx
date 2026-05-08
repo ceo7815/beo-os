@@ -210,7 +210,10 @@ export function Projects() {
 
   const supplierMap = useMemo(() => {
     const m = new Map<string, Supplier>()
-    suppliers.forEach((s) => m.set(s.id, s))
+    suppliers.forEach((s) => {
+      const k = s.id.trim()
+      if (k) m.set(k, s)
+    })
     return m
   }, [suppliers])
 
@@ -630,7 +633,9 @@ export function Projects() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {activeFiltered.map((p) => {
           const client = p.clientId ? clientMap.get(p.clientId) : undefined
-          const supplier = p.supplierId ? supplierMap.get(p.supplierId) : undefined
+          const supplier = p.supplierId?.trim()
+            ? supplierMap.get(p.supplierId.trim())
+            : undefined
           const owner = memberMap.get(p.ownerId)
           return (
             <article
@@ -660,9 +665,9 @@ export function Projects() {
                       ? 'פנימי'
                       : client?.name ?? 'לקוח לא ידוע'}
                   </p>
-                  {supplier ? (
+                  {p.supplierId?.trim() ? (
                     <p className="mt-0.5 text-xs text-[var(--text-light)]">
-                      ספק ביצוע: {supplier.name}
+                      ספק ביצוע: {supplier?.name ?? 'לא ברשימה'}
                     </p>
                   ) : null}
                   <div className="mt-2 flex flex-wrap gap-2">

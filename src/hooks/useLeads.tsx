@@ -41,6 +41,11 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  const displayName = useCallback(() => {
+    if (!user) return 'משתמש'
+    return user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
+  }, [user])
+
   useEffect(() => {
     if (!user) {
       setLeads([])
@@ -66,24 +71,40 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
     return () => unsub()
   }, [user])
 
-  const addLead = useCallback(async (data: Omit<Lead, 'id' | 'createdAt'>) => {
-    try {
-      await addDoc(
-        collection(db, 'leads'),
-        stripUndefined({
-          ...data,
-          name: data.name.trim(),
-          createdAt: serverTimestamp(),
-        } as Record<string, unknown>),
-      )
-      toastFsSuccess('הליד נוסף בהצלחה')
-    } catch (e) {
-      toastFsError('שגיאה בהוספת ליד', e, 'addLead')
-    }
-  }, [])
+  const addLead = useCallback(
+    async (data: Omit<Lead, 'id' | 'createdAt'>) => {
+      if (!user) {
+        toastFsError('יש להתחבר להוספת ליד', new Error('no user'), 'addLead')
+        return
+      }
+      try {
+        const uname = displayName()
+        await addDoc(
+          collection(db, 'leads'),
+          stripUndefined({
+            ...data,
+            name: data.name.trim(),
+            createdAt: serverTimestamp(),
+            createdByUserId: user.uid,
+            createdByUserName: uname,
+            lastActorUserId: user.uid,
+            lastActorUserName: uname,
+          } as Record<string, unknown>),
+        )
+        toastFsSuccess('הליד נוסף בהצלחה')
+      } catch (e) {
+        toastFsError('שגיאה בהוספת ליד', e, 'addLead')
+      }
+    },
+    [user, displayName],
+  )
 
   const updateLead = useCallback(
     async (id: string, data: Partial<Lead> & Record<string, unknown>) => {
+      if (!user) {
+        toastFsError('יש להתחבר לעדכון ליד', new Error('no user'), 'updateLead')
+        throw new Error('no user')
+      }
       try {
         const payload = Object.fromEntries(
           Object.entries(data).filter(([, v]) => v !== undefined),
@@ -96,13 +117,19 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
         ) {
           throw new Error('נתוני עדכון לא תקינים')
         }
-        await updateDoc(doc(db, 'leads', id), cleaned as Record<string, unknown>)
+        const uname = displayName()
+        await updateDoc(doc(db, 'leads', id), {
+          ...(cleaned as Record<string, unknown>),
+          lastActorUserId: user.uid,
+          lastActorUserName: uname,
+        })
         toastFsSuccess('הליד עודכן')
       } catch (e) {
         toastFsError('שגיאה בעדכון ליד', e, 'updateLead')
+        throw e
       }
     },
-    [],
+    [user, displayName],
   )
 
   const deleteLead = useCallback(async (id: string) => {
@@ -114,14 +141,29 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const updateLeadStatus = useCallback(async (id: string, status: LeadStatus) => {
-    try {
-      await updateDoc(doc(db, 'leads', id), { status })
-      toastFsSuccess('סטטוס הליד עודכן')
-    } catch (e) {
-      toastFsError('שגיאה בעדכון סטטוס ליד', e, 'updateLeadStatus')
-    }
-  }, [])
+  const updateLeadStatus = useCallback(
+    async (id: string, status: LeadStatus) => {
+      if (!user) {
+        toastFsError(
+          'יש להתחבר לעדכון סטטוס',
+          new Error('no user'),
+          'updateLeadStatus',
+        )
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'leads', id), {
+          status,
+          lastActorUserId: user.uid,
+          lastActorUserName: displayName(),
+        })
+        toastFsSuccess('סטטוס הליד עודכן')
+      } catch (e) {
+        toastFsError('שגיאה בעדכון סטטוס ליד', e, 'updateLeadStatus')
+      }
+    },
+    [user, displayName],
+  )
 
   const value = useMemo(
     () => ({

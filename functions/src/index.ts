@@ -1,8 +1,15 @@
+import './loadEnv.js'
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
+import {
+  buildTaskAssignedHtml,
+  createMailTransport,
+  defaultPublicAppUrl,
+  loadSmtpConfig,
+} from './taskAssignmentMail.js'
 
 initializeApp()
 
@@ -323,4 +330,110 @@ export const enforceAttendanceDiscipline = onSchedule('every 2 minutes', async (
   if (writes > 0) {
     await batch.commit()
   }
+})
+
+/**
+ * שליחת מייל למוקצה כשנוצרת משימה (נקרא מהלקוח אחרי יצירת מסמך).
+ * דורש משתני SMTP בסביבת ה-Function. ללא הגדרה — מחזיר skipped בלי שגיאה.
+ */
+export const sendAssigneeTaskNotification = onCall(async (request) => {
+  const callerUid = requireAuthUid(request.auth?.uid)
+  const data = request.data as { taskId?: string }
+  const taskId = String(data.taskId ?? '').trim()
+  if (!taskId) {
+    throw new HttpsError('invalid-argument', 'חסר מזהה משימה')
+  }
+
+  const taskSnap = await db.doc(`tasks/${taskId}`).get()
+  if (!taskSnap.exists) {
+    throw new HttpsError('not-found', 'המשימה לא נמצאה')
+  }
+
+  const t = taskSnap.data() as Record<string, unknown>
+  const assigneeId = String(t.assigneeId ?? '').trim()
+  const createdBy = String(t.createdBy ?? '').trim()
+
+  if (createdBy !== callerUid) {
+    throw new HttpsError(
+      'permission-denied',
+      'רק יוצר המשימה יכול ליזום שליחת המייל',
+    )
+  }
+
+  if (!assigneeId || assigneeId === callerUid) {
+    return { ok: true as const, skipped: true as const, reason: 'self_or_empty' as const }
+  }
+
+  const smtp = loadSmtpConfig()
+  if (!smtp) {
+    console.warn(
+      'sendAssigneeTaskNotification: missing SMTP env (SMTP_HOST, SMTP_USER, SMTP_PASS, MAIL_FROM)',
+    )
+    return { ok: true as const, skipped: true as const, reason: 'no_smtp' as const }
+  }
+
+  let assigneeEmail = ''
+  let assigneeGreeting = 'שם'
+  try {
+    const assignee = await adminAuth.getUser(assigneeId)
+    assigneeEmail = assignee.email ?? ''
+    const dn = assignee.displayName?.trim()
+    if (dn) assigneeGreeting = dn.split(/\s+/)[0] ?? dn
+    else if (assigneeEmail)
+      assigneeGreeting = assigneeEmail.split('@')[0] ?? 'שם'
+  } catch {
+    return { ok: true as const, skipped: true as const, reason: 'assignee_auth' as const }
+  }
+
+  if (!assigneeEmail) {
+    return { ok: true as const, skipped: true as const, reason: 'no_email' as const }
+  }
+
+  let creatorName = 'משתמש'
+  try {
+    const creatorRecord = await adminAuth.getUser(callerUid)
+    const dn = creatorRecord.displayName?.trim()
+    if (dn) {
+      creatorName = dn
+    } else {
+      const creatorDoc = await db.doc(`users/${callerUid}`).get()
+      const n = creatorDoc.get('name')
+      if (typeof n === 'string' && n.trim()) creatorName = n.trim()
+      else if (creatorRecord.email)
+        creatorName = creatorRecord.email.split('@')[0] ?? creatorName
+    }
+  } catch {
+    const creatorDoc = await db.doc(`users/${callerUid}`).get()
+    const n = creatorDoc.get('name')
+    if (typeof n === 'string' && n.trim()) creatorName = n.trim()
+  }
+
+  const taskTitle = String(t.title ?? '').trim() || 'משימה'
+  const taskDescription = String(t.description ?? '')
+  const dueDate = String(t.dueDate ?? '').trim() || '—'
+  const tasksUrl = `${defaultPublicAppUrl()}/tasks`
+
+  const html = buildTaskAssignedHtml({
+    assigneeGreeting,
+    creatorName,
+    taskTitle,
+    taskDescription,
+    dueDateLabel: dueDate,
+    tasksUrl,
+  })
+
+  const transport = createMailTransport(smtp)
+  const subject =
+    taskTitle.length > 55
+      ? `נפתחה לך משימה חדשה — ${taskTitle.slice(0, 52)}…`
+      : `נפתחה לך משימה חדשה — ${taskTitle}`
+
+  await transport.sendMail({
+    from: smtp.from,
+    to: assigneeEmail,
+    subject,
+    html,
+  })
+
+  return { ok: true as const, sent: true as const }
 })

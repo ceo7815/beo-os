@@ -1,0 +1,4 @@
+# לא לפרסם קובץ סודות ל־Cloud Functions
+functions/.env
+.env
+.env.*

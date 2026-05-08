@@ -14,12 +14,18 @@ import {
   collectionGroup,
   deleteDoc,
   doc,
+  getDoc,
   getDocsFromServer,
   query,
   serverTimestamp,
   writeBatch,
 } from 'firebase/firestore'
-import { formatDateIL } from '../lib/dates'
+import {
+  addDaysYmd,
+  formatDateIL,
+  nextWeeklyYmdAfter,
+  todayYmd,
+} from '../lib/dates'
 import { useAuth } from '../contexts/AuthContext'
 import { docToTask, taskNoteDocToTaskNote } from '../lib/firestoreMappers'
 import {
@@ -29,9 +35,17 @@ import {
 import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
+import { requestAssigneeTaskEmail } from '../lib/taskAssignmentEmail'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
 import { logActivity } from '../utils/activityLogger'
-import type { Task, TaskActivity, TaskNote, TaskStatus } from '../types'
+import type {
+  Priority,
+  Task,
+  TaskActivity,
+  TaskNote,
+  TaskRecurrence,
+  TaskStatus,
+} from '../types'
 
 type TasksContextValue = {
   tasks: Task[]
@@ -43,6 +57,7 @@ type TasksContextValue = {
   setQuickSliderOpen: (open: boolean) => void
   addTask: (
     data: Omit<Task, 'id' | 'createdAt' | 'activity' | 'createdBy' | 'manualNotes'>,
+    options?: { quiet?: boolean },
   ) => Promise<string | null>
   addTaskNote: (taskId: string, text: string) => Promise<void>
   updateTask: (
@@ -58,6 +73,19 @@ type TasksContextValue = {
   deleteTask: (id: string) => Promise<void>
   cycleStatus: (id: string) => Promise<void>
   toggleQuickDone: (taskId: string, checked: boolean) => Promise<void>
+  /** מנהל: תבנית משימה קבועה + משימה ראשונה */
+  addRecurringTemplateWithFirstTask: (args: {
+    title: string
+    description: string
+    assigneeId: string
+    frequency: TaskRecurrence
+    weeklyDayOfWeek?: number
+    firstDueYmd: string
+    priority: Priority
+    clientId?: string
+    projectId?: string
+    supplierId?: string
+  }) => Promise<boolean>
 }
 
 const TasksContext = createContext<TasksContextValue | null>(null)
@@ -268,6 +296,106 @@ function collectActivityStrings(
   return out
 }
 
+async function spawnNextRecurringAfterCompletion(
+  completed: Task,
+  uid: string,
+  uname: string,
+  setRawTasks: (fn: (prev: Task[]) => Task[]) => void,
+): Promise<void> {
+  const tid = completed.recurringTemplateId
+  if (!tid) return
+  try {
+    const tsnap = await getDoc(doc(db, 'recurringTaskTemplates', tid))
+    if (!tsnap.exists()) return
+    const x = tsnap.data()
+    if (x.active === false) return
+
+    const freq: TaskRecurrence =
+      x.frequency === 'weekly' ? 'weekly' : 'daily'
+    let nextDue: string
+    if (freq === 'daily') {
+      nextDue = addDaysYmd(todayYmd(), 1)
+    } else {
+      const dow =
+        typeof x.weeklyDayOfWeek === 'number' &&
+        x.weeklyDayOfWeek >= 0 &&
+        x.weeklyDayOfWeek <= 6
+          ? x.weeklyDayOfWeek
+          : 0
+      nextDue = nextWeeklyYmdAfter(todayYmd(), dow)
+    }
+
+    const payload = {
+      title: String(x.title ?? ''),
+      description: String(x.description ?? ''),
+      status: 'todo' as TaskStatus,
+      priority: (x.priority ?? 'medium') as Priority,
+      assigneeId: String(x.assigneeId ?? ''),
+      clientId: x.clientId ?? null,
+      projectId: x.projectId ?? null,
+      supplierId: x.supplierId ?? null,
+      dueDate: nextDue,
+      reminderDate: null,
+      tags: Array.isArray(x.tags) ? x.tags.map((t: unknown) => String(t)) : [],
+      reminders: [],
+      sharedWithUserIds: [],
+      shared: false,
+      recurringTemplateId: tid,
+      recurringFrequency: freq,
+      createdBy: uid,
+      lastEventByUserId: uid,
+      lastEventByUserName: uname,
+      createdAt: serverTimestamp(),
+    }
+
+    const ref = await addDoc(collection(db, 'tasks'), payload)
+    const entry = logActivity(ref.id, uid, uname, 'created')
+    await addDoc(collection(db, 'tasks', ref.id, 'activity'), {
+      userId: uid,
+      userName: uname,
+      action: `${entry.action} · משימה קבועה`,
+      createdAt: serverTimestamp(),
+    })
+
+    const optimisticTask: Task = {
+      id: ref.id,
+      title: payload.title,
+      description: payload.description,
+      status: 'todo',
+      priority: payload.priority,
+      assigneeId: payload.assigneeId,
+      clientId: (payload.clientId as string | null) ?? undefined,
+      projectId: (payload.projectId as string | null) ?? undefined,
+      supplierId: (payload.supplierId as string | null) ?? undefined,
+      dueDate: payload.dueDate,
+      reminderDate: undefined,
+      tags: payload.tags,
+      reminders: [],
+      createdAt: new Date().toISOString(),
+      createdBy: uid,
+      sharedWithUserIds: [],
+      teamWideShared: false,
+      activity: [],
+      manualNotes: [],
+      recurringTemplateId: tid,
+      recurringFrequency: freq,
+    }
+    setRawTasks((prev) =>
+      prev.some((t) => t.id === ref.id) ? prev : [...prev, optimisticTask],
+    )
+    if (payload.assigneeId !== uid) {
+      requestAssigneeTaskEmail(ref.id)
+    }
+    toastFsSuccess(
+      freq === 'daily'
+        ? 'נוצרה משימת המשך למחר'
+        : 'נוצרה משימת המשך לשבוע הבא',
+    )
+  } catch (e) {
+    toastFsError('שגיאה ביצירת משימת המשך הקבועה', e, 'spawnRecurring')
+  }
+}
+
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const [rawTasks, setRawTasks] = useState<Task[]>([])
@@ -380,6 +508,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const addTask = useCallback(
     async (
       data: Omit<Task, 'id' | 'createdAt' | 'activity' | 'createdBy' | 'manualNotes'>,
+      options?: { quiet?: boolean },
     ) => {
       if (!user) {
         toastFsError('יש להתחבר כדי ליצור משימה', new Error('no user'), 'addTask')
@@ -403,7 +532,15 @@ export function TasksProvider({ children }: { children: ReactNode }) {
           reminders: data.reminders ?? [],
           sharedWithUserIds: data.sharedWithUserIds ?? [],
           shared: false,
+          ...(data.recurringTemplateId
+            ? { recurringTemplateId: data.recurringTemplateId }
+            : {}),
+          ...(data.recurringFrequency
+            ? { recurringFrequency: data.recurringFrequency }
+            : {}),
           createdBy: uid,
+          lastEventByUserId: uid,
+          lastEventByUserName: uname,
           createdAt: serverTimestamp(),
         }
         const ref = await addDoc(collection(db, 'tasks'), payload)
@@ -436,10 +573,19 @@ export function TasksProvider({ children }: { children: ReactNode }) {
             teamWideShared: false,
             activity: [],
             manualNotes: [],
+            ...(data.recurringTemplateId
+              ? { recurringTemplateId: data.recurringTemplateId }
+              : {}),
+            ...(data.recurringFrequency
+              ? { recurringFrequency: data.recurringFrequency }
+              : {}),
           }
           return [...prev, optimisticTask]
         })
-        toastFsSuccess('המשימה נוספה')
+        if (!options?.quiet) toastFsSuccess('המשימה נוספה')
+        if (payload.assigneeId !== uid) {
+          requestAssigneeTaskEmail(ref.id)
+        }
         return ref.id
       } catch (e) {
         toastFsError('שגיאה בשמירת המשימה', e, 'addTask')
@@ -447,6 +593,84 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       }
     },
     [user, displayName],
+  )
+
+  const addRecurringTemplateWithFirstTask = useCallback(
+    async (args: {
+      title: string
+      description: string
+      assigneeId: string
+      frequency: TaskRecurrence
+      weeklyDayOfWeek?: number
+      firstDueYmd: string
+      priority: Priority
+      clientId?: string
+      projectId?: string
+      supplierId?: string
+    }) => {
+      if (!user) {
+        toastFsError('יש להתחבר', new Error('no user'), 'addRecurringTemplate')
+        return false
+      }
+      const uid = user.uid
+      let templateRefId: string | null = null
+      try {
+        const tref = await addDoc(collection(db, 'recurringTaskTemplates'), {
+          title: args.title.trim(),
+          description: args.description.trim(),
+          assigneeId: args.assigneeId,
+          frequency: args.frequency,
+          ...(args.frequency === 'weekly' && args.weeklyDayOfWeek != null
+            ? { weeklyDayOfWeek: args.weeklyDayOfWeek }
+            : {}),
+          priority: args.priority,
+          clientId: args.clientId ?? null,
+          projectId: args.projectId ?? null,
+          supplierId: args.supplierId ?? null,
+          tags: [],
+          active: true,
+          createdBy: uid,
+          createdAt: serverTimestamp(),
+        })
+        templateRefId = tref.id
+        const taskId = await addTask(
+          {
+            title: args.title.trim(),
+            description: args.description.trim(),
+            status: 'todo',
+            priority: args.priority,
+            assigneeId: args.assigneeId,
+            clientId: args.clientId,
+            projectId: args.projectId,
+            supplierId: args.supplierId,
+            dueDate: args.firstDueYmd,
+            tags: [],
+            reminders: [],
+            sharedWithUserIds: [],
+            recurringTemplateId: tref.id,
+            recurringFrequency: args.frequency,
+          },
+          { quiet: true },
+        )
+        if (!taskId) {
+          await deleteDoc(doc(db, 'recurringTaskTemplates', tref.id))
+          return false
+        }
+        toastFsSuccess('הוגדרה משימה קבועה והמשימה הראשונה נוספה ללוח')
+        return true
+      } catch (e) {
+        if (templateRefId) {
+          try {
+            await deleteDoc(doc(db, 'recurringTaskTemplates', templateRefId))
+          } catch {
+            /* ניקוי עזר */
+          }
+        }
+        toastFsError('שגיאה בהגדרת משימה קבועה', e, 'addRecurringTemplate')
+        return false
+      }
+    },
+    [user, addTask],
   )
 
   const addTaskNote = useCallback(
@@ -535,8 +759,15 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       try {
         const batch = writeBatch(db)
         const tref = doc(db, 'tasks', id)
+        const meta = {
+          lastEventByUserId: uid,
+          lastEventByUserName: uname,
+          lastEventAt: serverTimestamp(),
+        }
         if (Object.keys(fsPatch).length > 0) {
-          batch.update(tref, fsPatch)
+          batch.update(tref, { ...fsPatch, ...meta })
+        } else if (strings.length > 0) {
+          batch.update(tref, meta)
         }
         for (const action of strings) {
           const aref = doc(collection(db, 'tasks', id, 'activity'))
@@ -581,6 +812,20 @@ export function TasksProvider({ children }: { children: ReactNode }) {
           ),
         )
         toastFsSuccess('המשימה עודכנה')
+
+        const mergedStatus = patch.status ?? prev.status
+        if (
+          mergedStatus === 'done' &&
+          prev.status !== 'done' &&
+          prev.recurringTemplateId
+        ) {
+          void spawnNextRecurringAfterCompletion(
+            prev,
+            uid,
+            uname,
+            setRawTasks,
+          )
+        }
       } catch (e) {
         toastFsError('שגיאה בעדכון המשימה', e, 'updateTask')
       }
@@ -651,6 +896,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       deleteTask,
       cycleStatus,
       toggleQuickDone,
+      addRecurringTemplateWithFirstTask,
     }),
     [
       tasks,
@@ -664,6 +910,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       deleteTask,
       cycleStatus,
       toggleQuickDone,
+      addRecurringTemplateWithFirstTask,
     ],
   )
 

@@ -48,9 +48,30 @@ export interface RetainerEntry {
 export type ProjectStatus = 'active' | 'paused' | 'done'
 export type Priority = 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'doing' | 'done' | 'blocked'
+
+/** משימה קבועה — יומי או שבועי ביום קבוע */
+export type TaskRecurrence = 'daily' | 'weekly'
+
+/** תבנית משימה קבועה — נשמר ב־`recurringTaskTemplates` */
+export interface RecurringTaskTemplate {
+  id: string
+  title: string
+  description: string
+  assigneeId: string
+  frequency: TaskRecurrence
+  /** 0–6 כמו Date#getDay() — רק ל־weekly */
+  weeklyDayOfWeek?: number
+  priority: Priority
+  clientId?: string
+  projectId?: string
+  supplierId?: string
+  tags: string[]
+  active: boolean
+  createdAt: string
+  createdBy: string
+}
 export type LeadStatus =
   | 'new'
-  | 'handling'
   | 'specification'
   | 'quote_sent'
   | 'follow_up'
@@ -131,6 +152,10 @@ export interface Task {
   activity: TaskActivity[]
   /** הערות שוטף — מוזג מתת-אוסף taskNotes */
   manualNotes: TaskNote[]
+  /** קישור לתבנית משימה קבועה — בעת סימון «הושלם» נוצרת משימה חדשה לפי התבנית */
+  recurringTemplateId?: string
+  /** עותק לתצוגה — מתעדכן מן התבנית בכל מופע */
+  recurringFrequency?: TaskRecurrence
 }
 
 /** תאימות למודול Kanban */
@@ -182,6 +207,8 @@ export interface Lead {
   quotePdfUrl?: string
   quotePdfFileName?: string
   quoteVisualUrl?: string
+  /** תאריך יעד לחזרה ללקוח בנוגע להצעת המחיר — נשמר בעת מעבר ל־quote_sent */
+  quoteReturnByDate?: string
   createdAt: string
 }
 

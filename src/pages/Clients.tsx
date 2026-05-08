@@ -31,6 +31,30 @@ const emptyForm: ClientFormState = {
   status: 'active',
 }
 
+const NEW_CLIENT_DAYS = 60
+
+function ClientKpiCard(props: {
+  label: string
+  value: string
+  borderColor: string
+  sub?: string
+}) {
+  return (
+    <div
+      className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
+      style={{ borderTopWidth: 4, borderTopColor: props.borderColor }}
+    >
+      <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+        {props.value}
+      </div>
+      <div className="mt-1 text-[12px] text-[var(--text-mid)]">{props.label}</div>
+      {props.sub ? (
+        <div className="mt-0.5 text-[10px] text-[var(--text-light)]">{props.sub}</div>
+      ) : null}
+    </div>
+  )
+}
+
 export function Clients() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -51,6 +75,21 @@ export function Clients() {
     if (!q) return clients
     return clients.filter((c) => c.name.toLowerCase().includes(q))
   }, [clients, query])
+
+  const clientKpis = useMemo(() => {
+    const now = Date.now()
+    const windowMs = NEW_CLIENT_DAYS * 24 * 60 * 60 * 1000
+    let active = 0
+    let inactive = 0
+    let newInWindow = 0
+    for (const c of clients) {
+      if (c.status === 'active') active += 1
+      else inactive += 1
+      const t = new Date(c.createdAt).getTime()
+      if (Number.isFinite(t) && now - t <= windowMs && now >= t) newInWindow += 1
+    }
+    return { active, inactive, newInWindow }
+  }, [clients])
 
   const openNew = () => {
     setEditingId(null)
@@ -133,6 +172,27 @@ export function Clients() {
           + לקוח חדש
         </button>
       </header>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <ClientKpiCard
+          label="לקוחות פעילים"
+          value={String(clientKpis.active)}
+          borderColor="#16A34A"
+          sub="סטטוס «פעיל» בכרטיס הלקוח"
+        />
+        <ClientKpiCard
+          label="לקוחות לא פעילים"
+          value={String(clientKpis.inactive)}
+          borderColor="#64748B"
+          sub="סטטוס «לא פעיל»"
+        />
+        <ClientKpiCard
+          label="לקוחות חדשים"
+          value={String(clientKpis.newInWindow)}
+          borderColor="#2563EB"
+          sub={`נוספו למערכת ב־${NEW_CLIENT_DAYS} הימים האחרונים (תאריך כניסה)`}
+        />
+      </section>
 
       <input
         type="search"

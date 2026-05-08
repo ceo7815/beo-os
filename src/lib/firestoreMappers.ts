@@ -270,6 +270,12 @@ export function docToTask(d: QueryDocumentSnapshot<DocumentData>): Task {
         x.sharedWithUserIds.length === 0),
     activity: [],
     manualNotes: [],
+    ...(typeof x.recurringTemplateId === 'string' && x.recurringTemplateId.trim()
+      ? { recurringTemplateId: x.recurringTemplateId.trim() }
+      : {}),
+    ...(x.recurringFrequency === 'daily' || x.recurringFrequency === 'weekly'
+      ? { recurringFrequency: x.recurringFrequency }
+      : {}),
   }
 }
 
@@ -318,15 +324,15 @@ export function docToSupplier(d: QueryDocumentSnapshot<DocumentData>): Supplier 
 export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
   const x = d.data()
   const rawStatus = String(x.status ?? 'new')
+  /** ערכים ישנים handling / in_progress — ממופים ל־new (הסרת סטטוס «בטיפול» מהמערכת) */
   const status: Lead['status'] =
-    rawStatus === 'handling' ||
     rawStatus === 'specification' ||
     rawStatus === 'quote_sent' ||
     rawStatus === 'follow_up' ||
     rawStatus === 'closed'
       ? rawStatus
-      : rawStatus === 'in_progress'
-        ? 'handling'
+      : rawStatus === 'handling' || rawStatus === 'in_progress'
+        ? 'new'
         : rawStatus === 'hot'
           ? 'follow_up'
           : rawStatus === 'won'
@@ -402,6 +408,10 @@ export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
     quoteVisualUrl:
       typeof x.quoteVisualUrl === 'string' && x.quoteVisualUrl.trim()
         ? x.quoteVisualUrl.trim()
+        : undefined,
+    quoteReturnByDate:
+      typeof x.quoteReturnByDate === 'string' && x.quoteReturnByDate.trim()
+        ? x.quoteReturnByDate.slice(0, 10)
         : undefined,
     createdAt: timestampToIso(x.createdAt),
   }

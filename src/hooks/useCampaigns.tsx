@@ -41,6 +41,11 @@ export function CampaignsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  const displayName = useCallback(() => {
+    if (!user) return 'משתמש'
+    return user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
+  }, [user])
+
   useEffect(() => {
     if (!user) {
       setCampaigns([])
@@ -66,45 +71,81 @@ export function CampaignsProvider({ children }: { children: ReactNode }) {
     return () => unsub()
   }, [user])
 
-  const addCampaign = useCallback(async (data: Omit<Campaign, 'id' | 'createdAt'>) => {
-    try {
-      await addDoc(
-        collection(db, 'campaigns'),
-        stripUndefined({
-          ...data,
-          name: data.name.trim(),
-          createdAt: serverTimestamp(),
-        } as Record<string, unknown>),
-      )
-      toastFsSuccess('הקמפיין נוסף')
-    } catch (e) {
-      toastFsError('שגיאה בהוספת קמפיין', e, 'addCampaign')
-    }
-  }, [])
+  const addCampaign = useCallback(
+    async (data: Omit<Campaign, 'id' | 'createdAt'>) => {
+      if (!user) {
+        toastFsError('יש להתחבר להוספת קמפיין', new Error('no user'), 'addCampaign')
+        return
+      }
+      try {
+        const uname = displayName()
+        await addDoc(
+          collection(db, 'campaigns'),
+          stripUndefined({
+            ...data,
+            name: data.name.trim(),
+            createdAt: serverTimestamp(),
+            createdByUserId: user.uid,
+            createdByUserName: uname,
+            lastActorUserId: user.uid,
+            lastActorUserName: uname,
+          } as Record<string, unknown>),
+        )
+        toastFsSuccess('הקמפיין נוסף')
+      } catch (e) {
+        toastFsError('שגיאה בהוספת קמפיין', e, 'addCampaign')
+      }
+    },
+    [user, displayName],
+  )
 
-  const updateCampaign = useCallback(async (id: string, data: Partial<Campaign>) => {
-    try {
-      await ensureFirestoreReady()
-      /** שומר גם ערכי deleteField לניקוי שדות אופציונליים ב-Firestore */
-      const raw = data as Record<string, unknown>
-      await updateDoc(
-        doc(db, 'campaigns', id),
-        Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined)),
-      )
-      toastFsSuccess('הקמפיין עודכן')
-    } catch (e) {
-      toastFsError('שגיאה בעדכון קמפיין', e, 'updateCampaign')
-    }
-  }, [])
+  const updateCampaign = useCallback(
+    async (id: string, data: Partial<Campaign>) => {
+      if (!user) {
+        toastFsError('יש להתחבר לעדכון קמפיין', new Error('no user'), 'updateCampaign')
+        return
+      }
+      try {
+        await ensureFirestoreReady()
+        /** שומר גם ערכי deleteField לניקוי שדות אופציונליים ב-Firestore */
+        const raw = data as Record<string, unknown>
+        const uname = displayName()
+        await updateDoc(doc(db, 'campaigns', id), {
+          ...Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined)),
+          lastActorUserId: user.uid,
+          lastActorUserName: uname,
+        })
+        toastFsSuccess('הקמפיין עודכן')
+      } catch (e) {
+        toastFsError('שגיאה בעדכון קמפיין', e, 'updateCampaign')
+      }
+    },
+    [user, displayName],
+  )
 
-  const updateCampaignStatus = useCallback(async (id: string, status: CampaignStatus) => {
-    try {
-      await updateDoc(doc(db, 'campaigns', id), { status })
-      toastFsSuccess('סטטוס קמפיין עודכן')
-    } catch (e) {
-      toastFsError('שגיאה בעדכון סטטוס קמפיין', e, 'updateCampaignStatus')
-    }
-  }, [])
+  const updateCampaignStatus = useCallback(
+    async (id: string, status: CampaignStatus) => {
+      if (!user) {
+        toastFsError(
+          'יש להתחבר לעדכון סטטוס',
+          new Error('no user'),
+          'updateCampaignStatus',
+        )
+        return
+      }
+      try {
+        await updateDoc(doc(db, 'campaigns', id), {
+          status,
+          lastActorUserId: user.uid,
+          lastActorUserName: displayName(),
+        })
+        toastFsSuccess('סטטוס קמפיין עודכן')
+      } catch (e) {
+        toastFsError('שגיאה בעדכון סטטוס קמפיין', e, 'updateCampaignStatus')
+      }
+    },
+    [user, displayName],
+  )
 
   const deleteCampaign = useCallback(async (id: string) => {
     try {

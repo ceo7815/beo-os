@@ -3,6 +3,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { taskVisibleToUser } from '../lib/taskVisibility'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
 import { addDaysYmd, formatDateIL, formatDateTimeIL, todayYmd } from '../lib/dates'
+import {
+  supplierDisplayName,
+  supplierNameMap,
+} from '../lib/supplierDisplay'
+import { RecurringTaskModal } from '../components/RecurringTaskModal'
 import { Modal } from '../components/shared/Modal'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
@@ -274,11 +279,22 @@ function TaskCard({
             </p>
           ) : null}
         </div>
-        <span
-          className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass[task.status]}`}
-        >
-          {boardStatusHe(task.status)}
-        </span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span
+            className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass[task.status]}`}
+          >
+            {boardStatusHe(task.status)}
+          </span>
+          {task.recurringFrequency === 'daily' ? (
+            <span className="rounded-full bg-[#EDE9FE] px-2 py-0.5 text-[10px] font-bold text-[#5B21B6]">
+              קבועה יומית
+            </span>
+          ) : task.recurringFrequency === 'weekly' ? (
+            <span className="rounded-full bg-[#EDE9FE] px-2 py-0.5 text-[10px] font-bold text-[#5B21B6]">
+              קבועה שבועית
+            </span>
+          ) : null}
+        </div>
         {desc ? (
           <div className="mt-2">
             <p className="text-[10px] font-bold text-[var(--text-mid)]">תיאור</p>
@@ -483,9 +499,11 @@ export function Tasks() {
     addTaskNote,
     updateTask,
     deleteTask,
+    addRecurringTemplateWithFirstTask,
   } = useTasks()
 
   const [q, setQ] = useState('')
+  const [recurringModalOpen, setRecurringModalOpen] = useState(false)
   const [sentTasksOpen, setSentTasksOpen] = useState(false)
   const [completedByMeOpen, setCompletedByMeOpen] = useState(false)
   const [myOpenTasksOpen, setMyOpenTasksOpen] = useState(false)
@@ -504,11 +522,7 @@ export function Tasks() {
   const assigneeForNewTask =
     canViewAsOthers && viewAsUid ? viewAsUid : defaultAssigneeId
 
-  const supplierById = useMemo(() => {
-    const m = new Map<string, string>()
-    suppliers.forEach((s) => m.set(s.id, s.name))
-    return m
-  }, [suppliers])
+  const supplierById = useMemo(() => supplierNameMap(suppliers), [suppliers])
 
   const clientById = useMemo(() => {
     const m = new Map<string, string>()
@@ -538,7 +552,8 @@ export function Tasks() {
     () => ({
       memberNameById: (id: string) => memberById.get(id) ?? id,
       projectNameById: (id: string) => projectById.get(id) ?? id,
-      supplierNameById: (id: string) => supplierById.get(id) ?? id,
+      supplierNameById: (id: string) =>
+        supplierDisplayName(id, supplierById) ?? id,
       clientNameById: (id: string) => clientById.get(id) ?? id,
     }),
     [memberById, projectById, supplierById, clientById],
@@ -722,8 +737,37 @@ export function Tasks() {
           >
             + משימה חדשה
           </button>
+          {canViewAsOthers ? (
+            <button
+              type="button"
+              onClick={() => setRecurringModalOpen(true)}
+              className="rounded-[10px] border border-[#C4B5FD] bg-[#F5F3FF] px-4 py-2 text-[13px] font-bold text-[#5B21B6] shadow-sm transition hover:bg-[#EDE9FE]"
+            >
+              משימה קבועה…
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {canViewAsOthers ? (
+        <RecurringTaskModal
+          isOpen={recurringModalOpen}
+          onClose={() => setRecurringModalOpen(false)}
+          teamMembers={teamMembers}
+          defaultAssigneeId={assigneeForNewTask || defaultAssigneeId}
+          onSave={async (values) =>
+            addRecurringTemplateWithFirstTask({
+              title: values.title,
+              description: values.description,
+              assigneeId: values.assigneeId,
+              frequency: values.frequency,
+              weeklyDayOfWeek: values.weeklyDayOfWeek,
+              firstDueYmd: values.firstDueYmd,
+              priority: values.priority,
+            })
+          }
+        />
+      ) : null}
 
       <div className="grid gap-4 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] md:grid-cols-2">
         {canViewAsOthers ? (
@@ -882,9 +926,8 @@ export function Tasks() {
                       : projectRow?.clientId
                         ? (clientById.get(projectRow.clientId) ?? null)
                         : null
-                  const supplierName = task.supplierId
-                    ? supplierById.get(task.supplierId) ?? null
-                    : null
+                  const supplierName =
+                    supplierDisplayName(task.supplierId, supplierById) ?? null
                   const projectName = task.projectId
                     ? projectById.get(task.projectId) ?? null
                     : null

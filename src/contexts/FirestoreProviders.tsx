@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { FirestoreDocsSync } from '../components/FirestoreDocsSync'
+import { HubRealtimeNotifications } from '../components/HubRealtimeNotifications'
 import { ClientsProvider } from '../hooks/useClients'
 import { CollectionTrackingProvider } from '../hooks/useCollectionTracking'
 import { InvoicesProvider } from '../hooks/useInvoices'
@@ -32,6 +33,7 @@ export function FirestoreProviders() {
                       <TasksProvider>
                         <ProjectsProvider>
                           <FirestoreDocsSync />
+                          <HubRealtimeNotifications />
                           <Outlet />
                         </ProjectsProvider>
                       </TasksProvider>

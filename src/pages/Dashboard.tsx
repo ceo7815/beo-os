@@ -9,6 +9,10 @@ import { useCampaigns } from '../hooks/useCampaigns'
 import { useLeads } from '../hooks/useLeads'
 import { useProjects } from '../hooks/useProjects'
 import { getCollectionTrackingStatus } from '../lib/collectionTrackingStatus'
+import {
+  supplierDisplayName,
+  supplierNameMap,
+} from '../lib/supplierDisplay'
 import { isRetainerProject } from '../lib/projectRetainer'
 import { taskVisibleToUser } from '../lib/taskVisibility'
 import { useTasks } from '../hooks/useTasks'
@@ -98,7 +102,6 @@ const DASHBOARD_OPEN_STATUSES: ProjectStatus[] = ['active']
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: 'חדש',
-  handling: 'לטיפול',
   specification: 'אפיון',
   quote_sent: 'הצעת מחיר',
   follow_up: 'פולואפ',
@@ -107,7 +110,6 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 
 const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
   new: '#2563EB',
-  handling: '#0284C7',
   specification: '#7C3AED',
   quote_sent: '#D97706',
   follow_up: '#EA580C',
@@ -154,7 +156,7 @@ function leadPipelineSort(a: Lead, b: Lead, today: string): number {
       if (fu < today) return 0
       if (fu === today) return 1
     }
-    const warm: LeadStatus[] = ['follow_up', 'new', 'handling', 'quote_sent', 'specification']
+    const warm: LeadStatus[] = ['follow_up', 'new', 'quote_sent', 'specification']
     return warm.includes(l.status) ? 5 : 8
   }
   const d = tier(a) - tier(b)
@@ -254,11 +256,7 @@ export function Dashboard() {
     [openDashboardProjectList],
   )
 
-  const supplierById = useMemo(() => {
-    const m = new Map<string, string>()
-    suppliers.forEach((s) => m.set(s.id, s.name))
-    return m
-  }, [suppliers])
+  const supplierById = useMemo(() => supplierNameMap(suppliers), [suppliers])
 
   const todayY = todayYmd()
 
@@ -798,8 +796,11 @@ export function Dashboard() {
                       פעיל מאז{' '}
                       {p.startDate ? formatDateIL(p.startDate) : formatDateIL(p.dueDate)}
                     </p>
-                    {p.supplierId ? (
-                      <p>ספק: {supplierById.get(p.supplierId) ?? p.supplierId}</p>
+                    {p.supplierId?.trim() ? (
+                      <p>
+                        ספק:{' '}
+                        {supplierDisplayName(p.supplierId, supplierById)}
+                      </p>
                     ) : null}
                     <p>{openLabel}</p>
                   </div>

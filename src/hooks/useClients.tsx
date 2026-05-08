@@ -24,6 +24,7 @@ import { deleteTasksAndDocsForProject } from '../lib/firestoreCascades'
 import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
+import { useAuth } from '../contexts/AuthContext'
 import { useHubStore } from '../store/useStore'
 import type { Client } from '../types'
 
@@ -39,9 +40,15 @@ type ClientsContextValue = {
 const ClientsContext = createContext<ClientsContextValue | null>(null)
 
 export function ClientsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+
+  const displayName = useCallback(() => {
+    if (!user) return 'משתמש'
+    return user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
+  }, [user])
 
   useEffect(() => {
     setLoading(true)
@@ -63,51 +70,75 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
     return () => unsub()
   }, [])
 
-  const addClient = useCallback(async (data: Omit<Client, 'id' | 'createdAt'>) => {
-    try {
-      const ref = await addDoc(
-        collection(db, 'clients'),
-        stripUndefined({
-          ...data,
-          createdAt: serverTimestamp(),
-        } as Record<string, unknown>),
-      )
-      const optimistic: Client = {
-        id: ref.id,
-        ...data,
-        createdAt: new Date().toISOString(),
+  const addClient = useCallback(
+    async (data: Omit<Client, 'id' | 'createdAt'>) => {
+      if (!user) {
+        toastFsError('יש להתחבר להוספת לקוח', new Error('no user'), 'addClient')
+        return
       }
-      setClients((prev) => {
-        if (prev.some((c) => c.id === optimistic.id)) return prev
-        return [...prev, optimistic]
-      })
-      toastFsSuccess('הלקוח נוסף בהצלחה')
-    } catch (e) {
-      toastFsError('שגיאה בשמירת הלקוח', e, 'addClient')
-    }
-  }, [])
+      try {
+        const uname = displayName()
+        const ref = await addDoc(
+          collection(db, 'clients'),
+          stripUndefined({
+            ...data,
+            createdAt: serverTimestamp(),
+            createdByUserId: user.uid,
+            createdByUserName: uname,
+            lastActorUserId: user.uid,
+            lastActorUserName: uname,
+          } as Record<string, unknown>),
+        )
+        const optimistic: Client = {
+          id: ref.id,
+          ...data,
+          createdAt: new Date().toISOString(),
+        }
+        setClients((prev) => {
+          if (prev.some((c) => c.id === optimistic.id)) return prev
+          return [...prev, optimistic]
+        })
+        toastFsSuccess('הלקוח נוסף בהצלחה')
+      } catch (e) {
+        toastFsError('שגיאה בשמירת הלקוח', e, 'addClient')
+      }
+    },
+    [user, displayName],
+  )
 
-  const updateClient = useCallback(async (id: string, data: Partial<Client>) => {
-    try {
-      await updateDoc(
-        doc(db, 'clients', id),
-        stripUndefined(data as Record<string, unknown>),
-      )
-      setClients((prev) =>
-        prev.map((c) =>
-          c.id === id
-            ? {
-                ...c,
-                ...data,
-              }
-            : c,
-        ),
-      )
-      toastFsSuccess('פרטי הלקוח עודכנו')
-    } catch (e) {
-      toastFsError('שגיאה בעדכון הלקוח', e, 'updateClient')
-    }
-  }, [])
+  const updateClient = useCallback(
+    async (id: string, data: Partial<Client>) => {
+      if (!user) {
+        toastFsError('יש להתחבר לעדכון לקוח', new Error('no user'), 'updateClient')
+        return
+      }
+      try {
+        const uname = displayName()
+        await updateDoc(
+          doc(db, 'clients', id),
+          stripUndefined({
+            ...data,
+            lastActorUserId: user.uid,
+            lastActorUserName: uname,
+          } as Record<string, unknown>),
+        )
+        setClients((prev) =>
+          prev.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  ...data,
+                }
+              : c,
+          ),
+        )
+        toastFsSuccess('פרטי הלקוח עודכנו')
+      } catch (e) {
+        toastFsError('שגיאה בעדכון הלקוח', e, 'updateClient')
+      }
+    },
+    [user, displayName],
+  )
 
   const deleteClient = useCallback(async (id: string) => {
     try {

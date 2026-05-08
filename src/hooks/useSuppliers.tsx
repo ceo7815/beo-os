@@ -42,6 +42,11 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  const displayName = useCallback(() => {
+    if (!user) return 'משתמש'
+    return user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
+  }, [user])
+
   useEffect(() => {
     if (!user) {
       setSuppliers([])
@@ -71,67 +76,89 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
     return () => unsub()
   }, [user])
 
-  const addSupplier = useCallback(async (data: Omit<Supplier, 'id' | 'createdAt'>) => {
-    try {
-      const types = normalizeSupplierTypesForSave(data.supplierTypes)
-      const ref = await addDoc(collection(db, 'suppliers'), {
-        name: data.name,
-        phone: data.phone,
-        email: data.email,
-        ...(types.length ? { supplierTypes: types } : {}),
-        createdAt: serverTimestamp(),
-      })
-      const optimistic: Supplier = {
-        id: ref.id,
-        name: data.name,
-        phone: data.phone,
-        email: data.email,
-        ...(types.length ? { supplierTypes: types } : {}),
-        createdAt: new Date().toISOString(),
+  const addSupplier = useCallback(
+    async (data: Omit<Supplier, 'id' | 'createdAt'>) => {
+      if (!user) {
+        toastFsError('יש להתחבר להוספת ספק', new Error('no user'), 'addSupplier')
+        return null
       }
-      setSuppliers((prev) => {
-        if (prev.some((s) => s.id === optimistic.id)) return prev
-        return [...prev, optimistic]
-      })
-      toastFsSuccess('הספק נוסף')
-      return ref.id
-    } catch (e) {
-      toastFsError('שגיאה בשמירת ספק', e, 'addSupplier')
-      return null
-    }
-  }, [])
-
-  const updateSupplier = useCallback(async (id: string, data: Partial<Supplier>) => {
-    try {
-      const patch: Record<string, unknown> = {}
-      if (data.name !== undefined) patch.name = data.name
-      if (data.phone !== undefined) patch.phone = data.phone
-      if (data.email !== undefined) patch.email = data.email
-      if (data.supplierTypes !== undefined) {
+      try {
         const types = normalizeSupplierTypesForSave(data.supplierTypes)
-        patch.supplierTypes = types.length ? types : deleteField()
-        patch.supplierType = deleteField()
+        const uname = displayName()
+        const ref = await addDoc(collection(db, 'suppliers'), {
+          name: data.name,
+          phone: data.phone,
+          email: data.email,
+          ...(types.length ? { supplierTypes: types } : {}),
+          createdAt: serverTimestamp(),
+          createdByUserId: user.uid,
+          createdByUserName: uname,
+          lastActorUserId: user.uid,
+          lastActorUserName: uname,
+        })
+        const optimistic: Supplier = {
+          id: ref.id,
+          name: data.name,
+          phone: data.phone,
+          email: data.email,
+          ...(types.length ? { supplierTypes: types } : {}),
+          createdAt: new Date().toISOString(),
+        }
+        setSuppliers((prev) => {
+          if (prev.some((s) => s.id === optimistic.id)) return prev
+          return [...prev, optimistic]
+        })
+        toastFsSuccess('הספק נוסף')
+        return ref.id
+      } catch (e) {
+        toastFsError('שגיאה בשמירת ספק', e, 'addSupplier')
+        return null
       }
-      await updateDoc(doc(db, 'suppliers', id), patch)
-      setSuppliers((prev) =>
-        prev.map((s) => {
-          if (s.id !== id) return s
-          const next: Supplier = { ...s }
-          if (data.name !== undefined) next.name = data.name
-          if (data.phone !== undefined) next.phone = data.phone
-          if (data.email !== undefined) next.email = data.email
-          if (data.supplierTypes !== undefined) {
-            const types = normalizeSupplierTypesForSave(data.supplierTypes)
-            next.supplierTypes = types.length ? types : undefined
-          }
-          return next
-        }),
-      )
-      toastFsSuccess('הספק עודכן')
-    } catch (e) {
-      toastFsError('שגיאה בעדכון ספק', e, 'updateSupplier')
-    }
-  }, [])
+    },
+    [user, displayName],
+  )
+
+  const updateSupplier = useCallback(
+    async (id: string, data: Partial<Supplier>) => {
+      if (!user) {
+        toastFsError('יש להתחבר לעדכון ספק', new Error('no user'), 'updateSupplier')
+        return
+      }
+      try {
+        const patch: Record<string, unknown> = {}
+        if (data.name !== undefined) patch.name = data.name
+        if (data.phone !== undefined) patch.phone = data.phone
+        if (data.email !== undefined) patch.email = data.email
+        if (data.supplierTypes !== undefined) {
+          const types = normalizeSupplierTypesForSave(data.supplierTypes)
+          patch.supplierTypes = types.length ? types : deleteField()
+          patch.supplierType = deleteField()
+        }
+        const uname = displayName()
+        patch.lastActorUserId = user.uid
+        patch.lastActorUserName = uname
+        await updateDoc(doc(db, 'suppliers', id), patch)
+        setSuppliers((prev) =>
+          prev.map((s) => {
+            if (s.id !== id) return s
+            const next: Supplier = { ...s }
+            if (data.name !== undefined) next.name = data.name
+            if (data.phone !== undefined) next.phone = data.phone
+            if (data.email !== undefined) next.email = data.email
+            if (data.supplierTypes !== undefined) {
+              const types = normalizeSupplierTypesForSave(data.supplierTypes)
+              next.supplierTypes = types.length ? types : undefined
+            }
+            return next
+          }),
+        )
+        toastFsSuccess('הספק עודכן')
+      } catch (e) {
+        toastFsError('שגיאה בעדכון ספק', e, 'updateSupplier')
+      }
+    },
+    [user, displayName],
+  )
 
   const deleteSupplier = useCallback(async (id: string) => {
     try {

@@ -65,6 +65,11 @@ export function CollectionTrackingProvider({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
+  const displayName = useCallback(() => {
+    if (!user) return 'משתמש'
+    return user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
+  }, [user])
+
   useEffect(() => {
     if (!user) {
       setEntries([])
@@ -113,6 +118,12 @@ export function CollectionTrackingProvider({
           ...notePatch,
           updatedAt: serverTimestamp(),
           ...(snap.exists() ? {} : { createdAt: serverTimestamp() }),
+          ...(user
+            ? {
+                lastActorUserId: user.uid,
+                lastActorUserName: displayName(),
+              }
+            : {}),
         },
         { merge: true },
       )
@@ -120,7 +131,7 @@ export function CollectionTrackingProvider({
     } catch (e) {
       toastFsError('שגיאה בשמירת מעקב גבייה', e, 'upsertTracking')
     }
-  }, [])
+  }, [user, displayName])
 
   const removeFromTracking = useCallback(async (clientId: string) => {
     try {
@@ -171,6 +182,12 @@ export function CollectionTrackingProvider({
           lastRequestDate: todayYmd(),
           lastDemandRecordedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          ...(user
+            ? {
+                lastActorUserId: user.uid,
+                lastActorUserName: displayName(),
+              }
+            : {}),
         })
         toastFsSuccess('פעולת הדרישה נרשמה במעקב')
         return true
@@ -179,7 +196,7 @@ export function CollectionTrackingProvider({
         return false
       }
     },
-    [],
+    [user, displayName],
   )
 
   const value = useMemo(

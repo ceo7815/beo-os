@@ -14,6 +14,7 @@ import { toastFsSuccess } from '../lib/fsToast'
 import { ClientQuickSelect } from './ClientQuickSelect'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
+import { SUPPLIER_NAME_MISSING } from '../lib/supplierDisplay'
 import { useSuppliers } from '../hooks/useSuppliers'
 import { useTasks } from '../hooks/useTasks'
 import { useUsers } from '../hooks/useUsers'
@@ -122,8 +123,12 @@ export function TaskDrawer() {
         teamMembers.find((m) => m.id === id)?.name ?? id,
       projectNameById: (id: string) =>
         projects.find((p) => p.id === id)?.name ?? id,
-      supplierNameById: (id: string) =>
-        suppliers.find((s) => s.id === id)?.name ?? id,
+      supplierNameById: (id: string) => {
+        const t = id.trim()
+        if (!t) return id
+        const s = suppliers.find((x) => x.id.trim() === t)
+        return s?.name ?? SUPPLIER_NAME_MISSING
+      },
       clientNameById: (id: string) =>
         clients.find((c) => c.id === id)?.name ?? id,
     }),

@@ -5,6 +5,7 @@ import { useInvoices } from '../hooks/useInvoices'
 import { useUsers } from '../hooks/useUsers'
 import { useHubStore } from '../store/useStore'
 import type { TeamMember } from '../types'
+import { HubRealtimeBubbleHost } from './HubRealtimeBubbleHost'
 import { ToastHost } from './shared/Toast'
 import { QuickActionsFloat } from './QuickActionsFloat'
 import { QuickTasksSlider } from './QuickTasksSlider'
@@ -356,6 +357,7 @@ export function Layout() {
         </main>
       </div>
       <ToastHost />
+      <HubRealtimeBubbleHost />
     </>
   )
 }

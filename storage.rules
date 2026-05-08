@@ -1,12 +1,21 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    /**
+     * הצעות מחיר לפי ליד — העלאת PDF בלבד.
+     * write (לא רק create): חבילת ה-Web SDK עלולה להשתמש בהעלאה מדורגת שדורשת עדכון.
+     */
     match /leads/{leadId}/quotes/{fileName} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && request.resource.size < 12 * 1024 * 1024
-        && request.resource.contentType == 'application/pdf';
-      allow update, delete: if false;
+
+      /**
+       * ללא בדיקת contentType — בדפדפנים שונים המטא־דאטה עלולה להיות pdf / octet-stream / ריק,
+       * ואז כלל קפדני דוחה את הבקשה עם storage/unauthorized.
+       * הגבלה: סיומת pdf + גודל + משתמש מחובר בלבד.
+       */
+      allow write: if request.auth != null
+        && fileName.matches('.*\\.pdf$')
+        && request.resource.size < 15 * 1024 * 1024;
     }
   }
 }
