@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useInvoices } from '../hooks/useInvoices'
@@ -6,9 +6,9 @@ import { useUsers } from '../hooks/useUsers'
 import { useHubStore } from '../store/useStore'
 import type { TeamMember } from '../types'
 import { ToastHost } from './shared/Toast'
+import { QuickActionsFloat } from './QuickActionsFloat'
 import { QuickTasksSlider } from './QuickTasksSlider'
 import { TaskDrawer } from './TaskDrawer'
-import { UserManagementSlider } from './UserManagementSlider'
 
 const workspaceLinks = [
   { label: 'Drive', href: 'https://drive.google.com', dot: '#FCD34D' },
@@ -21,13 +21,33 @@ const workspaceLinks = [
 const navBase =
   'flex items-center gap-2.5 rounded-none px-5 py-3 text-base transition'
 
+const navIconClass =
+  'h-[17px] w-[17px] shrink-0 text-current opacity-90 [&>svg]:h-full [&>svg]:w-full'
+
+/** אייקוני קו דקים — ללא אימוג'י, מתאימים ל־RTL */
+function NavGlyph({ children }: { children: ReactNode }) {
+  return (
+    <span className={navIconClass} aria-hidden>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.65}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {children}
+      </svg>
+    </span>
+  )
+}
+
 export function Layout() {
   const setSelectedClient = useHubStore((s) => s.setSelectedClient)
   const { users: teamMembers } = useUsers()
   const { invoices } = useInvoices()
   const overdueInvoiceCount = invoices.filter((i) => i.status === 'overdue').length
   const { user, signOutUser } = useAuth()
-  const [userPanelOpen, setUserPanelOpen] = useState(false)
 
   const mainUser: TeamMember = useMemo(() => {
     if (!user) {
@@ -59,9 +79,9 @@ export function Layout() {
     <>
       <div
         dir="rtl"
-        className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-screen md:flex-row"
+        className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-[100dvh] md:flex-row md:overflow-hidden"
       >
-        <aside className="flex w-full shrink-0 flex-col border-b border-[rgba(255,255,255,0.1)] bg-[var(--bg-sidebar)] md:h-full md:w-[200px] md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.1)]">
+        <aside className="flex w-full shrink-0 flex-col border-b border-[rgba(255,255,255,0.1)] bg-[var(--bg-sidebar)] md:h-full md:w-[200px] md:overflow-y-auto md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.1)]">
           <div className="flex flex-1 flex-col gap-6 p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--orange)] text-xl font-bold text-white">
@@ -89,10 +109,12 @@ export function Layout() {
                   }`
                 }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
+                <NavGlyph>
+                  <rect x="3" y="3" width="7" height="7" rx="1.2" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.2" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.2" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.2" />
+                </NavGlyph>
                 דשבורד
               </NavLink>
               <NavLink
@@ -106,11 +128,42 @@ export function Layout() {
                   }`
                 }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
+                <NavGlyph>
+                  <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </NavGlyph>
                 פרויקטים
+              </NavLink>
+              <NavLink
+                to="/campaigns"
+                className={({ isActive }) =>
+                  `${navBase} ${
+                    isActive
+                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
+                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                  }`
+                }
+              >
+                <NavGlyph>
+                  <path d="M4 19V5M4 19h16M8 19v-6m4 6V8m4 11v-9m4 9v-4" />
+                </NavGlyph>
+                קמפיינים
+              </NavLink>
+              <NavLink
+                to="/leads"
+                className={({ isActive }) =>
+                  `${navBase} ${
+                    isActive
+                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
+                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                  }`
+                }
+              >
+                <NavGlyph>
+                  <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M19 8v6M22 11h-6" />
+                </NavGlyph>
+                לידים
               </NavLink>
               <NavLink
                 to="/clients"
@@ -122,10 +175,9 @@ export function Layout() {
                   }`
                 }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
+                <NavGlyph>
+                  <path d="M3 21h18M6 21V10l6-3 6 3v11M9 10v11M9 7l3-1.5L15 7" />
+                </NavGlyph>
                 לקוחות
               </NavLink>
               <NavLink
@@ -138,12 +190,12 @@ export function Layout() {
                   }`
                 }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
+                <NavGlyph>
+                  <path d="M9 12h6m-6 4h4m8 2V7l-5-5H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2z" />
+                  <path d="M14 3v4a2 2 0 002 2h4" />
+                </NavGlyph>
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span>גבייה 💰</span>
+                  <span>גבייה</span>
                   {overdueInvoiceCount > 0 ? (
                     <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#EF4444] px-1.5 text-[10px] font-bold text-white">
                       {overdueInvoiceCount > 99 ? '99+' : overdueInvoiceCount}
@@ -161,10 +213,9 @@ export function Layout() {
                   }`
                 }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
+                <NavGlyph>
+                  <path d="M1 4h15v11H1zM16 9h3l4 4v6h-7V9zM5 19a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM17 19a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" />
+                </NavGlyph>
                 ספקים
               </NavLink>
               <NavLink
@@ -177,11 +228,12 @@ export function Layout() {
                   }`
                 }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
-                מאגר אחסון
+                <NavGlyph>
+                  <rect x="3" y="4" width="18" height="6" rx="1.2" />
+                  <rect x="3" y="14" width="18" height="6" rx="1.2" />
+                  <path d="M7 7h.01M7 17h.01M11 7h6M11 17h6" />
+                </NavGlyph>
+                אחסון ודומיינים
               </NavLink>
               <NavLink
                 to="/tasks"
@@ -193,26 +245,48 @@ export function Layout() {
                   }`
                 }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
-                משימות ✓
+                <NavGlyph>
+                  <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+                  <path d="M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12l2 2 4-4" />
+                </NavGlyph>
+                משימות
+              </NavLink>
+              <NavLink
+                to="/attendance"
+                className={({ isActive }) =>
+                  `${navBase} ${
+                    isActive
+                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
+                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                  }`
+                }
+              >
+                <NavGlyph>
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v6l4 2" />
+                </NavGlyph>
+                נוכחות
               </NavLink>
 
               <div className="my-2 border-t border-[rgba(255,255,255,0.1)]" />
 
-              <button
-                type="button"
-                onClick={() => setUserPanelOpen(true)}
-                className={`${navBase} w-full border-r-[3px] border-transparent text-right text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white`}
+              <NavLink
+                to="/users"
+                className={({ isActive }) =>
+                  `${navBase} ${
+                    isActive
+                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
+                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                  }`
+                }
               >
-                <span
-                  className="h-4 w-4 shrink-0 rounded bg-white/15"
-                  aria-hidden
-                />
+                <NavGlyph>
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                </NavGlyph>
                 משתמשים
-              </button>
+              </NavLink>
             </nav>
 
             <div className="mt-auto space-y-2 border-t border-[rgba(255,255,255,0.1)] pt-4">
@@ -256,8 +330,8 @@ export function Layout() {
                   {mainUser.name}
                 </div>
                 <div className="truncate text-[11px] text-[rgba(255,255,255,0.4)]">
-                  {mainUser.role === 'superadmin'
-                    ? 'מנהל על'
+                  {mainUser.role === 'admin' || mainUser.role === 'superadmin'
+                    ? 'מנהל מערכת'
                     : mainUser.role === 'employee'
                       ? 'עובד'
                       : mainUser.role || mainUser.email || ''}
@@ -274,17 +348,14 @@ export function Layout() {
           </div>
         </aside>
 
-        <main className="relative min-h-0 flex-1 overflow-auto">
+        <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <QuickActionsFloat />
           <QuickTasksSlider />
           <TaskDrawer />
           <Outlet />
         </main>
       </div>
       <ToastHost />
-      <UserManagementSlider
-        isOpen={userPanelOpen}
-        onClose={() => setUserPanelOpen(false)}
-      />
     </>
   )
 }

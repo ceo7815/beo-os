@@ -414,6 +414,31 @@ export function TasksProvider({ children }: { children: ReactNode }) {
           action: entry.action,
           createdAt: serverTimestamp(),
         })
+        setRawTasks((prev) => {
+          if (prev.some((t) => t.id === ref.id)) return prev
+          const optimisticTask: Task = {
+            id: ref.id,
+            title: payload.title,
+            description: payload.description,
+            status: payload.status as TaskStatus,
+            priority: payload.priority as Task['priority'],
+            assigneeId: payload.assigneeId,
+            clientId: (payload.clientId as string | null) ?? undefined,
+            projectId: (payload.projectId as string | null) ?? undefined,
+            supplierId: (payload.supplierId as string | null) ?? undefined,
+            dueDate: payload.dueDate,
+            reminderDate: (payload.reminderDate as string | null) ?? undefined,
+            tags: payload.tags as string[],
+            reminders: payload.reminders as Task['reminders'],
+            createdAt: new Date().toISOString(),
+            createdBy: uid,
+            sharedWithUserIds: payload.sharedWithUserIds as string[],
+            teamWideShared: false,
+            activity: [],
+            manualNotes: [],
+          }
+          return [...prev, optimisticTask]
+        })
         toastFsSuccess('המשימה נוספה')
         return ref.id
       } catch (e) {
@@ -523,6 +548,38 @@ export function TasksProvider({ children }: { children: ReactNode }) {
           })
         }
         await batch.commit()
+        setRawTasks((prevList) =>
+          prevList.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  ...patch,
+                  tags: patch.tags ?? t.tags,
+                  reminders: patch.reminders ?? t.reminders,
+                  sharedWithUserIds:
+                    patch.sharedWithUserIds !== undefined
+                      ? patch.sharedWithUserIds
+                      : t.sharedWithUserIds,
+                  teamWideShared:
+                    patch.sharedWithUserIds !== undefined
+                      ? false
+                      : t.teamWideShared,
+                  clientId:
+                    patch.clientId !== undefined
+                      ? patch.clientId || undefined
+                      : t.clientId,
+                  projectId:
+                    patch.projectId !== undefined
+                      ? patch.projectId || undefined
+                      : t.projectId,
+                  supplierId:
+                    patch.supplierId !== undefined
+                      ? patch.supplierId || undefined
+                      : t.supplierId,
+                }
+              : t,
+          ),
+        )
         toastFsSuccess('המשימה עודכנה')
       } catch (e) {
         toastFsError('שגיאה בעדכון המשימה', e, 'updateTask')
@@ -536,6 +593,17 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       await deleteActivitySubcollection(id)
       await deleteTaskNotesSubcollection(id)
       await deleteDoc(doc(db, 'tasks', id))
+      setRawTasks((prev) => prev.filter((t) => t.id !== id))
+      setActivityByTaskId((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      setNotesByTaskId((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
       toastFsSuccess('המשימה נמחקה')
     } catch (e) {
       toastFsError('שגיאה במחיקת המשימה', e, 'deleteTask')

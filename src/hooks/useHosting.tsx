@@ -12,7 +12,7 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDocsFromServer,
+  onSnapshot,
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
@@ -72,33 +72,22 @@ export function HostingProvider({ children }: { children: ReactNode }) {
       return
     }
     setLoading(true)
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const snap = await getDocsFromServer(collection(db, 'hostingRecords'))
-        if (cancelled) return
+    const unsub = onSnapshot(
+      collection(db, 'hostingRecords'),
+      (snap) => {
         setRecords(snap.docs.map((d) => docToHostingRecord(d)))
         setLoading(false)
         setError(null)
-      } catch (err) {
-        if (cancelled) return
+      },
+      (err) => {
         console.error('hostingRecords snapshot', err)
         toastFsError('שגיאה בטעינת מאגר אחסון', err, 'hostingRecords snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      }
-    }
+      },
+    )
 
-    void load()
-    const timer = window.setInterval(() => {
-      void load()
-    }, 15000)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
+    return () => unsub()
   }, [user])
 
   const addRecord = useCallback(

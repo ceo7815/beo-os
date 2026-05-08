@@ -13,6 +13,7 @@ import {
   deleteDoc,
   doc,
   getDocsFromServer,
+  onSnapshot,
   query,
   serverTimestamp,
   updateDoc,
@@ -44,46 +45,42 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLoading(true)
-    let cancelled = false
     const q = query(collection(db, 'clients'))
-
-    const load = async () => {
-      try {
-        const snap = await getDocsFromServer(q)
-        if (cancelled) return
-        console.log('useClients snapshot:', snap.docs.length)
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
         setClients(snap.docs.map((d) => docToClient(d)))
         setLoading(false)
         setError(null)
-      } catch (err) {
-        if (cancelled) return
+      },
+      (err) => {
         console.error('clients snapshot', err)
         toastFsError('שגיאה בטעינת לקוחות', err, 'clients snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      }
-    }
-
-    void load()
-    const timer = window.setInterval(() => {
-      void load()
-    }, 15000)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
+      },
+    )
+    return () => unsub()
   }, [])
 
   const addClient = useCallback(async (data: Omit<Client, 'id' | 'createdAt'>) => {
     try {
-      await addDoc(
+      const ref = await addDoc(
         collection(db, 'clients'),
         stripUndefined({
           ...data,
           createdAt: serverTimestamp(),
         } as Record<string, unknown>),
       )
+      const optimistic: Client = {
+        id: ref.id,
+        ...data,
+        createdAt: new Date().toISOString(),
+      }
+      setClients((prev) => {
+        if (prev.some((c) => c.id === optimistic.id)) return prev
+        return [...prev, optimistic]
+      })
       toastFsSuccess('הלקוח נוסף בהצלחה')
     } catch (e) {
       toastFsError('שגיאה בשמירת הלקוח', e, 'addClient')
@@ -95,6 +92,16 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       await updateDoc(
         doc(db, 'clients', id),
         stripUndefined(data as Record<string, unknown>),
+      )
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                ...data,
+              }
+            : c,
+        ),
       )
       toastFsSuccess('פרטי הלקוח עודכנו')
     } catch (e) {
@@ -112,6 +119,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
         await deleteDoc(p.ref)
       }
       await deleteDoc(doc(db, 'clients', id))
+      setClients((prev) => prev.filter((c) => c.id !== id))
       const sel = useHubStore.getState().selectedClientId
       if (sel === id) useHubStore.getState().setSelectedClient(null)
       toastFsSuccess('הלקוח נמחק')

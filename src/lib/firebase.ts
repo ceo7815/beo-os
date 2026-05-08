@@ -1,9 +1,11 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
+import { getFunctions } from 'firebase/functions'
 import {
   initializeFirestore,
   memoryLocalCache,
 } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: 'AIzaSyAjMt8jq1b25AjXV6oRsK1uzlRpkjv-ADk',
@@ -16,6 +18,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
+export const functionsClient = getFunctions(app)
 
 /**
  * זיכרון בלבד — נמנע ממצבי IndexedDB ששוברים את ה־SDK ("INTERNAL ASSERTION FAILED").
@@ -24,6 +27,8 @@ export const auth = getAuth(app)
 export const db = initializeFirestore(app, {
   localCache: memoryLocalCache(),
 })
+
+export const storage = getStorage(app)
 
 /** מקום לריצה אסינכרונית אחרי התחברות — ללא enableNetwork (מסוכן במקביל). */
 export async function ensureFirestoreReady(): Promise<void> {

@@ -3,29 +3,6 @@ import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
-function GoogleMark() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-      <path
-        fill="#4285F4"
-        d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"
-      />
-      <path
-        fill="#34A853"
-        d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.348 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"
-      />
-      <path
-        fill="#EA4335"
-        d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"
-      />
-    </svg>
-  )
-}
-
 function authErrorMessage(code: string): string {
   switch (code) {
     case 'auth/invalid-email':
@@ -40,17 +17,22 @@ function authErrorMessage(code: string): string {
       return 'נסה שוב מאוחר יותר'
     case 'auth/invalid-credential':
       return 'אימייל או סיסמה שגויים'
-    case 'auth/popup-closed-by-user':
-      return 'חלון ההתחברות נסגר'
     default:
       return 'ההתחברות נכשלה. נסו שוב.'
   }
 }
 
+const charcoal = {
+  deep: '#141416',
+  panel: '#1C1C1F',
+  muted: '#2C2C30',
+  text: '#E8E8EA',
+  textSoft: 'rgba(232,232,234,0.72)',
+}
+
 export function Login() {
   const navigate = useNavigate()
-  const { user, loading, firebaseReady, signInWithGoogle, signInWithEmail } =
-    useAuth()
+  const { user, loading, firebaseReady, signInWithEmail } = useAuth()
 
   useEffect(() => {
     if (!loading && user) navigate('/', { replace: true })
@@ -97,30 +79,13 @@ export function Login() {
     }
   }
 
-  const onGoogle = async () => {
-    setError('')
-    setSubmitting(true)
-    try {
-      await signInWithGoogle()
-      navigate('/', { replace: true })
-    } catch (err: unknown) {
-      const code =
-        err && typeof err === 'object' && 'code' in err
-          ? String((err as { code: string }).code)
-          : ''
-      setError(authErrorMessage(code))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   if (!firebaseReady) {
     return (
       <div
         dir="rtl"
-        className="flex min-h-[100dvh] flex-col items-center justify-center bg-white p-8 text-center"
+        className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#F5F5F6] p-8 text-center"
       >
-        <p className="max-w-md text-base font-semibold text-[#1A2B5E]">
+        <p className="max-w-md text-base font-semibold text-[#1C1C1F]">
           חסרה הגדרת Firebase. צרו קובץ <code className="text-sm">.env</code> בשורש
           הפרויקט והעתיקו את המפתחות מקונסולת Firebase (ראו{' '}
           <code className="text-sm">.env.example</code>).
@@ -129,182 +94,188 @@ export function Login() {
     )
   }
 
+  const inputClass =
+    'w-full rounded-xl border border-[#2C2C30]/18 bg-white px-4 py-3.5 text-[15px] text-[#141416] shadow-[0_1px_2px_rgba(0,0,0,0.04)] outline-none transition placeholder:text-[#71717A] focus:border-[#EA580C] focus:ring-2 focus:ring-[#EA580C]/25'
+
   return (
     <div
       dir="rtl"
-      className="flex min-h-[100dvh] flex-col bg-white md:flex-row"
+      className="flex min-h-[100dvh] flex-col bg-[#FAFAFA] md:flex-row"
     >
       <style>{`
-        @keyframes login-form-in {
-          from { opacity: 0; transform: translateY(18px); }
+        @keyframes login-in {
+          from { opacity: 0; transform: translateY(14px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .login-form-animate {
-          animation: login-form-in 0.55s ease-out both;
-        }
+        .login-animate { animation: login-in 0.5s ease-out both; }
       `}</style>
 
-      <div className="login-form-animate flex w-full flex-col justify-center px-8 py-12 md:w-[40%] md:px-12 md:py-[60px]">
-        <h1 className="text-[26px] font-extrabold text-[#0F172A]">
-          שלום, ברוך הבא 👋
-        </h1>
-        <p className="mt-1 text-sm text-[#64748B]">התחבר כדי להמשיך</p>
-        <p className="mb-9 mt-3 max-w-md text-xs leading-relaxed text-[#94A3B8]">
-          כל דפדפן (וכן חלון גלישה פרטית) שומר התחברות בנפרד. כדי לראות את אותם
-          נתונים מ־localhost או ממחשב אחר — התחברו כאן באותו חשבון Google או אימייל.
-        </p>
+      {/* טופס — ב־RTL בעמודה ראשונה מופיע מימין */}
+      <div className="login-animate order-2 flex w-full flex-col justify-center px-6 py-10 sm:px-10 md:order-2 md:w-[46%] md:px-14 md:py-16 lg:w-[44%]">
+        <div className="mx-auto w-full max-w-[400px]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#EA580C]">
+            HUB-POS
+          </p>
+          <h1 className="mt-2 text-[28px] font-extrabold leading-tight tracking-tight text-[#141416] md:text-[30px]">
+            שלום, ברוך הבא
+          </h1>
+          <p className="mt-2 text-[15px] text-[#52525B]">התחבר עם האימייל והסיסמה שלך</p>
+          <p className="mb-8 mt-4 text-[13px] leading-relaxed text-[#71717A]">
+            ההתחברות נשמרת לפי דפדפן. להמשך עבודה מאותו מחשב — השתמשו באותו חשבון
+            ארגוני.
+          </p>
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-5">
-          <div>
-            <label
-              htmlFor="login-email"
-              className="mb-1.5 block text-xs font-semibold text-[#374151]"
-            >
-              כתובת אימייל
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@company.com"
-              dir="ltr"
-              className="text-right"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value)
-                if (error) setError('')
-              }}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="login-password"
-              className="mb-1.5 block text-xs font-semibold text-[#374151]"
-            >
-              סיסמה
-            </label>
-            <div className="relative">
+          <form onSubmit={onSubmit} className="flex flex-col gap-5">
+            <div>
+              <label
+                htmlFor="login-email"
+                className="mb-2 block text-[13px] font-semibold text-[#3F3F46]"
+              >
+                כתובת אימייל
+              </label>
               <input
-                id="login-password"
-                type={showPass ? 'text' : 'password'}
-                autoComplete="current-password"
-                placeholder="••••••••"
+                id="login-email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@company.com"
                 dir="ltr"
-                className="pl-10 text-right"
-                value={password}
+                className={`${inputClass} text-left`}
+                value={email}
                 onChange={(e) => {
-                  setPassword(e.target.value)
+                  setEmail(e.target.value)
                   if (error) setError('')
                 }}
               />
-              <button
-                type="button"
-                aria-label={showPass ? 'הסתר סיסמה' : 'הצג סיסמה'}
-                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-base text-[#64748B] transition hover:bg-[#F1F5F9] hover:text-[#0F172A]"
-                onClick={() => setShowPass((v) => !v)}
-              >
-                👁
-              </button>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#374151]">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 cursor-pointer rounded border-[#E2E8F0] accent-[#1A2B5E]"
-              />
-              זכור אותי
-            </label>
-            <a
-              href="#"
-              className="text-sm font-semibold text-[#2563EB] hover:underline"
-              onClick={(e) => e.preventDefault()}
+            <div>
+              <label
+                htmlFor="login-password"
+                className="mb-2 block text-[13px] font-semibold text-[#3F3F46]"
+              >
+                סיסמה
+              </label>
+              <div className="relative">
+                <input
+                  id="login-password"
+                  type={showPass ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  dir="ltr"
+                  className={`${inputClass} pl-12 text-left`}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    if (error) setError('')
+                  }}
+                />
+                <button
+                  type="button"
+                  aria-label={showPass ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1.5 text-[13px] text-[#71717A] transition hover:bg-[#F4F4F5] hover:text-[#141416]"
+                  onClick={() => setShowPass((v) => !v)}
+                >
+                  {showPass ? 'הסתר' : 'הצג'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="flex cursor-pointer items-center gap-2.5 text-[14px] text-[#3F3F46]">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer rounded border-[#D4D4D8] text-[#EA580C] accent-[#EA580C]"
+                />
+                זכור אותי
+              </label>
+              <a
+                href="#"
+                className="text-[14px] font-semibold text-[#EA580C] transition hover:text-[#C2410C]"
+                onClick={(e) => e.preventDefault()}
+              >
+                שכחתי סיסמה
+              </a>
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting || loading}
+              className="mt-1 w-full rounded-xl bg-[#EA580C] py-3.5 text-[16px] font-bold text-white shadow-[0_4px_14px_rgba(234,88,12,0.35)] transition hover:bg-[#C2410C] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              שכחתי סיסמה
-            </a>
-          </div>
+              {submitting || loading ? 'מתחבר...' : 'התחבר'}
+            </button>
 
-          <button
-            type="submit"
-            disabled={submitting || loading}
-            className="mt-1 w-full rounded-xl bg-[#1A2B5E] py-3 text-[15px] font-bold text-white transition-colors duration-200 hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-80"
-          >
-            {submitting || loading ? 'מתחבר...' : 'התחבר'}
-          </button>
+            {error ? (
+              <p
+                role="alert"
+                className="rounded-lg bg-[#FEF2F2] px-3 py-2.5 text-center text-[13px] font-medium text-[#B91C1C]"
+              >
+                {error}
+              </p>
+            ) : null}
+          </form>
 
-          {error ? (
-            <p className="text-center text-sm font-medium text-[#EF4444]">
-              {error}
-            </p>
-          ) : null}
-
-          <div className="flex items-center gap-3 py-1">
-            <div className="h-px flex-1 bg-[#E2E8F0]" />
-            <span className="text-xs text-[#94A3B8]">או</span>
-            <div className="h-px flex-1 bg-[#E2E8F0]" />
-          </div>
-
-          <button
-            type="button"
-            disabled={submitting || loading}
-            onClick={onGoogle}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border-[1.5px] border-[#E2E8F0] bg-white py-3 text-[15px] font-semibold text-[#374151] transition-colors duration-200 hover:border-[#2563EB] hover:bg-[#F8FAFF] disabled:opacity-80"
-          >
-            <GoogleMark />
-            Continue with Google
-          </button>
-        </form>
-
-        <p className="mt-8 text-center text-[11px] text-[#94A3B8]">
-          © 2026 האב מערכות מתקדמות — כל הזכויות שמורות
-        </p>
+          <p className="mt-10 text-center text-[11px] text-[#A1A1AA]">
+            © {new Date().getFullYear()} האב מערכות מתקדמות — כל הזכויות שמורות
+          </p>
+        </div>
       </div>
 
+      {/* פאנל מיתוג */}
       <div
-        className="relative hidden min-h-[220px] flex-col justify-between px-10 py-12 text-white md:flex md:w-[60%] md:px-14 md:py-16"
+        className="relative order-1 flex min-h-[280px] w-full flex-col justify-between px-8 py-10 text-white md:order-1 md:min-h-0 md:w-[54%] md:px-12 md:py-14 lg:w-[56%]"
         style={{
-          background:
-            'linear-gradient(135deg, #1A2B5E 0%, #0F1A3E 60%, #1e3a8a 100%)',
+          background: `linear-gradient(165deg, ${charcoal.panel} 0%, ${charcoal.deep} 45%, ${charcoal.muted} 100%)`,
         }}
       >
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-[#F97316] text-3xl font-bold text-white">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage: `radial-gradient(circle at 20% 20%, #EA580C 0%, transparent 45%),
+              radial-gradient(circle at 80% 80%, #fff 0%, transparent 40%)`,
+          }}
+        />
+
+        <div className="relative flex flex-1 flex-col items-center justify-center text-center md:py-6">
+          <div className="mb-7 flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-[#EA580C] text-[32px] font-black tracking-tight text-white shadow-[0_12px_40px_rgba(234,88,12,0.35)]">
             H
           </div>
-          <h2 className="font-bold leading-tight text-white" style={{ fontSize: 42 }}>
+          <h2 className="text-[40px] font-extrabold leading-none tracking-tight md:text-[44px]">
             האב
           </h2>
-          <p className="mt-2 text-base text-[rgba(255,255,255,0.6)]">
+          <p className="mt-3 text-[15px] font-medium" style={{ color: charcoal.textSoft }}>
             מערכות מתקדמות
           </p>
           <div
-            className="mx-auto my-6 rounded-full bg-[#F97316]"
-            style={{ width: 60, height: 3 }}
+            className="mx-auto my-7 h-1 w-14 rounded-full bg-[#EA580C]"
+            aria-hidden
           />
           <p
-            className="max-w-md px-2 text-[15px] leading-relaxed text-[rgba(255,255,255,0.7)]"
+            className="max-w-[420px] px-2 text-[16px] font-medium leading-relaxed md:text-[17px]"
+            style={{ color: charcoal.text }}
           >
-            פלטפורמת ניהול חכמה לסוכנויות דיגיטל
+            פלטפורמת ניהול מקצועית לסוכנויות דיגיטל ופיתוח
           </p>
         </div>
 
-        <ul className="flex flex-col gap-3 text-[13px] text-[rgba(255,255,255,0.7)]">
-          <li className="flex items-start gap-3">
-            <span className="shrink-0 font-bold text-[#F97316]">✓</span>
-            <span>ניהול פרויקטים ומשימות בזמן אמת</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="shrink-0 font-bold text-[#F97316]">✓</span>
-            <span>מחלקת אחסון ולקוחות במקום אחד</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="shrink-0 font-bold text-[#F97316]">✓</span>
-            <span>שיתוף עם כל כלי Google Workspace</span>
-          </li>
+        <ul className="relative mt-6 flex flex-col gap-4 pb-2 text-[14px] md:mt-0 md:max-w-md md:self-end md:pb-0">
+          {[
+            'ניהול פרויקטים ומשימות בזמן אמת',
+            'לקוחות, גבייה ומאגר אחסון — במקום אחד',
+            'בקרה ושקיפות לצוות מרחוק',
+          ].map((line) => (
+            <li key={line} className="flex items-start gap-3 text-start">
+              <span
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#EA580C]/20 text-[12px] font-bold text-[#FB923C]"
+                aria-hidden
+              >
+                ✓
+              </span>
+              <span style={{ color: charcoal.textSoft }}>{line}</span>
+            </li>
+          ))}
         </ul>
       </div>
     </div>

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { Modal } from '../components/shared/Modal'
@@ -33,6 +33,7 @@ const emptyForm: ClientFormState = {
 
 export function Clients() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { clients, addClient, updateClient, deleteClient } = useClients()
   const { projects } = useProjects()
   const setSelectedClient = useHubStore((s) => s.setSelectedClient)
@@ -57,6 +58,16 @@ export function Clients() {
     setErrors({})
     setModalOpen(true)
   }
+
+  useEffect(() => {
+    const st = location.state as { openAdd?: boolean } | undefined
+    if (!st?.openAdd) return
+    setEditingId(null)
+    setForm(emptyForm)
+    setErrors({})
+    setModalOpen(true)
+    navigate('.', { replace: true, state: null })
+  }, [location.state, navigate])
 
   const openEdit = (c: Client) => {
     setEditingId(c.id)
@@ -131,86 +142,105 @@ export function Clients() {
         className="max-w-md"
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {filtered.map((c) => {
-          const initial = c.name.trim().charAt(0) || '?'
-          const statusLabel = c.status === 'active' ? 'פעיל' : 'לא פעיל'
-          const statusColor = c.status === 'active' ? '#16A34A' : '#64748B'
-          const count = projectCount(c.id)
-          return (
-            <article
-              key={c.id}
-              className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition hover:border-[var(--blue-mid)] hover:shadow-[0_4px_20px_rgba(37,99,235,0.12)]"
-            >
-              <div className="flex gap-4">
-                <div
-                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--blue-light)] text-2xl font-extrabold text-[var(--blue-mid)]"
-                >
-                  {initial}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-bold text-[var(--text-dark)]">
+      <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <div>
+          <table className="w-full table-fixed text-sm">
+            <thead className="bg-[#F8FAFC]">
+              <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
+                <th className="px-3 py-3">חברה</th>
+                <th className="px-3 py-3">איש קשר</th>
+                <th className="px-3 py-3">טלפון</th>
+                <th className="px-3 py-3">אימייל</th>
+                <th className="px-3 py-3">מחלקה</th>
+                <th className="px-3 py-3">סטטוס</th>
+                <th className="px-3 py-3">תאריך כניסה</th>
+                <th className="px-3 py-3">פרויקטים</th>
+                <th className="px-3 py-3">פעולות</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => {
+                const statusLabel = c.status === 'active' ? 'פעיל' : 'לא פעיל'
+                const statusColor = c.status === 'active' ? '#16A34A' : '#64748B'
+                const count = projectCount(c.id)
+                return (
+                  <tr key={c.id} className="border-t border-[var(--border)] align-top">
+                    <td className="px-3 py-3 font-semibold text-[var(--text-dark)] break-words">
                       {c.name}
-                    </h2>
-                    <Badge label={statusLabel} color={statusColor} />
-                  </div>
-                  <p className="mt-1 text-sm text-[var(--text-mid)]">{c.contact}</p>
-                  {c.department ? (
-                    <p className="mt-0.5 text-[11px] font-semibold text-[var(--blue-mid)]">
-                      מחלקה: {c.department}
-                    </p>
-                  ) : null}
-                  <div className="mt-2 flex flex-wrap gap-3 text-sm">
-                    <a
-                      className="font-medium text-[var(--blue-mid)] hover:underline"
-                      href={`tel:${c.phone.replace(/\s/g, '')}`}
-                    >
-                      {c.phone}
-                    </a>
-                    <a
-                      className="font-medium text-[var(--blue-mid)] hover:underline"
-                      href={`mailto:${c.email}`}
-                    >
-                      {c.email}
-                    </a>
-                  </div>
-                  <p className="mt-1 text-[11px] text-[var(--text-light)]">
-                    נוצר: {formatDateIL(c.createdAt)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedClient(c.id)
-                    navigate('/projects')
-                  }}
-                  className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-1.5 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE]"
-                >
-                  {count} פרויקטים
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEdit(c)}
-                  className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-1.5 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE]"
-                >
-                  עריכה
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleteId(c.id)}
-                  className="hub-btn-danger px-3 py-1.5 text-xs"
-                >
-                  מחיקה
-                </button>
-              </div>
-            </article>
-          )
-        })}
-      </div>
+                    </td>
+                    <td className="px-3 py-3 text-[var(--text-mid)] break-words">
+                      {c.contact || '—'}
+                    </td>
+                    <td className="px-3 py-3 text-[var(--text-mid)] break-all" dir="ltr">
+                      {c.phone ? (
+                        <a
+                          className="font-medium text-[var(--blue-mid)] hover:underline"
+                          href={`tel:${c.phone.replace(/\s/g, '')}`}
+                        >
+                          {c.phone}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-[var(--text-mid)] break-all" dir="ltr">
+                      {c.email ? (
+                        <a
+                          className="font-medium text-[var(--blue-mid)] hover:underline"
+                          href={`mailto:${c.email}`}
+                        >
+                          {c.email}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-[var(--text-mid)] break-words">
+                      {c.department || '—'}
+                    </td>
+                    <td className="px-3 py-3">
+                      <Badge label={statusLabel} color={statusColor} />
+                    </td>
+                    <td className="px-3 py-3 text-xs text-[var(--text-mid)]">
+                      {formatDateIL(c.createdAt)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedClient(c.id)
+                          navigate('/projects')
+                        }}
+                        className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-1.5 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE]"
+                      >
+                        {count} פרויקטים
+                      </button>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(c)}
+                          className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-1.5 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE]"
+                        >
+                          עריכה
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteId(c.id)}
+                          className="hub-btn-danger px-3 py-1.5 text-xs"
+                        >
+                          מחיקה
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {filtered.length === 0 ? (
         <p className="text-sm text-[var(--text-mid)]">לא נמצאו לקוחות</p>

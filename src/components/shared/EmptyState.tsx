@@ -8,15 +8,15 @@ export interface EmptyStateProps {
 
 export function EmptyState({ title, description, icon }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[14px] border border-dashed border-[var(--border)] bg-[var(--bg-card)] px-6 py-12 text-center shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-gradient-to-b from-white to-slate-50 px-6 py-12 text-center shadow-sm">
       {icon ? (
-        <div className="mb-3 text-[40px] leading-none text-[var(--text-light)]">
+        <div className="mb-3 text-[40px] leading-none text-slate-400">
           {icon}
         </div>
       ) : null}
-      <p className="text-base font-bold text-[var(--blue-dark)]">{title}</p>
+      <p className="text-base font-extrabold text-slate-800">{title}</p>
       {description ? (
-        <p className="mt-2 max-w-sm text-[13px] text-[var(--text-light)]">
+        <p className="mt-2 max-w-sm text-[13px] text-slate-500">
           {description}
         </p>
       ) : null}

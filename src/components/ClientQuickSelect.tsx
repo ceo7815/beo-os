@@ -6,13 +6,23 @@ type Props = {
   value: string
   onChange: (clientId: string) => void
   id?: string
+  /** לקוחות שיוצגו ברשימה אך לא ניתן לבחור (למשל כבר במעקב) */
+  disabledClientIds?: Set<string>
+  disabledClientHint?: string
 }
 
 function haystack(c: Client): string {
   return `${c.name} ${c.email} ${c.phone} ${c.contact} ${c.department ?? ''}`.toLowerCase()
 }
 
-export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
+export function ClientQuickSelect({
+  clients,
+  value,
+  onChange,
+  id,
+  disabledClientIds,
+  disabledClientHint = 'לא ניתן לבחור',
+}: Props) {
   const selected = useMemo(
     () => clients.find((c) => c.id === value),
     [clients, value],
@@ -31,8 +41,8 @@ export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
     const sorted = [...clients].sort((a, b) =>
       a.name.localeCompare(b.name, 'he'),
     )
-    if (!needle) return sorted.slice(0, 18)
-    return sorted.filter((c) => haystack(c).includes(needle)).slice(0, 40)
+    if (!needle) return sorted
+    return sorted.filter((c) => haystack(c).includes(needle))
   }, [clients, needle])
 
   useEffect(() => {
@@ -48,7 +58,10 @@ export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
 
+  const isPickDisabled = (c: Client) => Boolean(disabledClientIds?.has(c.id))
+
   const pick = (c: Client) => {
+    if (isPickDisabled(c)) return
     onChange(c.id)
     setDraft(c.name)
     setOpen(false)
@@ -82,7 +95,8 @@ export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
       setHi((i) => Math.max(i - 1, 0))
     } else if (e.key === 'Enter' && filtered[hi]) {
       e.preventDefault()
-      pick(filtered[hi]!)
+      const c = filtered[hi]!
+      if (!isPickDisabled(c)) pick(c)
     }
   }
 
@@ -118,43 +132,55 @@ export function ClientQuickSelect({ clients, value, onChange, id }: Props) {
         ) : null}
       </div>
       <p className="mt-1 text-[10px] text-[var(--text-light)]">
-        {filtered.length} תוצאות
-        {needle ? '' : ' · מוצגים לקוחות ראשונים לפי א״ב — הקלד לסינון'}
+        {needle
+          ? `${filtered.length} תוצאות`
+          : `${clients.length} לקוחות במערכת — הקלד לחיפוש ממוקד`}
       </p>
       {open && filtered.length > 0 ? (
         <ul
           id={id ? `${id}-listbox` : undefined}
           role="listbox"
-          className="absolute start-0 end-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
+          className="absolute start-0 end-0 top-full z-20 mt-1 max-h-[min(22rem,55vh)] overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
         >
-          {filtered.map((c, i) => (
-            <li key={c.id} role="presentation">
-              <button
-                type="button"
-                role="option"
-                aria-selected={i === hi}
-                className={`flex w-full flex-col gap-0.5 px-3 py-2 text-right text-sm transition ${
-                  i === hi
-                    ? 'bg-[var(--blue-light)] text-[var(--blue-dark)]'
-                    : 'text-[var(--text-dark)] hover:bg-[var(--bg-input)]'
-                }`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pick(c)}
-                onMouseEnter={() => setHi(i)}
-              >
-                <span className="font-semibold">{c.name}</span>
-                <span className="text-[11px] text-[var(--text-mid)]">
-                  {[
-                    c.department,
-                    c.email,
-                    c.phone,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ') || '—'}
-                </span>
-              </button>
-            </li>
-          ))}
+          {filtered.map((c, i) => {
+            const blocked = isPickDisabled(c)
+            return (
+              <li key={c.id} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === hi}
+                  disabled={blocked}
+                  className={`flex w-full flex-col gap-0.5 px-3 py-2 text-right text-sm transition ${
+                    blocked
+                      ? 'cursor-not-allowed opacity-55'
+                      : i === hi
+                        ? 'bg-[var(--blue-light)] text-[var(--blue-dark)]'
+                        : 'text-[var(--text-dark)] hover:bg-[var(--bg-input)]'
+                  }`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pick(c)}
+                  onMouseEnter={() => setHi(i)}
+                >
+                  <span className="font-semibold">{c.name}</span>
+                  <span className="text-[11px] text-[var(--text-mid)]">
+                    {[
+                      c.department,
+                      c.email,
+                      c.phone,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
+                  </span>
+                  {blocked ? (
+                    <span className="text-[10px] font-semibold text-[#B45309]">
+                      {disabledClientHint}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            )
+          })}
         </ul>
       ) : null}
       {open && needle && filtered.length === 0 ? (

@@ -79,15 +79,6 @@ export function QuickTasksSlider() {
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="המשימות שלי"
-        onClick={() => setQuickOpen(true)}
-        className="fixed bottom-24 left-4 z-[55] flex h-14 w-14 items-center justify-center rounded-full bg-[var(--blue-dark)] text-2xl font-bold text-white shadow-lg ring-4 ring-white/40 transition hover:brightness-110"
-      >
-        ✓
-      </button>
-
       {quickOpen ? (
         <>
           <button

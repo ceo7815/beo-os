@@ -7,14 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import {
-  GoogleAuthProvider,
-  type User,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut as firebaseSignOut,
-} from 'firebase/auth'
+import { type User, onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -131,7 +124,6 @@ export interface AuthContextValue {
   loading: boolean
   firebaseReady: boolean
   signInWithEmail: (email: string, password: string) => Promise<void>
-  signInWithGoogle: () => Promise<void>
   signOutUser: () => Promise<void>
 }
 
@@ -186,11 +178,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithEmailAndPassword(auth, email.trim(), password)
   }, [])
 
-  const signInWithGoogle = useCallback(async () => {
-    const provider = new GoogleAuthProvider()
-    await signInWithPopup(auth, provider)
-  }, [])
-
   const signOutUser = useCallback(async () => {
     await firebaseSignOut(auth)
   }, [])
@@ -201,10 +188,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       firebaseReady,
       signInWithEmail,
-      signInWithGoogle,
       signOutUser,
     }),
-    [user, loading, firebaseReady, signInWithEmail, signInWithGoogle, signOutUser],
+    [user, loading, firebaseReady, signInWithEmail, signOutUser],
   )
 
   return (

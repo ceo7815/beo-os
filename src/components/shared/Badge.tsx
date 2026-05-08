@@ -6,15 +6,11 @@ export interface BadgeProps {
 export function Badge({ label, color }: BadgeProps) {
   return (
     <span
-      className="inline-flex items-center justify-center font-bold leading-none"
+      className="inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-bold leading-none tracking-tight"
       style={{
-        backgroundColor: `${color}18`,
-        border: `1px solid ${color}55`,
+        backgroundColor: `${color}14`,
+        borderColor: `${color}4D`,
         color,
-        borderRadius: '20px',
-        padding: '3px 10px',
-        fontSize: '11px',
-        fontWeight: 700,
       }}
     >
       {label}

@@ -6,7 +6,10 @@ import { InvoicesProvider } from '../hooks/useInvoices'
 import { ProjectsProvider } from '../hooks/useProjects'
 import { SuppliersProvider } from '../hooks/useSuppliers'
 import { HostingProvider } from '../hooks/useHosting'
+import { LeadsProvider } from '../hooks/useLeads'
+import { CampaignsProvider } from '../hooks/useCampaigns'
 import { TasksProvider } from '../hooks/useTasks'
+import { AttendanceProvider } from '../hooks/useAttendance'
 import { UsersProvider } from '../hooks/useUsers'
 import { useAuth } from './AuthContext'
 
@@ -23,12 +26,18 @@ export function FirestoreProviders() {
           <HostingProvider>
             <CollectionTrackingProvider>
               <InvoicesProvider>
-                <TasksProvider>
-                  <ProjectsProvider>
-                    <FirestoreDocsSync />
-                    <Outlet />
-                  </ProjectsProvider>
-                </TasksProvider>
+                <CampaignsProvider>
+                  <LeadsProvider>
+                    <AttendanceProvider>
+                      <TasksProvider>
+                        <ProjectsProvider>
+                          <FirestoreDocsSync />
+                          <Outlet />
+                        </ProjectsProvider>
+                      </TasksProvider>
+                    </AttendanceProvider>
+                  </LeadsProvider>
+                </CampaignsProvider>
               </InvoicesProvider>
             </CollectionTrackingProvider>
           </HostingProvider>

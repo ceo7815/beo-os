@@ -12,7 +12,7 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDocsFromServer,
+  onSnapshot,
   query,
   serverTimestamp,
   updateDoc,
@@ -123,42 +123,55 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLoading(true)
-    let cancelled = false
     const q = query(collection(db, 'projects'))
-
-    const load = async () => {
-      try {
-        const snap = await getDocsFromServer(q)
-        if (cancelled) return
-        console.log('useProjects snapshot:', snap.docs.length)
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
         setRawProjects(snap.docs.map((d) => docToProject(d)))
         setLoading(false)
         setError(null)
-      } catch (err) {
-        if (cancelled) return
+      },
+      (err) => {
         console.error('projects snapshot', err)
         toastFsError('שגיאה בטעינת פרויקטים', err, 'projects snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      }
-    }
-
-    void load()
-    const timer = window.setInterval(() => {
-      void load()
-    }, 15000)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
+      },
+    )
+    return () => unsub()
   }, [])
 
   const addProject = useCallback(
     async (data: Omit<Project, 'id' | 'createdAt' | 'taskCount' | 'doneCount'>) => {
       try {
         await ensureFirestoreReady()
-        await addDoc(collection(db, 'projects'), buildProjectCreateDoc(data))
+        const ref = await addDoc(collection(db, 'projects'), buildProjectCreateDoc(data))
+        const optimistic: Project = {
+          id: ref.id,
+          name: data.name,
+          description: data.description,
+          type: data.type,
+          projectType: data.projectType ?? 'one-time',
+          retainerAmount: data.retainerAmount,
+          subContractor: data.subContractor,
+          startDate: data.startDate,
+          retainerLog: data.retainerLog,
+          clientId: data.clientId,
+          supplierId: data.supplierId,
+          status: data.status,
+          priority: data.priority,
+          dueDate: data.dueDate,
+          ownerId: data.ownerId,
+          color: data.color,
+          taskCount: 0,
+          doneCount: 0,
+          manualProgressPercent: data.manualProgressPercent,
+          createdAt: new Date().toISOString(),
+        }
+        setRawProjects((prev) => {
+          if (prev.some((p) => p.id === optimistic.id)) return prev
+          return [...prev, optimistic]
+        })
         toastFsSuccess('הפרויקט נוסף בהצלחה')
         return true
       } catch (e) {
@@ -172,6 +185,16 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   const updateProject = useCallback(async (id: string, data: Partial<Project>) => {
     try {
       await updateDoc(doc(db, 'projects', id), mapProjectUpdateForFirestore(data))
+      setRawProjects((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                ...data,
+              }
+            : p,
+        ),
+      )
       toastFsSuccess('הפרויקט עודכן')
       return true
     } catch (e) {
@@ -185,6 +208,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
       await ensureFirestoreReady()
       await deleteTasksAndDocsForProject(id)
       await deleteDoc(doc(db, 'projects', id))
+      setRawProjects((prev) => prev.filter((p) => p.id !== id))
       const sel = useHubStore.getState().selectedProjectId
       if (sel === id) useHubStore.getState().setSelectedProject(null)
       toastFsSuccess('הפרויקט נמחק')

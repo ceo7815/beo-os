@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { Modal } from '../components/shared/Modal'
-import { formatDateIL, todayYmd } from '../lib/dates'
+import { formatDateIL, formatDateTimeIL, todayYmd } from '../lib/dates'
 import { clientDepartmentLabel } from '../lib/clientDepartment'
 import {
   getCollectionTrackingStatus,
@@ -13,6 +13,7 @@ import {
   useCollectionTracking,
   type CollectionTrackingInput,
 } from '../hooks/useCollectionTracking'
+import { toastFsError } from '../lib/fsToast'
 import type { Client, CollectionTracking } from '../types'
 
 const GREEN_INVOICE_URL =
@@ -43,6 +44,30 @@ function statusBadge(
     default:
       return { label: 'במעקב', bg: '#F59E0B', color: '#fff' }
   }
+}
+
+function collectionTrackingNotesTitle(row: CollectionTracking): string | undefined {
+  const parts: string[] = []
+  if (row.lastDemandRecordedAt?.trim()) {
+    parts.push(`נרשם: ${formatDateTimeIL(row.lastDemandRecordedAt)}`)
+  }
+  if (row.lastDemandMethod?.trim()) {
+    parts.push(`אופן דרישה: ${row.lastDemandMethod.trim()}`)
+  }
+  if (row.lastDemandClientReply?.trim()) {
+    parts.push(`מענה לקוח: ${row.lastDemandClientReply.trim()}`)
+  }
+  if (row.note?.trim()) {
+    parts.push(`הערה: ${row.note.trim()}`)
+  }
+  return parts.length ? parts.join('\n') : undefined
+}
+
+function lastRequestDisplay(row: CollectionTracking): string {
+  if (row.lastDemandRecordedAt?.trim()) {
+    return formatDateTimeIL(row.lastDemandRecordedAt)
+  }
+  return formatDateIL(row.lastRequestDate) || '—'
 }
 
 function sortEntries(a: CollectionTracking, b: CollectionTracking, today: string): number {
@@ -93,7 +118,7 @@ export function Collections() {
     upsertTracking,
     removeFromTracking,
     markPaid,
-    clearPaid,
+    recordPaymentDemand,
   } = useCollectionTracking()
   const today = todayYmd()
 
@@ -101,10 +126,19 @@ export function Collections() {
   const [form, setForm] = useState<CollectionTrackingInput>(emptyForm)
   const [editing, setEditing] = useState<CollectionTracking | null>(null)
   const [removeId, setRemoveId] = useState<string | null>(null)
+  const [demandRow, setDemandRow] = useState<CollectionTracking | null>(null)
+  const [demandMethod, setDemandMethod] = useState('')
+  const [demandClientReply, setDemandClientReply] = useState('')
 
-  const trackedClientIds = useMemo(
-    () => new Set(entries.map((e) => e.clientId)),
-    [entries],
+  /** רק סבב גבייה פתוח חוסם הוספה — אחרי «שולם» הרשומה נמחקת וניתן לפתוח מעקב חדש */
+  const openTrackingClientIds = useMemo(
+    () =>
+      new Set(
+        entries
+          .filter((e) => getCollectionTrackingStatus(e, today) !== 'paid')
+          .map((e) => e.clientId),
+      ),
+    [entries, today],
   )
 
   const clientsById = useMemo(() => {
@@ -114,8 +148,8 @@ export function Collections() {
   }, [clients])
 
   const availableForAdd = useMemo(
-    () => clients.filter((c) => !trackedClientIds.has(c.id)),
-    [clients, trackedClientIds],
+    () => clients.filter((c) => !openTrackingClientIds.has(c.id)),
+    [clients, openTrackingClientIds],
   )
 
   const currentYm = useMemo(() => {
@@ -123,31 +157,34 @@ export function Collections() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   }, [])
 
-  const kpis = useMemo(() => {
-    let openCount = 0
-    let paidMonth = 0
-    let overdueCount = 0
-    for (const row of entries) {
-      const st = getCollectionTrackingStatus(row, today)
-      if (st !== 'paid') openCount += 1
-      if (st === 'overdue') overdueCount += 1
-      const pd = row.paidDate ? ymd(row.paidDate) : ''
-      if (pd && pd.startsWith(currentYm)) paidMonth += 1
-    }
-    return { openCount, paidMonth, overdueCount }
-  }, [entries, today, currentYm])
-
-  const sorted = useMemo(
-    () => [...entries].sort((a, b) => sortEntries(a, b, today)),
+  const activeRows = useMemo(
+    () =>
+      entries.filter(
+        (row) => getCollectionTrackingStatus(row, today) !== 'paid',
+      ),
     [entries, today],
   )
 
+  const kpis = useMemo(() => {
+    let openCount = 0
+    let overdueCount = 0
+    for (const row of activeRows) {
+      openCount += 1
+      if (getCollectionTrackingStatus(row, today) === 'overdue') overdueCount += 1
+    }
+    return { openCount, overdueCount }
+  }, [activeRows, today])
+
+  const sorted = useMemo(
+    () => [...activeRows].sort((a, b) => sortEntries(a, b, today)),
+    [activeRows, today],
+  )
   const collectionByDepartment = useMemo(() => {
     const map = new Map<
       string,
-      { total: number; open: number; overdue: number; paidMonth: number }
+      { total: number; open: number; overdue: number }
     >()
-    for (const row of entries) {
+    for (const row of activeRows) {
       const client = clientsById.get(row.clientId)
       const dept = clientDepartmentLabel(client)
       const st = getCollectionTrackingStatus(row, today)
@@ -155,13 +192,10 @@ export function Collections() {
         total: 0,
         open: 0,
         overdue: 0,
-        paidMonth: 0,
       }
       cur.total += 1
-      if (st !== 'paid') cur.open += 1
+      cur.open += 1
       if (st === 'overdue') cur.overdue += 1
-      const pd = row.paidDate ? ymd(row.paidDate) : ''
-      if (pd && pd.startsWith(currentYm)) cur.paidMonth += 1
       map.set(dept, cur)
     }
     const rows = [...map.entries()].map(([department, stats]) => ({
@@ -175,7 +209,7 @@ export function Collections() {
       return a.department.localeCompare(b.department, 'he')
     })
     return rows
-  }, [entries, clientsById, today, currentYm])
+  }, [activeRows, clientsById, today])
 
   const collectionDeptTotals = useMemo(
     () =>
@@ -184,15 +218,30 @@ export function Collections() {
           total: acc.total + r.total,
           open: acc.open + r.open,
           overdue: acc.overdue + r.overdue,
-          paidMonth: acc.paidMonth + r.paidMonth,
         }),
-        { total: 0, open: 0, overdue: 0, paidMonth: 0 },
+        { total: 0, open: 0, overdue: 0 },
       ),
     [collectionByDepartment],
   )
 
   const openGreenInvoice = () => {
     window.open(GREEN_INVOICE_URL, '_blank', 'noopener,noreferrer')
+  }
+
+  const closeDemandModal = () => {
+    setDemandRow(null)
+    setDemandMethod('')
+    setDemandClientReply('')
+  }
+
+  const submitDemandFollowUp = () => {
+    if (!demandRow) return
+    void recordPaymentDemand(demandRow.clientId, {
+      method: demandMethod,
+      clientReply: demandClientReply,
+    }).then((ok) => {
+      if (ok) closeDemandModal()
+    })
   }
 
   const openAdd = () => {
@@ -206,6 +255,14 @@ export function Collections() {
 
   const submitAdd = () => {
     if (!form.clientId.trim() || !form.lastRequestDate || !form.dueDate) return
+    if (openTrackingClientIds.has(form.clientId)) {
+      toastFsError(
+        'לקוח זה כבר במעקב גבייה פתוח לסבב הנוכחי',
+        new Error('duplicate client'),
+        'collections submitAdd',
+      )
+      return
+    }
     void upsertTracking({
       clientId: form.clientId,
       lastRequestDate: form.lastRequestDate,
@@ -241,7 +298,7 @@ export function Collections() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
+    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -270,17 +327,12 @@ export function Collections() {
         </div>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <KpiMini
           label="במעקב (לא סומן שולם)"
           value={String(kpis.openCount)}
           borderColor="#2563EB"
           sub="לקוחות ברשימת המעקב"
-        />
-        <KpiMini
-          label="סומנו כשולמו החודש"
-          value={String(kpis.paidMonth)}
-          borderColor="#10B981"
         />
         <KpiMini
           label="באיחור (לפי יעד)"
@@ -289,24 +341,23 @@ export function Collections() {
         />
       </section>
 
-      {entries.length > 0 ? (
+      {activeRows.length > 0 ? (
         <div className="space-y-2">
           <h2 className="text-[14px] font-bold text-[var(--blue-dark)]">
             פירוט לפי מחלקת לקוח
           </h2>
           <p className="text-[11px] text-[var(--text-mid)]">
             המחלקה מוגדרת בכרטיס הלקוח. לקוח בלי מחלקה נספר תחת «ללא מחלקה». חודש
-            «שולמו» = {currentYm}.
+            נוכחי: {currentYm}.
           </p>
-          <div className="overflow-x-auto rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-            <table className="w-full min-w-[520px] border-collapse text-right text-sm">
+          <div className="overflow-x-hidden rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+            <table className="w-full table-fixed border-collapse text-right text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-main)] text-[11px] font-bold text-[var(--text-mid)]">
-                  <th className="px-4 py-2.5">מחלקה</th>
-                  <th className="px-4 py-2.5">במעקב</th>
-                  <th className="px-4 py-2.5 text-[#EF4444]">באיחור</th>
-                  <th className="px-4 py-2.5 text-[#15803D]">שולמו החודש</th>
-                  <th className="px-4 py-2.5">סה״כ</th>
+                  <th className="px-2 py-2.5 sm:px-4">מחלקה</th>
+                  <th className="px-2 py-2.5 sm:px-4">במעקב</th>
+                  <th className="px-2 py-2.5 text-[#EF4444] sm:px-4">באיחור</th>
+                  <th className="px-2 py-2.5 sm:px-4">סה״כ</th>
                 </tr>
               </thead>
               <tbody>
@@ -315,19 +366,16 @@ export function Collections() {
                     key={r.department}
                     className="border-b border-[var(--border)] last:border-0"
                   >
-                    <td className="px-4 py-2 font-semibold text-[var(--text-dark)]">
+                    <td className="px-2 py-2 font-semibold text-[var(--text-dark)] sm:px-4">
                       {r.department}
                     </td>
-                    <td className="px-4 py-2 tabular-nums text-[var(--text-mid)]">
+                    <td className="px-2 py-2 tabular-nums text-[var(--text-mid)] sm:px-4">
                       {r.open}
                     </td>
-                    <td className="px-4 py-2 tabular-nums font-semibold text-[#EF4444]">
+                    <td className="px-2 py-2 tabular-nums font-semibold text-[#EF4444] sm:px-4">
                       {r.overdue}
                     </td>
-                    <td className="px-4 py-2 tabular-nums text-[#15803D]">
-                      {r.paidMonth}
-                    </td>
-                    <td className="px-4 py-2 tabular-nums text-[var(--text-dark)]">
+                    <td className="px-2 py-2 tabular-nums text-[var(--text-dark)] sm:px-4">
                       {r.total}
                     </td>
                   </tr>
@@ -335,17 +383,14 @@ export function Collections() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-[var(--border)] bg-[var(--bg-main)] text-[12px] font-bold text-[var(--text-dark)]">
-                  <td className="px-4 py-2.5">סה״כ</td>
-                  <td className="px-4 py-2.5 tabular-nums">
+                  <td className="px-2 py-2.5 sm:px-4">סה״כ</td>
+                  <td className="px-2 py-2.5 tabular-nums sm:px-4">
                     {collectionDeptTotals.open}
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums text-[#EF4444]">
+                  <td className="px-2 py-2.5 tabular-nums text-[#EF4444] sm:px-4">
                     {collectionDeptTotals.overdue}
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums text-[#15803D]">
-                    {collectionDeptTotals.paidMonth}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums">
+                  <td className="px-2 py-2.5 tabular-nums sm:px-4">
                     {collectionDeptTotals.total}
                   </td>
                 </tr>
@@ -355,20 +400,20 @@ export function Collections() {
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-        <table className="w-full min-w-[1180px] border-collapse text-right text-sm">
+      <div className="overflow-x-hidden rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+        <table className="w-full table-fixed border-collapse text-right text-[11px] sm:text-sm">
           <thead>
-            <tr className="border-b border-[var(--border)] bg-[var(--bg-main)] text-[12px] font-bold text-[var(--text-mid)]">
-              <th className="px-4 py-3">לקוח</th>
-              <th className="px-4 py-3">מחלקה</th>
-              <th className="px-4 py-3">איש קשר / טלפון</th>
-              <th className="px-4 py-3">מייל</th>
-              <th className="px-4 py-3">בקשת תשלום אחרונה</th>
-              <th className="px-4 py-3">יעד תשלום</th>
-              <th className="px-4 py-3">תאריך תשלום</th>
-              <th className="px-4 py-3">הערות</th>
-              <th className="px-4 py-3">סטטוס</th>
-              <th className="px-4 py-3">פעולות</th>
+            <tr className="border-b border-[var(--border)] bg-[var(--bg-main)] text-[10px] font-bold text-[var(--text-mid)] sm:text-[12px]">
+              <th className="w-[12%] px-1.5 py-2 sm:px-2 sm:py-3">לקוח</th>
+              <th className="w-[7%] px-1.5 py-2 sm:px-2 sm:py-3">מחלקה</th>
+              <th className="w-[10%] px-1.5 py-2 sm:px-2 sm:py-3">איש קשר / טלפון</th>
+              <th className="w-[9%] px-1.5 py-2 sm:px-2 sm:py-3">מייל</th>
+              <th className="w-[10%] px-1.5 py-2 sm:px-2 sm:py-3">בקשת תשלום אחרונה</th>
+              <th className="w-[7%] px-1.5 py-2 sm:px-2 sm:py-3">יעד תשלום</th>
+              <th className="w-[7%] px-1.5 py-2 sm:px-2 sm:py-3">תאריך תשלום</th>
+              <th className="w-[21%] px-1.5 py-2 sm:px-2 sm:py-3">הערות / דרישה</th>
+              <th className="w-[8%] px-1.5 py-2 sm:px-2 sm:py-3">סטטוס</th>
+              <th className="w-[9%] px-1.5 py-2 sm:px-2 sm:py-3">פעולות</th>
             </tr>
           </thead>
           <tbody>
@@ -382,11 +427,16 @@ export function Collections() {
               <tr>
                 <td colSpan={10} className="px-4 py-10 text-center text-[var(--text-mid)]">
                   <p className="mb-2 font-medium text-[var(--text-dark)]">
-                    אין לקוחות במעקב
+                    אין לקוחות פתוחים במעקב
                   </p>
                   <p className="text-[13px]">
-                    הוסיפו לקוח מהרשימה כדי לעקוב אחרי בקשות תשלום ויעדים. לנפק חשבוניות
-                    השתמשו ב־
+                    מוצגים כאן רק סבבי גבייה פתוחים. אחרי סימון «שולם» הרשומה
+                    נסגרת — אותו לקוח יכול להיכנס שוב למעקב כשיש חשבונית/תשלום
+                    חדש.
+                  </p>
+                  <p className="mt-1 text-[13px]">
+                    כדי להוסיף לקוח למעקב, ודאו שהונפקה לו חשבונית/עסקה בחשבונית ירוקה ואז הוסיפו אותו.
+                    לנפק מסמך השתמשו ב־
                     <button
                       type="button"
                       onClick={openGreenInvoice}
@@ -403,97 +453,153 @@ export function Collections() {
                 const st = getCollectionTrackingStatus(row, today)
                 const badge = statusBadge(st)
                 const rowBg = st === 'overdue' ? '#FEF2F2' : 'transparent'
-                const rowOpacity = st === 'paid' ? 0.72 : 1
                 return (
                   <tr
                     key={row.id}
                     className="border-b border-[var(--border)] transition"
                     style={{
                       backgroundColor: rowBg,
-                      opacity: rowOpacity,
                     }}
                   >
-                    <td className="px-4 py-3 font-semibold text-[var(--text-dark)]">
-                      {client?.name ?? 'לקוח לא נמצא'}
+                    <td
+                      className="max-w-0 px-1.5 py-2 align-top font-semibold text-[var(--text-dark)] sm:px-2 sm:py-3"
+                      title={client?.name}
+                    >
+                      <span className="line-clamp-2 break-words">
+                        {client?.name ?? 'לקוח לא נמצא'}
+                      </span>
                     </td>
-                    <td className="max-w-[140px] px-4 py-3 text-[12px] text-[var(--text-mid)]">
-                      <span className="font-semibold text-[var(--blue-dark)]">
+                    <td className="max-w-0 px-1.5 py-2 align-top text-[var(--text-mid)] sm:px-2 sm:py-3">
+                      <span className="line-clamp-3 break-words font-semibold text-[var(--blue-dark)]">
                         {clientDepartmentLabel(client)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-[13px] text-[var(--text-mid)]">
-                      <div>{client?.contact || '—'}</div>
-                      <div className="tabular-nums text-[var(--text-light)]">
+                    <td className="max-w-0 px-1.5 py-2 align-top text-[var(--text-mid)] sm:px-2 sm:py-3">
+                      <div className="break-words">{client?.contact || '—'}</div>
+                      <div className="break-all tabular-nums text-[var(--text-light)]">
                         {client?.phone || '—'}
                       </div>
                     </td>
-                    <td className="max-w-[180px] truncate px-4 py-3 text-[12px] text-[var(--text-mid)]">
+                    <td
+                      className="max-w-0 truncate px-1.5 py-2 align-top text-[var(--text-mid)] sm:px-2 sm:py-3"
+                      title={client?.email || undefined}
+                    >
                       {client?.email || '—'}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-[var(--text-mid)]">
-                      {formatDateIL(row.lastRequestDate)}
+                    <td className="max-w-0 px-1.5 py-2 align-top break-words text-[var(--text-mid)] sm:px-2 sm:py-3">
+                      {lastRequestDisplay(row)}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-[var(--text-mid)]">
+                    <td className="max-w-0 whitespace-nowrap px-1.5 py-2 align-top tabular-nums text-[var(--text-mid)] sm:px-2 sm:py-3">
                       {formatDateIL(row.dueDate)}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-[var(--text-mid)]">
+                    <td className="max-w-0 whitespace-nowrap px-1.5 py-2 align-top tabular-nums text-[var(--text-mid)] sm:px-2 sm:py-3">
                       {row.paidDate ? formatDateIL(row.paidDate) : '—'}
                     </td>
                     <td
-                      className="max-w-[240px] px-4 py-3 align-top text-[12px] text-[var(--text-mid)]"
-                      title={row.note?.trim() ? row.note.trim() : undefined}
+                      className="max-w-0 px-1.5 py-2 align-top break-words text-[var(--text-mid)] sm:px-2 sm:py-3"
+                      title={collectionTrackingNotesTitle(row)}
                     >
-                      {row.note?.trim() ? (
-                        <span className="line-clamp-4 whitespace-pre-wrap break-words">
-                          {row.note.trim()}
-                        </span>
-                      ) : (
-                        <span className="text-[var(--text-light)]">—</span>
-                      )}
+                      {(() => {
+                        const hasDemand =
+                          !!row.lastDemandMethod?.trim() ||
+                          !!row.lastDemandClientReply?.trim()
+                        const hasNote = !!row.note?.trim()
+                        if (!hasDemand && !hasNote) {
+                          return (
+                            <span className="text-[var(--text-light)]">—</span>
+                          )
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {hasDemand ? (
+                              <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-main)] p-2.5">
+                                <div className="text-[11px] font-bold text-[var(--blue-dark)]">
+                                  דרישת תשלום אחרונה
+                                </div>
+                                {row.lastDemandRecordedAt?.trim() ? (
+                                  <div className="mt-1 tabular-nums text-[11px] text-[var(--text-mid)]">
+                                    <span className="font-semibold text-[var(--text-dark)]">
+                                      עדכון:{' '}
+                                    </span>
+                                    {formatDateTimeIL(row.lastDemandRecordedAt)}
+                                  </div>
+                                ) : null}
+                                {row.lastDemandMethod?.trim() ? (
+                                  <div className="mt-1.5 whitespace-pre-wrap break-words">
+                                    <span className="font-semibold text-[var(--text-dark)]">
+                                      אופן:{' '}
+                                    </span>
+                                    {row.lastDemandMethod.trim()}
+                                  </div>
+                                ) : null}
+                                {row.lastDemandClientReply?.trim() ? (
+                                  <div className="mt-1 whitespace-pre-wrap break-words">
+                                    <span className="font-semibold text-[var(--text-dark)]">
+                                      מענה לקוח:{' '}
+                                    </span>
+                                    {row.lastDemandClientReply.trim()}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {hasNote ? (
+                              <div className="line-clamp-4 whitespace-pre-wrap break-words">
+                                {hasDemand ? (
+                                  <span className="text-[10px] font-bold text-[var(--text-light)]">
+                                    הערה כללית:{' '}
+                                  </span>
+                                ) : null}
+                                {row.note!.trim()}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })()}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="max-w-0 px-1.5 py-2 align-top sm:px-2 sm:py-3">
                       <span
-                        className="inline-block rounded-full px-2.5 py-0.5 text-[11px] font-bold"
+                        className="inline-block max-w-full rounded-full px-1.5 py-0.5 text-[9px] font-bold sm:px-2.5 sm:text-[11px]"
                         style={{ backgroundColor: badge.bg, color: badge.color }}
                       >
                         {badge.label}
                       </span>
                       {st === 'overdue' ? (
-                        <div className="mt-1 text-[11px] text-[#EF4444]">
+                        <div className="mt-1 text-[9px] text-[#EF4444] sm:text-[11px]">
                           איחור {daysLate(ymd(row.dueDate), today)} ימים
                         </div>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-end gap-2">
+                    <td className="max-w-0 px-1 py-2 align-top sm:px-1.5 sm:py-3">
+                      <div className="flex flex-col items-stretch gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
                         <button
                           type="button"
                           onClick={() => openEdit(row)}
-                          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--text-dark)] transition hover:bg-[var(--blue-light)]"
+                          className="rounded-lg border border-[var(--border)] px-1.5 py-1 text-[10px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--blue-light)] sm:px-3 sm:py-1.5 sm:text-xs"
                         >
                           עריכה
                         </button>
-                        {st !== 'paid' ? (
-                          <button
-                            type="button"
-                            onClick={() => void markPaid(row.clientId)}
-                            className="rounded-lg bg-[#10B981] px-3 py-1.5 text-xs font-semibold text-white transition hover:brightness-110"
-                          >
-                            סמן שולם
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void clearPaid(row.clientId)}
-                            className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--text-mid)] transition hover:bg-[var(--bg-main)]"
-                          >
-                            בטל תשלום
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDemandMethod('')
+                            setDemandClientReply('')
+                            setDemandRow(row)
+                          }}
+                          className="rounded-lg border border-[#2563EB] bg-[#EFF6FF] px-1.5 py-1 text-[10px] font-semibold leading-tight text-[#1D4ED8] transition hover:bg-[#DBEAFE] sm:px-3 sm:py-1.5 sm:text-xs"
+                        >
+                          דרישת תשלום
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void markPaid(row.clientId)}
+                          className="rounded-lg bg-[#10B981] px-1.5 py-1 text-[10px] font-semibold text-white transition hover:brightness-110 sm:px-3 sm:py-1.5 sm:text-xs"
+                        >
+                          סמן שולם
+                        </button>
                         <button
                           type="button"
                           onClick={() => setRemoveId(row.clientId)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-mid)] transition hover:border-[#EF4444] hover:bg-[#FEF2F2] hover:text-[#EF4444]"
+                          className="flex h-7 min-h-[1.75rem] items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-mid)] transition hover:border-[#EF4444] hover:bg-[#FEF2F2] hover:text-[#EF4444] sm:h-8"
                           aria-label="הסר ממעקב"
                         >
                           ✕
@@ -516,7 +622,9 @@ export function Collections() {
       >
         <div className="space-y-4">
           <p className="text-[12px] text-[var(--text-mid)]">
-            הזינו תאריכי מעקב בלבד. לנפק חשבונית מסודרת השתמשו בחשבונית ירוקה.
+            ניתן להוסיף לקוח למעקב לאחר שהונפקה לו חשבונית/עסקה בחשבונית ירוקה.
+            החיפוש מכסה את כל לקוחות המערכת; לקוח עם מעקב גבייה פתוח לסבב הנוכחי
+            מוצג באפור ולא ניתן לבחור.
           </p>
           <div className="block text-[13px] font-semibold text-[var(--text-dark)]">
             <label htmlFor="collection-add-client" className="block">
@@ -525,7 +633,9 @@ export function Collections() {
             <div className="relative z-10 mt-1 rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-3 py-2">
               <ClientQuickSelect
                 id="collection-add-client"
-                clients={availableForAdd}
+                clients={clients}
+                disabledClientIds={openTrackingClientIds}
+                disabledClientHint="מעקב גבייה פתוח"
                 value={form.clientId}
                 onChange={(clientId) =>
                   setForm((f) => ({ ...f, clientId }))
@@ -661,6 +771,64 @@ export function Collections() {
             </button>
             <button type="button" onClick={submitEdit} className="hub-btn-primary text-sm">
               שמור
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={demandRow !== null}
+        onClose={closeDemandModal}
+        title={
+          demandRow
+            ? `דרישת תשלום — ${clientsById.get(demandRow.clientId)?.name ?? ''}`
+            : 'דרישת תשלום'
+        }
+        bodyClassName="max-h-none"
+      >
+        <div className="space-y-4">
+          <p className="text-[12px] text-[var(--text-mid)]">
+            רשמו בחופשיות איך בוצעה דרישת התשלום ומה היה מענה הלקוח. בעת השמירה
+            המערכת תרשום אוטומטית את התאריך והשעה בעמודה «בקשת תשלום אחרונה»
+            ובתיבת המעקב.
+          </p>
+          <label className="block text-[13px] font-semibold text-[var(--text-dark)]">
+            באיזה דרך בוצעה דרישת התשלום?
+            <textarea
+              rows={3}
+              className="mt-1 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-3 py-2 text-sm"
+              value={demandMethod}
+              onChange={(e) => setDemandMethod(e.target.value)}
+              placeholder="למשל: טלפון, מייל, וואטסאפ, מכתב מעורך דין…"
+            />
+          </label>
+          <label className="block text-[13px] font-semibold text-[var(--text-dark)]">
+            מה היה מענה הלקוח?
+            <textarea
+              rows={3}
+              className="mt-1 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-3 py-2 text-sm"
+              value={demandClientReply}
+              onChange={(e) => setDemandClientReply(e.target.value)}
+              placeholder="למשל: מבטיח לשלם עד סוף השבוע, מבקש פריסה…"
+            />
+          </label>
+          <p className="text-[11px] text-[var(--text-light)]">
+            ניתן למלא שדה אחד או את שניהם.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={closeDemandModal}
+              className="hub-btn-secondary text-sm"
+            >
+              ביטול
+            </button>
+            <button
+              type="button"
+              onClick={submitDemandFollowUp}
+              className="hub-btn-primary text-sm"
+            >
+              שמור במעקב
             </button>
           </div>
         </div>

@@ -4,6 +4,8 @@ import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { Modal } from '../components/shared/Modal'
 import { formatDateIL } from '../lib/dates'
 import { HUB_SUPPLIER_ID } from '../lib/hubSupplier'
+import { SupplierTypesMultiSelect } from '../components/SupplierTypesMultiSelect'
+import { SUPPLIER_TYPE_OPTIONS } from '../lib/supplierTypes'
 import { useSuppliers } from '../hooks/useSuppliers'
 import { useHubStore } from '../store/useStore'
 import type { Supplier } from '../types'
@@ -18,12 +20,14 @@ interface SupplierFormState {
   name: string
   phone: string
   email: string
+  supplierTypes: string[]
 }
 
 const emptyForm: SupplierFormState = {
   name: '',
   phone: '',
   email: '',
+  supplierTypes: [],
 }
 
 export function Suppliers() {
@@ -46,7 +50,8 @@ export function Suppliers() {
     const q = query.trim().toLowerCase()
     if (!q) return sorted
     return sorted.filter((s) => {
-      const hay = `${s.name} ${s.phone} ${s.email}`.toLowerCase()
+      const hay =
+        `${s.name} ${s.phone} ${s.email} ${(s.supplierTypes ?? []).join(' ')}`.toLowerCase()
       return hay.includes(q)
     })
   }, [sorted, query])
@@ -64,6 +69,7 @@ export function Suppliers() {
       name: s.name,
       phone: s.phone,
       email: s.email,
+      supplierTypes: [...(s.supplierTypes ?? [])],
     })
     setErrors({})
     setModalOpen(true)
@@ -83,6 +89,7 @@ export function Suppliers() {
       name: form.name.trim(),
       phone: form.phone.trim(),
       email: form.email.trim(),
+      supplierTypes: form.supplierTypes,
     }
     if (editingId) {
       await updateSupplier(editingId, payload)
@@ -126,86 +133,121 @@ export function Suppliers() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {filtered.map((s) => {
-          const initial = s.name.trim().charAt(0) || '?'
-          const isHub = s.id === HUB_SUPPLIER_ID
-          return (
-            <article
-              key={s.id}
-              className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition hover:border-[var(--blue-mid)] hover:shadow-[0_4px_20px_rgba(37,99,235,0.12)]"
-            >
-              <div className="flex gap-4">
-                <div
-                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--orange-light)] text-2xl font-extrabold text-[var(--orange)]"
-                >
-                  {initial}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-bold text-[var(--text-dark)]">
+      <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <div>
+          <table className="w-full text-sm">
+            <thead className="bg-[#F8FAFC]">
+              <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
+                <th className="w-[26%] px-3 py-3">שם ספק</th>
+                <th className="w-[18%] px-3 py-3">טלפון</th>
+                <th className="w-[22%] px-3 py-3">אימייל</th>
+                <th className="w-[14%] px-3 py-3">סוגי ספק</th>
+                <th className="w-[12%] px-3 py-3">תאריך יצירה</th>
+                <th className="w-[10%] px-3 py-3">פעולות</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((s) => {
+                const isHub = s.id === HUB_SUPPLIER_ID
+                return (
+                  <tr key={s.id} className="border-t border-[var(--border)] align-top">
+                    <td className="px-3 py-3 font-semibold text-[var(--text-dark)] break-words">
                       {s.name}
-                    </h2>
-                    {isHub ? (
-                      <Badge label="ספק ברירת מחדל" color="#2563EB" />
-                    ) : null}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-3 text-sm">
-                    {s.phone ? (
-                      <a
-                        className="font-medium text-[var(--blue-mid)] hover:underline"
-                        href={`tel:${s.phone.replace(/\s/g, '')}`}
-                      >
-                        {s.phone}
-                      </a>
-                    ) : (
-                      <span className="text-[var(--text-light)]">—</span>
-                    )}
-                    {s.email ? (
-                      <a
-                        className="font-medium text-[var(--blue-mid)] hover:underline"
-                        href={`mailto:${s.email}`}
-                      >
-                        {s.email}
-                      </a>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-[11px] text-[var(--text-light)]">
-                    נוצר: {formatDateIL(s.createdAt)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => openEdit(s)}
-                  className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-1.5 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE]"
-                >
-                  עריכה
-                </button>
-                <button
-                  type="button"
-                  disabled={isHub}
-                  title={
-                    isHub ? 'לא ניתן למחוק את ספק ברירת המחדל של המערכת' : undefined
-                  }
-                  onClick={() => {
-                    if (isHub) {
-                      pushToast('לא ניתן למחוק את ספק ברירת המחדל', 'error')
-                      return
-                    }
-                    setDeleteId(s.id)
-                  }}
-                  className="hub-btn-danger px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  מחיקה
-                </button>
-              </div>
-            </article>
-          )
-        })}
-      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right text-[var(--text-mid)]" dir="ltr">
+                      {s.phone ? (
+                        <a
+                          className="inline-block w-full text-right font-medium text-[var(--blue-mid)] hover:underline"
+                          href={`tel:${s.phone.replace(/\s/g, '')}`}
+                        >
+                          {s.phone}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right text-[var(--text-mid)]" dir="ltr">
+                      {s.email ? (
+                        <a
+                          className="inline-block w-full text-right font-medium text-[var(--blue-mid)] hover:underline"
+                          href={`mailto:${s.email}`}
+                        >
+                          {s.email}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-[13px] text-[var(--text-mid)]">
+                      {isHub ? (
+                        <div className="space-y-1.5">
+                          <Badge label="ספק ברירת מחדל" color="#2563EB" />
+                          {(s.supplierTypes?.length ?? 0) > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(s.supplierTypes ?? []).map((t) => (
+                                <span
+                                  key={t}
+                                  className="inline-block rounded-md bg-[#EFF6FF] px-1.5 py-0.5 text-[11px] font-medium text-[#1D4ED8]"
+                                >
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (s.supplierTypes?.length ?? 0) > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(s.supplierTypes ?? []).map((t) => (
+                            <span
+                              key={t}
+                              className="inline-block rounded-md bg-[#F1F5F9] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-dark)]"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-[var(--text-mid)]">
+                      {formatDateIL(s.createdAt)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(s)}
+                          className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-1.5 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE]"
+                        >
+                          עריכה
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isHub}
+                          title={
+                            isHub ? 'לא ניתן למחוק את ספק ברירת המחדל של המערכת' : undefined
+                          }
+                          onClick={() => {
+                            if (isHub) {
+                              pushToast('לא ניתן למחוק את ספק ברירת המחדל', 'error')
+                              return
+                            }
+                            setDeleteId(s.id)
+                          }}
+                          className="hub-btn-danger px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          מחיקה
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {!loading && filtered.length === 0 ? (
         <p className="text-sm text-[var(--text-mid)]">לא נמצאו ספקים</p>
@@ -215,6 +257,7 @@ export function Suppliers() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editingId ? 'עריכת ספק' : 'ספק חדש'}
+        bodyClassName="overflow-visible max-h-none"
       >
         <div className="space-y-3">
           <div>
@@ -246,6 +289,21 @@ export function Suppliers() {
             {errors.email ? (
               <p className="mt-1 text-xs text-[var(--danger)]">{errors.email}</p>
             ) : null}
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-[var(--text-dark)]">
+              סוגי ספק
+            </label>
+            <p className="mb-2 text-[11px] text-[var(--text-mid)]">
+              בחירה מרובה — הרשימה נפתחת למטה. לחצו שוב על סוג כדי לבטל בחירה.
+            </p>
+            <SupplierTypesMultiSelect
+              value={form.supplierTypes}
+              onChange={(supplierTypes) =>
+                setForm((f) => ({ ...f, supplierTypes }))
+              }
+              options={SUPPLIER_TYPE_OPTIONS}
+            />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button

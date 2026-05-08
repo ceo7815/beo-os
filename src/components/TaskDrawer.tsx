@@ -1,16 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateTimeIL, todayYmd, toDateInputYmd } from '../lib/dates'
 import { boardStatusHe } from '../lib/boardTaskLabels'
 import { formatRelativeHebrew } from '../lib/relativeTimeHe'
 import { reminderBadgeHe } from '../lib/reminderBadgeHe'
+import { toastFsSuccess } from '../lib/fsToast'
 import { ClientQuickSelect } from './ClientQuickSelect'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { useSuppliers } from '../hooks/useSuppliers'
 import { useTasks } from '../hooks/useTasks'
 import { useUsers } from '../hooks/useUsers'
-import type { Priority, Task, TaskStatus } from '../types'
+import type { Priority, Task, TaskReminderEntry, TaskStatus } from '../types'
 
 type TabKey = 'details' | 'history' | 'stream' | 'reminders'
 
@@ -19,6 +26,78 @@ const statusBadgeClass: Record<TaskStatus, string> = {
   doing: 'bg-[#2563EB]/15 text-[#2563EB]',
   blocked: 'bg-[#EF4444]/15 text-[#EF4444]',
   done: 'bg-[#10B981]/15 text-[#10B981]',
+}
+
+type TaskDraft = {
+  title: string
+  description: string
+  status: TaskStatus
+  priority: Priority
+  assigneeId: string
+  clientId: string
+  projectId: string
+  supplierId: string
+  dueDate: string
+  tags: string[]
+  reminders: TaskReminderEntry[]
+}
+
+function initDraft(t: Task): TaskDraft {
+  return {
+    title: t.title,
+    description: t.description,
+    status: t.status,
+    priority: t.priority,
+    assigneeId: t.assigneeId,
+    clientId: t.clientId ?? '',
+    projectId: t.projectId ?? '',
+    supplierId: t.supplierId ?? '',
+    dueDate: t.dueDate,
+    tags: [...t.tags],
+    reminders: t.reminders.map((r) => ({ ...r })),
+  }
+}
+
+function buildPatch(task: Task, d: TaskDraft): Partial<Task> {
+  const patch: Partial<Task> = {}
+  if (d.title.trim() !== task.title) patch.title = d.title.trim()
+  if (d.description !== task.description) patch.description = d.description
+  if (d.status !== task.status) patch.status = d.status
+  if (d.priority !== task.priority) patch.priority = d.priority
+  if (d.assigneeId !== task.assigneeId) patch.assigneeId = d.assigneeId
+  const dc = d.clientId.trim() || undefined
+  if ((dc ?? '') !== (task.clientId ?? '')) patch.clientId = dc
+  const dp = d.projectId.trim() || undefined
+  if ((dp ?? '') !== (task.projectId ?? '')) patch.projectId = dp
+  const ds = d.supplierId.trim() || undefined
+  if ((ds ?? '') !== (task.supplierId ?? '')) patch.supplierId = ds
+  if (d.dueDate !== task.dueDate) patch.dueDate = d.dueDate
+  if (JSON.stringify(d.tags) !== JSON.stringify(task.tags)) patch.tags = [...d.tags]
+  if (JSON.stringify(d.reminders) !== JSON.stringify(task.reminders)) {
+    patch.reminders = d.reminders.map((r) => ({ ...r }))
+  }
+  return patch
+}
+
+function applyPatchToTask(task: Task, patch: Partial<Task>): Task {
+  return {
+    ...task,
+    ...patch,
+    tags: patch.tags ?? task.tags,
+    reminders: patch.reminders ?? task.reminders,
+    clientId:
+      patch.clientId !== undefined
+        ? patch.clientId || undefined
+        : task.clientId,
+    projectId:
+      patch.projectId !== undefined
+        ? patch.projectId || undefined
+        : task.projectId,
+    supplierId:
+      patch.supplierId !== undefined
+        ? patch.supplierId || undefined
+        : task.supplierId,
+  }
 }
 
 export function TaskDrawer() {
@@ -56,6 +135,21 @@ export function TaskDrawer() {
   const [streamDraft, setStreamDraft] = useState('')
   const [remDate, setRemDate] = useState(todayYmd())
   const [remTime, setRemTime] = useState('09:00')
+  const [draft, setDraft] = useState<TaskDraft | null>(null)
+  const [saving, setSaving] = useState(false)
+  const prevTaskIdRef = useRef<string | null>(null)
+
+  useLayoutEffect(() => {
+    if (!taskId || !task) {
+      setDraft(null)
+      prevTaskIdRef.current = null
+      return
+    }
+    if (prevTaskIdRef.current !== taskId) {
+      prevTaskIdRef.current = taskId
+      setDraft(initDraft(task))
+    }
+  }, [taskId, task])
 
   useEffect(() => {
     if (taskId) {
@@ -65,97 +159,74 @@ export function TaskDrawer() {
   }, [taskId])
 
   const projectsForTask = useMemo(() => {
-    if (!task) return projects
-    const cid = task.clientId?.trim()
+    if (!draft) return projects
+    const cid = draft.clientId?.trim()
     if (!cid) return projects
     return projects.filter((p) => p.clientId === cid)
-  }, [projects, task])
+  }, [projects, draft])
 
-  const close = () => setDrawerTaskId(null)
+  const dirty = useMemo(() => {
+    if (!task || !draft) return false
+    return Object.keys(buildPatch(task, draft)).length > 0
+  }, [task, draft])
 
-  if (!taskId || !task) return null
-
-  const commitFields = (patch: Partial<Task>) => {
-    if (!userId) return
-    void updateTask(task.id, patch, taskOpts)
-  }
-
-  const onTitleBlur = (title: string) => {
-    if (title.trim() === task.title) return
-    commitFields({ title: title.trim() })
-  }
-
-  const onDescBlur = (description: string) => {
-    if (description === task.description) return
-    commitFields({ description })
-  }
-
-  const onStatusSelect = (status: TaskStatus) => {
-    if (!userId || status === task.status) return
-    void updateTask(task.id, { status }, taskOpts)
-  }
-
-  const onPriorityChange = (priority: Priority) => {
-    if (priority === task.priority) return
-    commitFields({ priority })
-  }
-
-  const onAssigneeChange = (assigneeId: string) => {
-    if (assigneeId === task.assigneeId) return
-    commitFields({ assigneeId })
-  }
-
-  const onSupplierChange = (supplierId: string) => {
-    commitFields({ supplierId: supplierId || undefined })
-  }
-
-  const onProjectChange = (projectId: string) => {
-    commitFields({ projectId: projectId || undefined })
-  }
-
-  const onClientChange = (clientId: string) => {
-    const cid = clientId.trim() ? clientId.trim() : undefined
-    const patch: Partial<Task> = { clientId: cid }
-    if (task.projectId) {
-      const proj = projects.find((p) => p.id === task.projectId)
-      if (!proj || (cid && proj.clientId !== cid)) {
-        patch.projectId = undefined
-      }
+  const requestClose = () => {
+    if (dirty) {
+      if (!window.confirm('יש שינויים שלא נשמרו. לסגור בלי לשמור?')) return
     }
-    commitFields(patch)
+    setDrawerTaskId(null)
   }
 
-  const onDueChange = (dueDate: string) => {
-    if (dueDate === task.dueDate) return
-    commitFields({ dueDate })
+  const saveTask = async () => {
+    if (!userId || !task || !draft) return
+    const patch = buildPatch(task, draft)
+    if (Object.keys(patch).length === 0) {
+      toastFsSuccess('אין שינויים לשמירה')
+      return
+    }
+    setSaving(true)
+    try {
+      await updateTask(task.id, patch, taskOpts)
+      setDraft(initDraft(applyPatchToTask(task, patch)))
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const setClientIdInDraft = (clientId: string) => {
+    const cid = clientId.trim() ? clientId.trim() : ''
+    setDraft((prev) => {
+      if (!prev) return prev
+      let projectId = prev.projectId
+      if (prev.projectId) {
+        const proj = projects.find((p) => p.id === prev.projectId)
+        if (!proj || (cid && proj.clientId !== cid)) projectId = ''
+      }
+      return { ...prev, clientId: cid, projectId }
+    })
+  }
+
+  if (!taskId || !task || !draft) return null
 
   const onTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return
     e.preventDefault()
     const t = tagInput.trim()
-    if (!t || !userId || task.tags.includes(t)) return
-    commitFields({ tags: [...task.tags, t] })
+    if (!t || draft.tags.includes(t)) return
+    setDraft((d) => (d ? { ...d, tags: [...d.tags, t] } : d))
     setTagInput('')
   }
 
   const addReminderClick = () => {
-    if (!remDate || !userId) return
+    if (!remDate || !draft) return
     const iso = new Date(`${remDate}T${remTime}:00`).toISOString()
     const r = { id: crypto.randomUUID(), at: iso }
-    void updateTask(
-      task.id,
-      { reminders: [...task.reminders, r] },
-      taskOpts,
-    )
+    setDraft((d) => (d ? { ...d, reminders: [...d.reminders, r] } : d))
   }
 
   const removeReminderLocal = (reminderId: string) => {
-    if (!userId) return
-    void updateTask(
-      task.id,
-      { reminders: task.reminders.filter((x) => x.id !== reminderId) },
-      taskOpts,
+    setDraft((d) =>
+      d ? { ...d, reminders: d.reminders.filter((x) => x.id !== reminderId) } : d,
     )
   }
 
@@ -165,7 +236,7 @@ export function TaskDrawer() {
         type="button"
         aria-label="סגור"
         className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-[1px]"
-        onClick={close}
+        onClick={requestClose}
       />
       <aside
         className="fixed inset-y-0 right-0 z-[70] flex w-full max-w-[480px] flex-col border-r border-[var(--border)] bg-white shadow-[-8px_0_32px_rgba(26,43,94,0.12)]"
@@ -174,7 +245,7 @@ export function TaskDrawer() {
         <header className="flex shrink-0 items-start gap-3 border-b border-[var(--border)] px-5 py-4">
           <button
             type="button"
-            onClick={close}
+            onClick={requestClose}
             className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-lg text-[var(--text-mid)] transition hover:bg-[var(--bg-input)]"
             aria-label="סגירה"
           >
@@ -182,17 +253,23 @@ export function TaskDrawer() {
           </button>
           <div className="min-w-0 flex-1">
             <input
-              key={task.id}
-              defaultValue={task.title}
-              onBlur={(e) => onTitleBlur(e.target.value)}
+              value={draft.title}
+              onChange={(e) =>
+                setDraft((d) => (d ? { ...d, title: e.target.value } : d))
+              }
               className="w-full border-0 bg-transparent text-lg font-extrabold text-[var(--blue-dark)] outline-none ring-0 focus:ring-0"
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusBadgeClass[task.status]}`}
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusBadgeClass[draft.status]}`}
               >
-                {boardStatusHe(task.status)}
+                {boardStatusHe(draft.status)}
               </span>
+              {dirty ? (
+                <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-bold text-[#B45309]">
+                  שינויים שלא נשמרו
+                </span>
+              ) : null}
             </div>
           </div>
         </header>
@@ -232,9 +309,12 @@ export function TaskDrawer() {
                   תיאור
                 </label>
                 <textarea
-                  key={`d-${task.id}`}
-                  defaultValue={task.description}
-                  onBlur={(e) => onDescBlur(e.target.value)}
+                  value={draft.description}
+                  onChange={(e) =>
+                    setDraft((d) =>
+                      d ? { ...d, description: e.target.value } : d,
+                    )
+                  }
                   rows={5}
                   className="min-h-[120px] w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--bg-input)] p-3 text-sm"
                 />
@@ -245,9 +325,13 @@ export function TaskDrawer() {
                     סטטוס
                   </label>
                   <select
-                    value={task.status}
+                    value={draft.status}
                     onChange={(e) =>
-                      onStatusSelect(e.target.value as TaskStatus)
+                      setDraft((d) =>
+                        d
+                          ? { ...d, status: e.target.value as TaskStatus }
+                          : d,
+                      )
                     }
                     className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                   >
@@ -262,9 +346,13 @@ export function TaskDrawer() {
                     עדיפות
                   </label>
                   <select
-                    value={task.priority}
+                    value={draft.priority}
                     onChange={(e) =>
-                      onPriorityChange(e.target.value as Priority)
+                      setDraft((d) =>
+                        d
+                          ? { ...d, priority: e.target.value as Priority }
+                          : d,
+                      )
                     }
                     className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                   >
@@ -279,8 +367,12 @@ export function TaskDrawer() {
                   משויך ל
                 </label>
                 <select
-                  value={task.assigneeId}
-                  onChange={(e) => onAssigneeChange(e.target.value)}
+                  value={draft.assigneeId}
+                  onChange={(e) =>
+                    setDraft((d) =>
+                      d ? { ...d, assigneeId: e.target.value } : d,
+                    )
+                  }
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                 >
                   <option value="">—</option>
@@ -301,8 +393,8 @@ export function TaskDrawer() {
                 <ClientQuickSelect
                   id="task-drawer-client"
                   clients={clients}
-                  value={task.clientId ?? ''}
-                  onChange={onClientChange}
+                  value={draft.clientId}
+                  onChange={setClientIdInDraft}
                 />
               </div>
               <div>
@@ -310,8 +402,12 @@ export function TaskDrawer() {
                   ספק (אופציונלי)
                 </label>
                 <select
-                  value={task.supplierId ?? ''}
-                  onChange={(e) => onSupplierChange(e.target.value)}
+                  value={draft.supplierId}
+                  onChange={(e) =>
+                    setDraft((d) =>
+                      d ? { ...d, supplierId: e.target.value } : d,
+                    )
+                  }
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                 >
                   <option value="">—</option>
@@ -326,7 +422,7 @@ export function TaskDrawer() {
                 <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
                   פרויקט (אופציונלי)
                 </label>
-                {task.clientId?.trim() ? (
+                {draft.clientId?.trim() ? (
                   <p className="mb-1 text-[10px] text-[var(--text-mid)]">
                     מוצגים רק פרויקטים של הלקוח שנבחר
                   </p>
@@ -337,12 +433,16 @@ export function TaskDrawer() {
                 )}
                 <select
                   value={
-                    task.projectId &&
-                    projectsForTask.some((p) => p.id === task.projectId)
-                      ? task.projectId
+                    draft.projectId &&
+                    projectsForTask.some((p) => p.id === draft.projectId)
+                      ? draft.projectId
                       : ''
                   }
-                  onChange={(e) => onProjectChange(e.target.value)}
+                  onChange={(e) =>
+                    setDraft((d) =>
+                      d ? { ...d, projectId: e.target.value } : d,
+                    )
+                  }
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                 >
                   <option value="">—</option>
@@ -352,7 +452,7 @@ export function TaskDrawer() {
                     </option>
                   ))}
                 </select>
-                {task.clientId?.trim() && projectsForTask.length === 0 ? (
+                {draft.clientId?.trim() && projectsForTask.length === 0 ? (
                   <p className="mt-1 text-[10px] text-[var(--text-light)]">
                     אין פרויקטים ללקוח זה — צרו פרויקט מעמוד הפרויקטים
                   </p>
@@ -364,8 +464,10 @@ export function TaskDrawer() {
                 </label>
                 <input
                   type="date"
-                  value={toDateInputYmd(task.dueDate)}
-                  onChange={(e) => onDueChange(e.target.value)}
+                  value={toDateInputYmd(draft.dueDate)}
+                  onChange={(e) =>
+                    setDraft((d) => (d ? { ...d, dueDate: e.target.value } : d))
+                  }
                   className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                 />
               </div>
@@ -381,7 +483,7 @@ export function TaskDrawer() {
                   className="mb-2 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
                 />
                 <div className="flex flex-wrap gap-2">
-                  {task.tags.map((tag) => (
+                  {draft.tags.map((tag) => (
                     <span
                       key={tag}
                       className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 py-1 text-xs font-semibold text-[var(--text-dark)]"
@@ -391,14 +493,13 @@ export function TaskDrawer() {
                         type="button"
                         className="text-[var(--text-light)] hover:text-[#EF4444]"
                         aria-label={`הסר ${tag}`}
-                        onClick={() => {
-                          if (!userId) return
-                          void updateTask(
-                            task.id,
-                            { tags: task.tags.filter((g) => g !== tag) },
-                            taskOpts,
+                        onClick={() =>
+                          setDraft((d) =>
+                            d
+                              ? { ...d, tags: d.tags.filter((g) => g !== tag) }
+                              : d,
                           )
-                        }}
+                        }
                       >
                         ×
                       </button>
@@ -407,98 +508,26 @@ export function TaskDrawer() {
                 </div>
               </div>
 
-              <div className="w-full min-w-0 overflow-x-hidden rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] p-4">
-                <p className="mb-1 text-[12px] font-bold text-[var(--blue-dark)]">
-                  שיתוף לביצוע
-                </p>
-                <p className="mb-3 text-[11px] leading-relaxed text-[var(--text-mid)]">
-                  כל מי שמסומן כאן רואה את המשימה בעמודה{' '}
-                  <strong className="text-[var(--text-dark)]">משותפות לביצוע</strong>.
-                  גם <strong>היוצר</strong> רואה אותה שם כשיש לפחות עובד משותף אחד.
-                  בלי שיתוף — המשימה מסודרת לפי תאריך יעד (אחראי ויוצר).
-                </p>
-                {task.teamWideShared ? (
-                  <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
-                    מצב ישן: גלוי לכל הצוות. סימון עובדים כאן מחליף לשיתוף נקודתי.
+              <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-4">
+                <button
+                  type="button"
+                  disabled={!dirty || !userId || saving}
+                  onClick={() => void saveTask()}
+                  className="w-full rounded-xl bg-[var(--blue-mid)] py-3 text-sm font-bold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  {saving ? 'שומר…' : 'שמור משימה'}
+                </button>
+                {!dirty ? (
+                  <p className="text-center text-[11px] text-[var(--text-light)]">
+                    שינויים בפרטים נשמרים רק בלחיצה על «שמור משימה»
                   </p>
                 ) : null}
-                {(() => {
-                  const roster = [...teamMembers]
-                    .filter((m) => m.active !== false)
-                    .sort((a, b) => a.name.localeCompare(b.name, 'he'))
-                  const nSel = task.sharedWithUserIds.length
-                  return roster.length === 0 ? (
-                    <p className="text-[11px] text-[var(--text-mid)]">
-                      אין עובדים ברשימה.
-                    </p>
-                  ) : (
-                    <>
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-mid)]">
-                        <span className="font-semibold text-[var(--text-dark)]">
-                          עובדים ({roster.length})
-                        </span>
-                        <span>
-                          נבחרו: <strong>{nSel}</strong>
-                        </span>
-                      </div>
-                      <ul
-                        className="max-h-56 overflow-y-auto overflow-x-hidden rounded-xl border border-[var(--border)] bg-white shadow-sm"
-                        style={{ scrollbarGutter: 'stable' }}
-                      >
-                        {roster.map((m) => {
-                          const selected = task.sharedWithUserIds.includes(m.id)
-                          const toggle = () => {
-                            if (!userId) return
-                            const next = selected
-                              ? task.sharedWithUserIds.filter((id) => id !== m.id)
-                              : [...task.sharedWithUserIds, m.id]
-                            void updateTask(
-                              task.id,
-                              { sharedWithUserIds: next },
-                              taskOpts,
-                            )
-                          }
-                          return (
-                            <li
-                              key={m.id}
-                              className="border-b border-[var(--border)] last:border-b-0"
-                            >
-                              <label className="grid w-full min-w-0 cursor-pointer grid-cols-[1.125rem_minmax(0,1fr)] items-start gap-3 px-3 py-2.5 transition hover:bg-[#F8FAFC]">
-                                <input
-                                  type="checkbox"
-                                  checked={selected}
-                                  onChange={toggle}
-                                  className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded border-[var(--border)] accent-[var(--orange)]"
-                                  aria-label={`שיתוף עם ${m.name}`}
-                                />
-                                <span className="min-w-0 break-words text-[13px] font-medium leading-snug text-[var(--text-dark)]">
-                                  {m.name}
-                                </span>
-                              </label>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </>
-                  )
-                })()}
-                {task.teamWideShared || task.sharedWithUserIds.length > 0 ? (
-                  <button
-                    type="button"
-                    disabled={!userId}
-                    onClick={() => {
-                      if (!userId) return
-                      void updateTask(
-                        task.id,
-                        { sharedWithUserIds: [] },
-                        taskOpts,
-                      )
-                    }}
-                    className="mt-3 w-full rounded-lg border border-[var(--border)] bg-white py-2 text-center text-[12px] font-semibold text-[var(--text-mid)] transition hover:bg-[#F8FAFC] disabled:opacity-40"
-                  >
-                    נקה שיתוף
-                  </button>
-                ) : null}
+              </div>
+
+              <div className="w-full rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] p-3 text-[12px] text-[var(--text-mid)]">
+                המשימה מוצגת רק לעובד המשויך. למעקב אחר משימות ששלחת לעובדים, השתמש בכפתור
+                <strong className="mx-1 text-[var(--blue-dark)]">"משימות ששלחתי"</strong>
+                בעמוד המשימות.
               </div>
             </div>
           ) : null}
@@ -590,6 +619,9 @@ export function TaskDrawer() {
 
           {tab === 'reminders' ? (
             <div className="space-y-4">
+              <p className="text-[11px] text-[var(--text-mid)]">
+                תזכורות יישמרו בשרת רק אחרי לחיצה על «שמור משימה» בלשונית פרטים.
+              </p>
               <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)] p-4">
                 <p className="mb-2 text-xs font-bold text-[var(--text-mid)]">
                   הוסף תזכורת
@@ -617,12 +649,12 @@ export function TaskDrawer() {
                 </div>
               </div>
               <ul className="space-y-2">
-                {task.reminders.length === 0 ? (
+                {draft.reminders.length === 0 ? (
                   <li className="text-sm text-[var(--text-mid)]">
                     אין תזכורות למשימה זו
                   </li>
                 ) : null}
-                {task.reminders.map((r) => {
+                {draft.reminders.map((r) => {
                   const badge = reminderBadgeHe(r.at)
                   const badgeCls =
                     badge === 'פג תוקף'

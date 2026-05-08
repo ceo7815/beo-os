@@ -59,7 +59,7 @@ export function ProgressBar({
   return (
     <div className="w-full">
       <div
-        className="mb-1 flex justify-between gap-2 text-[11px] text-[var(--text-light)]"
+        className="mb-1 flex justify-between gap-2 text-[11px] text-slate-500"
         dir="ltr"
       >
         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -88,10 +88,10 @@ export function ProgressBar({
                   }
                 }}
                 onBlur={() => commit()}
-                className="w-11 rounded border border-[var(--border)] bg-white px-1 py-0.5 text-center text-[11px] font-semibold text-[var(--text-dark)]"
+                className="w-11 rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-[11px] font-semibold text-slate-800"
                 aria-label="אחוז התקדמות"
               />
-              <span className="text-[var(--text-mid)]">%</span>
+              <span className="text-slate-500">%</span>
             </span>
           ) : editable ? (
             <button
@@ -102,13 +102,13 @@ export function ProgressBar({
                 e.stopPropagation()
                 setEditing(true)
               }}
-              className={`rounded px-1 py-0.5 font-semibold transition hover:bg-[var(--blue-light)] ${
-                hasManual ? 'text-[var(--orange)]' : 'text-[var(--text-dark)]'
+              className={`rounded px-1 py-0.5 font-semibold transition hover:bg-slate-100 ${
+                hasManual ? 'text-amber-600' : 'text-slate-800'
               }`}
             >
               {pct}%
               {hasManual ? (
-                <span className="ms-0.5 text-[9px] font-bold text-[var(--text-mid)]">
+                <span className="ms-0.5 text-[9px] font-bold text-slate-500">
                   ידני
                 </span>
               ) : null}
@@ -125,7 +125,7 @@ export function ProgressBar({
                 e.stopPropagation()
                 onManualPercentCommit?.(null)
               }}
-              className="text-[9px] font-bold text-[var(--blue-mid)] underline decoration-dotted hover:text-[var(--blue-dark)]"
+              className="text-[9px] font-bold text-blue-600 underline decoration-dotted hover:text-blue-700"
             >
               אוטו
             </button>
@@ -136,11 +136,11 @@ export function ProgressBar({
         </span>
       </div>
       <div
-        className="h-[6px] w-full overflow-hidden rounded-[3px] bg-[#E2E8F0]"
+        className="h-[8px] w-full overflow-hidden rounded-full bg-slate-200"
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div
-          className="h-full rounded-[3px] transition-[width] duration-300 ease-out"
+          className="h-full rounded-full transition-[width] duration-300 ease-out"
           style={{
             width: `${pct}%`,
             backgroundColor: color,

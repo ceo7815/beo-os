@@ -1,12 +1,102 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // מומלץ: להחמיר לפי תפקידים (custom claims) לפני production
-    //
-    // פרויקטים: שדה projectKind יכול להיות "client" או "internal".
-    // לפרויקט פנימי אין חובה לכלול clientId (מסמכים ישנים: גם type / projectKind).
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function me() {
+      return request.auth.uid;
+    }
+
+    function myRole() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(me()))
+        ? get(/databases/$(database)/documents/users/$(me())).data.role
+        : '';
+    }
+
+    function isAdmin() {
+      return myRole() in ['admin', 'superadmin'];
+    }
+
+    function isSelf(userId) {
+      return signedIn() && me() == userId;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || (
+        isSelf(userId) &&
+        !(request.resource.data.role in ['admin', 'superadmin'])
+      );
+      allow update: if isAdmin() || (
+        isSelf(userId) &&
+        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'name',
+          'avatar',
+          'color',
+          'email'
+        ])
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow read: if signedIn() && (
+        isAdmin() ||
+        resource.data.assigneeId == me() ||
+        resource.data.createdBy == me()
+      );
+      allow create: if signedIn() && request.resource.data.createdBy == me();
+      allow update, delete: if signedIn() && (
+        isAdmin() ||
+        resource.data.assigneeId == me() ||
+        resource.data.createdBy == me()
+      );
+    }
+
+    match /attendancePresence/{userId} {
+      allow read: if isAdmin() || isSelf(userId);
+      allow create, update, delete: if isAdmin() || isSelf(userId);
+    }
+
+    match /attendanceLogs/{logId} {
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
+      allow create: if signedIn() && (isAdmin() || request.resource.data.userId == me());
+      allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == me());
+    }
+
+    match /checkIns/{checkInId} {
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
+      allow create: if signedIn() && (isAdmin() || request.resource.data.userId == me());
+      allow update, delete: if isAdmin();
+    }
+
+    match /attendanceAnomalies/{anomalyId} {
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /activityLogs/{activityId} {
+      allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
+      allow create: if signedIn() && (isAdmin() || request.resource.data.userId == me());
+      allow update, delete: if isAdmin();
+    }
+
+    match /attendanceConfig/{configId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    /** לידים — עדכון מצד הלקוח חייב ללא ערכי `undefined` (Firestore דוחה). */
+    match /leads/{leadId} {
+      allow read, write: if signedIn();
+    }
+
+    // שאר המודולים: דורשים משתמש מחובר.
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if signedIn();
     }
   }
 }

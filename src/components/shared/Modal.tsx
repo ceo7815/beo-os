@@ -5,8 +5,8 @@ export interface ModalProps {
   onClose: () => void
   title: string
   children: ReactNode
-  /** lg — תצוגה רחבה לתוכן ארוך (למשל משימה מלאה) */
-  size?: 'md' | 'lg'
+  /** lg / xl — תצוגה רחבה (xl למסכי פרטים מלאים) */
+  size?: 'md' | 'lg' | 'xl'
   /**
    * ברירת מחדל: גלילה פנימית עם גובה מקסימלי.
    * לרשימות צפות (אוטו-השלמה) העבירו overflow-visible max-h-none — הגלילה תהיה על כל חלון המודל.
@@ -23,7 +23,8 @@ export function Modal({
   bodyClassName,
 }: ModalProps) {
   if (!isOpen) return null
-  const maxW = size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
+  const maxW =
+    size === 'xl' ? 'max-w-4xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg'
   return (
     <div
       className="fixed inset-0 z-[85] flex items-center justify-center p-4"

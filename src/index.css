@@ -89,6 +89,28 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+/* רדיו / צ׳קבוקס — לא מקבלים width:100% מהכלל הגלובלי שלמעלה */
+input[type='radio'],
+input[type='checkbox'] {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  flex-shrink: 0;
+  accent-color: var(--blue-mid);
+}
+
+input[type='radio']:focus,
+input[type='checkbox']:focus {
+  box-shadow: none;
+  outline: 2px solid var(--blue-mid);
+  outline-offset: 2px;
+}
+
 /* כפתורים גלובליים */
 button {
   font-family: 'Rubik', sans-serif !important;

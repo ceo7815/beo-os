@@ -13,7 +13,7 @@ import {
   deleteField,
   doc,
   getDoc,
-  getDocsFromServer,
+  onSnapshot,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -33,6 +33,11 @@ export type CollectionTrackingInput = {
   note?: string
 }
 
+export type RecordPaymentDemandInput = {
+  method: string
+  clientReply: string
+}
+
 type CollectionTrackingContextValue = {
   entries: CollectionTracking[]
   loading: boolean
@@ -41,6 +46,10 @@ type CollectionTrackingContextValue = {
   removeFromTracking: (clientId: string) => Promise<void>
   markPaid: (clientId: string) => Promise<void>
   clearPaid: (clientId: string) => Promise<void>
+  recordPaymentDemand: (
+    clientId: string,
+    payload: RecordPaymentDemandInput,
+  ) => Promise<boolean>
 }
 
 const CollectionTrackingContext =
@@ -64,33 +73,22 @@ export function CollectionTrackingProvider({
       return
     }
     setLoading(true)
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const snap = await getDocsFromServer(collection(db, 'collectionTracking'))
-        if (cancelled) return
+    const unsub = onSnapshot(
+      collection(db, 'collectionTracking'),
+      (snap) => {
         setEntries(snap.docs.map((d) => docToCollectionTracking(d)))
         setLoading(false)
         setError(null)
-      } catch (err) {
-        if (cancelled) return
+      },
+      (err) => {
         console.error('collectionTracking snapshot', err)
         toastFsError('שגיאה בטעינת מעקב גבייה', err, 'collectionTracking')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      }
-    }
+      },
+    )
 
-    void load()
-    const timer = window.setInterval(() => {
-      void load()
-    }, 15000)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
+    return () => unsub()
   }, [user])
 
   const upsertTracking = useCallback(async (data: CollectionTrackingInput) => {
@@ -135,13 +133,10 @@ export function CollectionTrackingProvider({
 
   const markPaid = useCallback(async (clientId: string) => {
     try {
-      await updateDoc(doc(db, 'collectionTracking', clientId), {
-        paidDate: todayYmd(),
-        updatedAt: serverTimestamp(),
-      })
-      toastFsSuccess('סומן כשולם')
+      await deleteDoc(doc(db, 'collectionTracking', clientId))
+      toastFsSuccess('הגבייה סומנה כשולמה — הרשומה נסגרה. ניתן לפתוח מעקב חדש לאחר מכן')
     } catch (e) {
-      toastFsError('שגיאה בעדכון', e, 'markPaid tracking')
+      toastFsError('שגיאה בסגירת המעקב', e, 'markPaid tracking')
     }
   }, [])
 
@@ -157,6 +152,36 @@ export function CollectionTrackingProvider({
     }
   }, [])
 
+  const recordPaymentDemand = useCallback(
+    async (clientId: string, payload: RecordPaymentDemandInput) => {
+      const method = payload.method.trim()
+      const clientReply = payload.clientReply.trim()
+      if (!method && !clientReply) {
+        toastFsError(
+          'נא למלא לפחות אחד מהשדות: אופן הדרישה או מענה הלקוח',
+          new Error('empty demand'),
+          'recordPaymentDemand',
+        )
+        return false
+      }
+      try {
+        await updateDoc(doc(db, 'collectionTracking', clientId), {
+          lastDemandMethod: method ? method : deleteField(),
+          lastDemandClientReply: clientReply ? clientReply : deleteField(),
+          lastRequestDate: todayYmd(),
+          lastDemandRecordedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+        toastFsSuccess('פעולת הדרישה נרשמה במעקב')
+        return true
+      } catch (e) {
+        toastFsError('שגיאה בשמירת פעולת הדרישה', e, 'recordPaymentDemand')
+        return false
+      }
+    },
+    [],
+  )
+
   const value = useMemo(
     () => ({
       entries,
@@ -166,6 +191,7 @@ export function CollectionTrackingProvider({
       removeFromTracking,
       markPaid,
       clearPaid,
+      recordPaymentDemand,
     }),
     [
       entries,
@@ -175,6 +201,7 @@ export function CollectionTrackingProvider({
       removeFromTracking,
       markPaid,
       clearPaid,
+      recordPaymentDemand,
     ],
   )
 

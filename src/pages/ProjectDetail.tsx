@@ -38,9 +38,8 @@ const taskStatusLabels: Record<TaskStatus, string> = {
 }
 
 const projectStatusLabels = {
-  planning: 'תכנון',
   active: 'פעיל',
-  review: 'בבדיקה',
+  paused: 'מושהה',
   done: 'הושלם',
 } as const
 
@@ -58,9 +57,8 @@ const docTypeLabels: Record<DocType, string> = {
 }
 
 const projectStatusBadgeColor: Record<ProjectStatus, string> = {
-  planning: '#2563EB',
   active: '#2563EB',
-  review: '#F97316',
+  paused: '#64748B',
   done: '#16A34A',
 }
 

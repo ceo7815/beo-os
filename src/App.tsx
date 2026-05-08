@@ -7,11 +7,15 @@ import { Clients } from './pages/Clients'
 import { Collections } from './pages/Collections'
 import { Dashboard } from './pages/Dashboard'
 import { Hosting } from './pages/Hosting'
+import { Campaigns } from './pages/Campaigns'
+import { Leads } from './pages/Leads'
 import { Login } from './pages/Login'
 import { ProjectDetail } from './pages/ProjectDetail'
 import { Projects } from './pages/Projects'
 import { Suppliers } from './pages/Suppliers'
 import { Tasks } from './pages/Tasks'
+import { Users } from './pages/Users'
+import { Attendance } from './pages/Attendance'
 
 export default function App() {
   return (
@@ -27,9 +31,13 @@ export default function App() {
                 <Route path="collections" element={<Collections />} />
                 <Route path="suppliers" element={<Suppliers />} />
                 <Route path="hosting" element={<Hosting />} />
+                <Route path="campaigns" element={<Campaigns />} />
+                <Route path="leads" element={<Leads />} />
                 <Route path="projects" element={<Projects />} />
                 <Route path="projects/:id" element={<ProjectDetail />} />
                 <Route path="tasks" element={<Tasks />} />
+                <Route path="users" element={<Users />} />
+                <Route path="attendance" element={<Attendance />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Route>

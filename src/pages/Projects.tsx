@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deleteField } from 'firebase/firestore'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDateIL, todayYmd } from '../lib/dates'
+import { addDaysYmd, formatDateIL, todayYmd } from '../lib/dates'
 import { isRetainerProject, RETAINER_ACCENT } from '../lib/projectRetainer'
 import { HUB_SUPPLIER_ID } from '../lib/hubSupplier'
 import {
@@ -13,6 +13,7 @@ import { priorityColor } from '../lib/priorityColor'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { useSuppliers } from '../hooks/useSuppliers'
+import { useTasks } from '../hooks/useTasks'
 import { useUsers } from '../hooks/useUsers'
 import { useHubStore } from '../store/useStore'
 import type {
@@ -45,16 +46,14 @@ const PROJECT_COLORS = [
 type FilterKey = 'all' | ProjectStatus
 
 const statusLabels: Record<ProjectStatus, string> = {
-  planning: 'תכנון',
   active: 'פעיל',
-  review: 'בבדיקה',
+  paused: 'מושהה',
   done: 'הושלם',
 }
 
 const projectStatusBadgeColor: Record<ProjectStatus, string> = {
-  planning: '#2563EB',
   active: '#2563EB',
-  review: '#F97316',
+  paused: '#64748B',
   done: '#16A34A',
 }
 
@@ -62,6 +61,53 @@ const priorityLabels: Record<Priority, string> = {
   high: 'גבוהה',
   medium: 'בינונית',
   low: 'נמוכה',
+}
+
+const uiButtonBase =
+  'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
+const uiButtonGhost =
+  `${uiButtonBase} border border-[#E2E8F0] bg-white text-[var(--text-mid)] hover:bg-[#F8FAFC]`
+const uiButtonPrimary = `${uiButtonBase} hub-btn-primary`
+
+function projectProgressPercent(p: Project): number {
+  if (typeof p.manualProgressPercent === 'number' && !Number.isNaN(p.manualProgressPercent)) {
+    return Math.max(0, Math.min(100, Math.round(p.manualProgressPercent)))
+  }
+  if (!p.taskCount) return 0
+  return Math.round((p.doneCount / p.taskCount) * 100)
+}
+
+function projectHealthScore(p: Project, today: string): number {
+  if (p.status === 'done') return 100
+  const progress = projectProgressPercent(p)
+  let score = 55 + Math.round(progress * 0.45)
+  const due = p.dueDate?.slice(0, 10) ?? ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(due)) {
+    if (due < today) score -= 32
+    else if (due <= addDaysYmd(today, 2)) score -= 18
+    else if (due <= addDaysYmd(today, 7)) score -= 8
+  }
+  const openTasks = Math.max(0, p.taskCount - p.doneCount)
+  if (openTasks >= 8) score -= 10
+  if (p.status === 'active' && progress < 20) score -= 6
+  return Math.max(0, Math.min(100, score))
+}
+
+function healthTone(score: number): { label: string; color: string } {
+  if (score >= 80) return { label: 'בריא', color: '#16A34A' }
+  if (score >= 55) return { label: 'דורש תשומת לב', color: '#D97706' }
+  return { label: 'בסיכון', color: '#DC2626' }
+}
+
+function requiresAttentionToday(p: Project, today: string): boolean {
+  if (p.status === 'done') return false
+  const due = p.dueDate?.slice(0, 10) ?? ''
+  const openTasks = Math.max(0, p.taskCount - p.doneCount)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(due) && due <= today) return true
+  if (/^\d{4}-\d{2}-\d{2}$/.test(due) && due <= addDaysYmd(today, 2) && openTasks > 0) {
+    return true
+  }
+  return false
 }
 
 interface ProjectFormState {
@@ -79,8 +125,16 @@ interface ProjectFormState {
   color: string
 }
 
+interface QuickTaskFormState {
+  title: string
+  priority: Priority
+  assigneeId: string
+  dueDate: string
+}
+
 export function Projects() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
   const { users: teamMembers } = useUsers()
   const defaultOwnerId = user?.uid ?? teamMembers[0]?.id ?? ''
@@ -93,7 +147,7 @@ export function Projects() {
       projectBillingType: 'one-time',
       clientId: '',
       supplierId: '',
-      status: 'planning',
+      status: 'active',
       priority: 'medium',
       dueDate: '',
       startDate: todayYmd(),
@@ -104,6 +158,7 @@ export function Projects() {
   )
 
   const { projects, addProject, updateProject, deleteProject } = useProjects()
+  const { addTask } = useTasks()
   const { clients } = useClients()
   const { suppliers, addSupplier } = useSuppliers()
   const selectedClientId = useHubStore((s) => s.selectedClientId)
@@ -120,6 +175,15 @@ export function Projects() {
   const [menuId, setMenuId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [attentionOnly, setAttentionOnly] = useState(false)
+  const [taskModalOpen, setTaskModalOpen] = useState(false)
+  const [taskProjectId, setTaskProjectId] = useState<string | null>(null)
+  const [taskForm, setTaskForm] = useState<QuickTaskFormState>({
+    title: '',
+    priority: 'medium',
+    assigneeId: defaultOwnerId,
+    dueDate: todayYmd(),
+  })
   const menuRef = useRef<HTMLDivElement | null>(null)
   const supplierHubDefaultedRef = useRef(false)
 
@@ -162,15 +226,37 @@ export function Projects() {
     supplierHubDefaultedRef.current = true
   }, [modalOpen, editingId, suppliers])
 
-  const filtered = useMemo(() => {
+  const today = todayYmd()
+
+  const scopedProjects = useMemo(() => {
     return projects.filter((p) => {
       if (selectedClientId && p.clientId !== selectedClientId) return false
       if (kindFilter === 'client' && isInternalProject(p)) return false
       if (kindFilter === 'internal' && !isInternalProject(p)) return false
-      if (statusFilter !== 'all' && p.status !== statusFilter) return false
       return true
     })
-  }, [projects, selectedClientId, kindFilter, statusFilter])
+  }, [projects, selectedClientId, kindFilter])
+
+  const filtered = useMemo(() => {
+    return scopedProjects.filter((p) => {
+      if (statusFilter !== 'all' && p.status !== statusFilter) return false
+      if (attentionOnly && !requiresAttentionToday(p, today)) return false
+      return true
+    })
+  }, [scopedProjects, statusFilter, attentionOnly, today])
+
+  const activeFiltered = useMemo(
+    () => filtered.filter((p) => p.status === 'active'),
+    [filtered],
+  )
+  const pausedFiltered = useMemo(
+    () => filtered.filter((p) => p.status === 'paused'),
+    [filtered],
+  )
+  const completedFiltered = useMemo(
+    () => filtered.filter((p) => p.status === 'done'),
+    [filtered],
+  )
 
   const openNew = () => {
     setEditingId(null)
@@ -178,6 +264,16 @@ export function Projects() {
     setForm(emptyForm())
     setModalOpen(true)
   }
+
+  useEffect(() => {
+    const st = location.state as { openAdd?: boolean } | undefined
+    if (!st?.openAdd) return
+    setEditingId(null)
+    supplierHubDefaultedRef.current = false
+    setForm(emptyForm())
+    setModalOpen(true)
+    navigate('.', { replace: true, state: null })
+  }, [location.state, navigate, emptyForm])
 
   const openEdit = (p: Project) => {
     setEditingId(p.id)
@@ -334,14 +430,78 @@ export function Projects() {
   const filterButtons: { key: FilterKey; label: string }[] = [
     { key: 'all', label: 'הכל' },
     { key: 'active', label: 'פעיל' },
-    { key: 'planning', label: 'תכנון' },
-    { key: 'review', label: 'בבדיקה' },
+    { key: 'paused', label: 'מושהה' },
     { key: 'done', label: 'הושלם' },
   ]
 
   const selectedClient = selectedClientId
     ? clientMap.get(selectedClientId)
     : undefined
+
+  const projectKpis = useMemo(() => {
+    const active = scopedProjects.filter((p) => p.status === 'active').length
+    const paused = scopedProjects.filter((p) => p.status === 'paused').length
+    const completed = scopedProjects.filter((p) => p.status === 'done').length
+    return { active, paused, completed }
+  }, [scopedProjects])
+
+  const markProjectDone = async (id: string) => {
+    await updateProject(id, { status: 'done' })
+    setMenuId(null)
+  }
+
+  const toggleProjectPause = async (p: Project) => {
+    const nextStatus: ProjectStatus = p.status === 'paused' ? 'active' : 'paused'
+    await updateProject(p.id, { status: nextStatus })
+    setMenuId(null)
+  }
+
+  const openTaskModal = (projectId: string, projectOwnerId?: string) => {
+    setTaskProjectId(projectId)
+    setTaskForm({
+      title: '',
+      priority: 'medium',
+      assigneeId: projectOwnerId || defaultOwnerId,
+      dueDate: todayYmd(),
+    })
+    setTaskModalOpen(true)
+  }
+
+  const submitQuickTask = async () => {
+    if (!taskProjectId) return
+    const proj = projects.find((x) => x.id === taskProjectId)
+    if (!proj) return
+    const title = taskForm.title.trim()
+    if (!title) {
+      pushToast('כותרת משימה היא שדה חובה', 'error')
+      return
+    }
+    const id = await addTask({
+      projectId: proj.id,
+      clientId: proj.clientId,
+      title,
+      description: '',
+      status: 'todo',
+      priority: taskForm.priority,
+      assigneeId: taskForm.assigneeId || proj.ownerId || defaultOwnerId,
+      dueDate: taskForm.dueDate || todayYmd(),
+      tags: [],
+      reminders: [],
+      sharedWithUserIds: [],
+      supplierId: proj.supplierId,
+      reminderDate: undefined,
+    })
+    if (id) {
+      setTaskModalOpen(false)
+      setTaskProjectId(null)
+      setTaskForm({
+        title: '',
+        priority: 'medium',
+        assigneeId: defaultOwnerId,
+        dueDate: todayYmd(),
+      })
+    }
+  }
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
@@ -351,60 +511,95 @@ export function Projects() {
             פרויקטים
           </h1>
           <p className="mt-1 text-[13px] text-[var(--text-mid)]">
-            מעקב אחר סטטוס והתקדמות
+            מעקב לפי סטטוס פרויקט
           </p>
         </div>
-        <button type="button" onClick={openNew} className="hub-btn-primary text-sm">
+        <button type="button" onClick={openNew} className={uiButtonPrimary}>
           + פרויקט חדש
         </button>
       </header>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)]">
-              סוג
-            </span>
-            {kindFilterButtons.map((b) => (
-              <button
-                key={b.key}
-                type="button"
-                onClick={() => setKindFilter(b.key)}
-                className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold transition ${
-                  kindFilter === b.key
-                    ? b.key === 'internal'
-                      ? 'text-white shadow-sm'
-                      : 'hub-btn-primary'
-                    : 'border border-[#BFDBFE] bg-[var(--blue-light)] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
-                }`}
-                style={
-                  kindFilter === b.key && b.key === 'internal'
-                    ? { backgroundColor: INTERNAL_PROJECT_BADGE_COLOR }
-                    : undefined
-                }
-              >
-                {b.label}
-              </button>
-            ))}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2">
+              <p className="text-[10px] text-[var(--text-light)]">פעיל</p>
+              <p className="text-lg font-extrabold text-[var(--blue-mid)]">
+                {projectKpis.active}
+              </p>
+            </div>
+            <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2">
+              <p className="text-[10px] text-[var(--text-light)]">מושהה</p>
+              <p className="text-lg font-extrabold text-[#64748B]">
+                {projectKpis.paused}
+              </p>
+            </div>
+            <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2">
+              <p className="text-[10px] text-[var(--text-light)]">הושלם</p>
+              <p className="text-lg font-extrabold text-[#16A34A]">
+                {projectKpis.completed}
+              </p>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)]">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)]">
+              סוג
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {kindFilterButtons.map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => setKindFilter(b.key)}
+                  className={`${uiButtonBase} ${
+                    kindFilter === b.key
+                      ? b.key === 'internal'
+                        ? 'text-white shadow-sm'
+                        : 'hub-btn-primary border-transparent'
+                      : 'border border-[#BFDBFE] bg-[var(--blue-light)] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
+                  }`}
+                  style={
+                    kindFilter === b.key && b.key === 'internal'
+                      ? { backgroundColor: INTERNAL_PROJECT_BADGE_COLOR }
+                      : undefined
+                  }
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)]">
               סטטוס
-            </span>
-            {filterButtons.map((b) => (
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {filterButtons.map((b) => (
+                <button
+                  key={b.key}
+                  type="button"
+                  onClick={() => setStatusFilter(b.key)}
+                  className={`${uiButtonBase} ${
+                    statusFilter === b.key
+                      ? 'hub-btn-primary border-transparent'
+                      : 'border border-[#BFDBFE] bg-[var(--blue-light)] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
+                  }`}
+                >
+                  {b.label}
+                </button>
+              ))}
               <button
-                key={b.key}
                 type="button"
-                onClick={() => setStatusFilter(b.key)}
-                className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold transition ${
-                  statusFilter === b.key
-                    ? 'hub-btn-primary'
-                    : 'border border-[#BFDBFE] bg-[var(--blue-light)] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
+                onClick={() => setAttentionOnly((v) => !v)}
+                className={`${uiButtonBase} ${
+                  attentionOnly
+                    ? 'border border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]'
+                    : 'border border-[#E2E8F0] bg-white text-[var(--text-mid)] hover:bg-[#F8FAFC]'
                 }`}
               >
-                {b.label}
+                צריך טיפול היום
               </button>
-            ))}
+            </div>
           </div>
         </div>
         {selectedClient ? (
@@ -414,7 +609,7 @@ export function Projects() {
             </span>
             <button
               type="button"
-              className="text-[var(--text-mid)] hover:text-[var(--text-dark)]"
+                className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-2 text-[var(--text-mid)] hover:bg-white/70 hover:text-[var(--text-dark)]"
               onClick={() => setSelectedClient(null)}
             >
               ✕
@@ -423,8 +618,17 @@ export function Projects() {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {filtered.map((p) => {
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-[var(--text-dark)]">
+            פרויקטים בתהליך
+          </h2>
+          <span className="text-xs text-[var(--text-light)]">
+            {activeFiltered.length} פרויקטים
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {activeFiltered.map((p) => {
           const client = p.clientId ? clientMap.get(p.clientId) : undefined
           const supplier = p.supplierId ? supplierMap.get(p.supplierId) : undefined
           const owner = memberMap.get(p.ownerId)
@@ -475,13 +679,23 @@ export function Projects() {
                       label={statusLabels[p.status]}
                       color={projectStatusBadgeColor[p.status]}
                     />
+                    {(() => {
+                      const score = projectHealthScore(p, today)
+                      const tone = healthTone(score)
+                      return (
+                        <Badge
+                          label={`בריאות: ${tone.label} ${score}%`}
+                          color={tone.color}
+                        />
+                      )
+                    })()}
                   </div>
                 </button>
                 <div className="relative shrink-0" ref={menuId === p.id ? menuRef : null}>
                   <button
                     type="button"
                     aria-label="תפריט"
-                    className="rounded-[10px] px-2 py-1 text-[var(--text-mid)] hover:bg-[var(--blue-light)] hover:text-[var(--text-dark)]"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-mid)] hover:bg-[var(--blue-light)] hover:text-[var(--text-dark)]"
                     onClick={() => setMenuId((id) => (id === p.id ? null : p.id))}
                   >
                     ···
@@ -490,14 +704,25 @@ export function Projects() {
                     <div className="absolute left-0 z-30 mt-1 min-w-[140px] overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
                       <button
                         type="button"
-                        className="block w-full px-3 py-2 text-right text-xs text-[var(--text-dark)] hover:bg-[var(--blue-light)]"
+                        className="block h-9 w-full px-3 text-right text-xs font-semibold text-[var(--text-dark)] hover:bg-[var(--blue-light)]"
                         onClick={() => openEdit(p)}
                       >
                         עריכה
                       </button>
+                      {p.status !== 'done' ? (
+                        <button
+                          type="button"
+                          className="block h-9 w-full px-3 text-right text-xs font-semibold text-[#166534] hover:bg-[#ECFDF5]"
+                          onClick={() => {
+                            void markProjectDone(p.id)
+                          }}
+                        >
+                          סמן כהושלם
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        className="block w-full px-3 py-2 text-right text-xs text-[var(--danger)] hover:bg-[#FEF2F2]"
+                        className="block h-9 w-full px-3 text-right text-xs font-semibold text-[var(--danger)] hover:bg-[#FEF2F2]"
                         onClick={() => {
                           setDeleteId(p.id)
                           setMenuId(null)
@@ -552,14 +777,236 @@ export function Projects() {
                   {owner ? <Avatar member={owner} size={26} /> : null}
                 </div>
               </button>
+              {p.status !== 'done' ? (
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void toggleProjectPause(p)
+                    }}
+                    className={`${uiButtonBase} min-w-[124px] border ${
+                      p.status === 'paused'
+                        ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
+                        : 'border-[#E2E8F0] bg-white text-[var(--text-mid)] hover:bg-[#F8FAFC]'
+                    }`}
+                  >
+                    {p.status === 'paused' ? '▶ החזר לפעיל' : '⏸ השהה'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openTaskModal(p.id, p.ownerId)}
+                    className={`${uiButtonBase} min-w-[124px] border border-[#BFDBFE] bg-[#EFF6FF] text-[var(--blue-mid)] hover:bg-[#DBEAFE]`}
+                  >
+                    + הוסף משימה
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void markProjectDone(p.id)
+                    }}
+                    className={`${uiButtonBase} min-w-[124px] border border-[#86EFAC] bg-[#ECFDF5] text-[#166534] hover:bg-[#DCFCE7]`}
+                  >
+                    ✓ סמן כהושלם
+                  </button>
+                </div>
+              ) : null}
             </article>
           )
-        })}
-      </div>
+          })}
+        </div>
+        {activeFiltered.length === 0 ? (
+          <p className="text-sm text-[var(--text-mid)]">אין פרויקטים בתהליך להצגה</p>
+        ) : null}
+      </section>
 
-      {filtered.length === 0 ? (
-        <p className="text-sm text-[var(--text-mid)]">אין פרויקטים להצגה</p>
-      ) : null}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-[#475569]">פרויקטים מושהים</h2>
+          <span className="text-xs text-[var(--text-light)]">
+            {pausedFiltered.length} פרויקטים
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {pausedFiltered.map((p) => {
+            const client = p.clientId ? clientMap.get(p.clientId) : undefined
+            const owner = memberMap.get(p.ownerId)
+            return (
+              <article
+                key={p.id}
+                className="rounded-[14px] border border-[#CBD5E1] bg-[#F8FAFC] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+              >
+                <button
+                  type="button"
+                  onClick={() => navigate(`/projects/${p.id}`)}
+                  className="w-full text-right"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-base font-bold text-[#0F172A]">{p.name}</h3>
+                    <Badge label="מושהה" color="#64748B" />
+                  </div>
+                  <p className="mt-1 text-sm text-[#475569]">
+                    {isInternalProject(p) ? 'פנימי' : client?.name ?? 'לקוח לא ידוע'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[#64748B]">
+                    <span>
+                      {p.doneCount}/{p.taskCount} משימות
+                    </span>
+                    <span>יעד: {formatDateIL(p.dueDate)}</span>
+                    {owner ? <Avatar member={owner} size={24} /> : null}
+                  </div>
+                </button>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void toggleProjectPause(p)
+                    }}
+                    className={`${uiButtonBase} min-w-[124px] border border-[#BFDBFE] bg-[#EFF6FF] text-[var(--blue-mid)] hover:bg-[#DBEAFE]`}
+                  >
+                    ▶ החזר לפעיל
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+        {pausedFiltered.length === 0 ? (
+          <p className="text-sm text-[var(--text-mid)]">אין פרויקטים מושהים</p>
+        ) : null}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-[#166534]">פרויקטים שהושלמו</h2>
+          <span className="text-xs text-[var(--text-light)]">
+            {completedFiltered.length} פרויקטים
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {completedFiltered.map((p) => {
+            const client = p.clientId ? clientMap.get(p.clientId) : undefined
+            const owner = memberMap.get(p.ownerId)
+            return (
+              <article
+                key={p.id}
+                className="rounded-[14px] border border-[#BBF7D0] bg-[#F0FDF4] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+              >
+                <button
+                  type="button"
+                  onClick={() => navigate(`/projects/${p.id}`)}
+                  className="w-full text-right"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-base font-bold text-[#14532D]">{p.name}</h3>
+                    <Badge label="הושלם" color="#16A34A" />
+                  </div>
+                  <p className="mt-1 text-sm text-[#166534]">
+                    {isInternalProject(p) ? 'פנימי' : client?.name ?? 'לקוח לא ידוע'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[#166534]">
+                    <span>
+                      {p.doneCount}/{p.taskCount} משימות
+                    </span>
+                    <span>יעד: {formatDateIL(p.dueDate)}</span>
+                    {owner ? <Avatar member={owner} size={24} /> : null}
+                  </div>
+                </button>
+              </article>
+            )
+          })}
+        </div>
+        {completedFiltered.length === 0 ? (
+          <p className="text-sm text-[var(--text-mid)]">אין פרויקטים שהושלמו</p>
+        ) : null}
+      </section>
+
+      <Modal
+        isOpen={taskModalOpen}
+        onClose={() => {
+          setTaskModalOpen(false)
+          setTaskProjectId(null)
+        }}
+        title="משימה חדשה לפרויקט"
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              כותרת משימה *
+            </label>
+            <input
+              value={taskForm.title}
+              onChange={(e) =>
+                setTaskForm((f) => ({ ...f, title: e.target.value }))
+              }
+              placeholder="מה צריך לבצע?"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs text-[var(--text-mid)]">עדיפות</label>
+              <select
+                value={taskForm.priority}
+                onChange={(e) =>
+                  setTaskForm((f) => ({
+                    ...f,
+                    priority: e.target.value as Priority,
+                  }))
+                }
+              >
+                <option value="high">גבוהה</option>
+                <option value="medium">בינונית</option>
+                <option value="low">נמוכה</option>
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs text-[var(--text-mid)]">אחראי</label>
+              <select
+                value={taskForm.assigneeId}
+                onChange={(e) =>
+                  setTaskForm((f) => ({ ...f, assigneeId: e.target.value }))
+                }
+              >
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              תאריך יעד
+            </label>
+            <input
+              type="date"
+              value={taskForm.dueDate}
+              onChange={(e) =>
+                setTaskForm((f) => ({ ...f, dueDate: e.target.value }))
+              }
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTaskModalOpen(false)
+                setTaskProjectId(null)
+              }}
+              className={uiButtonGhost}
+            >
+              ביטול
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitQuickTask()}
+              className={uiButtonPrimary}
+            >
+              יצירת משימה
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={modalOpen}
@@ -824,7 +1271,7 @@ export function Projects() {
             <button
               type="button"
               onClick={() => setModalOpen(false)}
-              className="hub-btn-secondary text-sm"
+              className={uiButtonGhost}
             >
               ביטול
             </button>
@@ -832,7 +1279,7 @@ export function Projects() {
               type="button"
               disabled={saving}
               onClick={() => void submit()}
-              className="hub-btn-primary text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              className={`${uiButtonPrimary} disabled:cursor-not-allowed disabled:opacity-60`}
             >
               {saving ? 'שומר…' : 'שמור'}
             </button>

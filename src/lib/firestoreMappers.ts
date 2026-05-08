@@ -2,12 +2,16 @@ import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore'
 import { Timestamp } from 'firebase/firestore'
 import type {
   Client,
+  Campaign,
+  CampaignPlatform,
+  CampaignStatus,
   CollectionTracking,
   Doc,
   DocType,
   HostingRecord,
   Invoice,
   InvoiceStatus,
+  Lead,
   Priority,
   Project,
   ProjectBillingType,
@@ -22,6 +26,7 @@ import type {
   TaskStatus,
   TeamMember,
 } from '../types'
+import { parseFirestoreSupplierTypes } from './supplierTypes'
 
 export function timestampToIso(value: unknown): string {
   if (value instanceof Timestamp) {
@@ -74,6 +79,9 @@ export function docToCollectionTracking(
 ): CollectionTracking {
   const x = d.data()
   const pd = x.paidDate
+  const ldm = x.lastDemandMethod
+  const ldcr = x.lastDemandClientReply
+  const ldr = x.lastDemandRecordedAt
   return {
     id: d.id,
     clientId: String(x.clientId ?? d.id),
@@ -82,6 +90,14 @@ export function docToCollectionTracking(
     paidDate:
       typeof pd === 'string' && pd.trim() ? String(pd).slice(0, 10) : undefined,
     note: typeof x.note === 'string' && x.note.trim() ? String(x.note) : undefined,
+    lastDemandMethod:
+      typeof ldm === 'string' && ldm.trim() ? String(ldm) : undefined,
+    lastDemandClientReply:
+      typeof ldcr === 'string' && ldcr.trim() ? String(ldcr) : undefined,
+    lastDemandRecordedAt:
+      ldr != null && (ldr instanceof Timestamp || typeof ldr === 'string')
+        ? timestampToIso(ldr)
+        : undefined,
     createdAt: timestampToIso(x.createdAt),
     updatedAt: timestampToIso(x.updatedAt ?? x.createdAt),
   }
@@ -122,6 +138,15 @@ function parseRetainerLog(value: unknown): RetainerEntry[] | undefined {
     })
   }
   return entries.length ? entries : undefined
+}
+
+function normalizeProjectStatus(raw: unknown): ProjectStatus {
+  const s = String(raw ?? 'active').trim()
+  if (s === 'done') return 'done'
+  if (s === 'paused') return 'paused'
+  if (s === 'active') return 'active'
+  if (s === 'planning' || s === 'review') return 'active'
+  return 'active'
 }
 
 export function docToProject(d: QueryDocumentSnapshot<DocumentData>): Project {
@@ -174,7 +199,7 @@ export function docToProject(d: QueryDocumentSnapshot<DocumentData>): Project {
     supplierId: sid !== undefined && sid !== null && String(sid).trim()
       ? String(sid)
       : undefined,
-    status: (x.status ?? 'planning') as ProjectStatus,
+    status: normalizeProjectStatus(x.status),
     priority: (x.priority ?? 'medium') as Priority,
     dueDate: String(x.dueDate ?? ''),
     ownerId: String(x.ownerId ?? ''),
@@ -285,6 +310,163 @@ export function docToSupplier(d: QueryDocumentSnapshot<DocumentData>): Supplier 
     name: String(x.name ?? ''),
     phone: String(x.phone ?? ''),
     email: String(x.email ?? ''),
+    supplierTypes: parseFirestoreSupplierTypes(x as Record<string, unknown>),
+    createdAt: timestampToIso(x.createdAt),
+  }
+}
+
+export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
+  const x = d.data()
+  const rawStatus = String(x.status ?? 'new')
+  const status: Lead['status'] =
+    rawStatus === 'handling' ||
+    rawStatus === 'specification' ||
+    rawStatus === 'quote_sent' ||
+    rawStatus === 'follow_up' ||
+    rawStatus === 'closed'
+      ? rawStatus
+      : rawStatus === 'in_progress'
+        ? 'handling'
+        : rawStatus === 'hot'
+          ? 'follow_up'
+          : rawStatus === 'won'
+            ? 'closed'
+            : 'new'
+  const activityLog = Array.isArray(x.activityLog)
+    ? x.activityLog
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null
+          const o = item as Record<string, unknown>
+          const text = typeof o.text === 'string' ? o.text.trim() : ''
+          const at = typeof o.at === 'string' ? o.at : ''
+          if (!text || !at) return null
+          return {
+            id: String(o.id ?? crypto.randomUUID()),
+            text,
+            at,
+            ...(typeof o.actorName === 'string' && o.actorName.trim()
+              ? { actorName: o.actorName.trim() }
+              : {}),
+            ...(typeof o.nextFollowUpDate === 'string' && o.nextFollowUpDate.trim()
+              ? { nextFollowUpDate: o.nextFollowUpDate.slice(0, 10) }
+              : {}),
+          }
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null)
+    : undefined
+  const cid = x.clientId
+  const clientId =
+    typeof cid === 'string' && cid.trim() ? cid.trim() : undefined
+  return {
+    id: d.id,
+    name: String(x.name ?? ''),
+    company: typeof x.company === 'string' && x.company.trim() ? x.company.trim() : undefined,
+    phone: typeof x.phone === 'string' && x.phone.trim() ? x.phone.trim() : undefined,
+    email: typeof x.email === 'string' && x.email.trim() ? x.email.trim() : undefined,
+    clientId,
+    source: typeof x.source === 'string' && x.source.trim() ? x.source.trim() : undefined,
+    status,
+    ownerId: String(x.ownerId ?? ''),
+    clientNeeds:
+      typeof x.clientNeeds === 'string' && x.clientNeeds.trim()
+        ? x.clientNeeds.trim()
+        : typeof x.note === 'string' && x.note.trim()
+          ? x.note.trim()
+          : undefined,
+    lastActivityText:
+      typeof x.lastActivityText === 'string' && x.lastActivityText.trim()
+        ? x.lastActivityText.trim()
+        : undefined,
+    lastActivityAt:
+      typeof x.lastActivityAt === 'string' && x.lastActivityAt.trim()
+        ? x.lastActivityAt
+        : undefined,
+    nextFollowUpDate:
+      typeof x.nextFollowUpDate === 'string' && x.nextFollowUpDate.trim()
+        ? x.nextFollowUpDate.slice(0, 10)
+        : undefined,
+    activityLog,
+    quoteChannel: (() => {
+      const qc = x.quoteChannel
+      if (qc === 'green_invoice' || qc === 'pdf_file' || qc === 'visual_link') return qc
+      return undefined
+    })(),
+    quotePdfUrl:
+      typeof x.quotePdfUrl === 'string' && x.quotePdfUrl.trim()
+        ? x.quotePdfUrl.trim()
+        : undefined,
+    quotePdfFileName:
+      typeof x.quotePdfFileName === 'string' && x.quotePdfFileName.trim()
+        ? x.quotePdfFileName.trim()
+        : undefined,
+    quoteVisualUrl:
+      typeof x.quoteVisualUrl === 'string' && x.quoteVisualUrl.trim()
+        ? x.quoteVisualUrl.trim()
+        : undefined,
+    createdAt: timestampToIso(x.createdAt),
+  }
+}
+
+const CAMPAIGN_PLATFORMS: CampaignPlatform[] = [
+  'instagram',
+  'google_ads',
+  'facebook',
+  'tiktok',
+  'linkedin',
+  'other',
+]
+const CAMPAIGN_STATUSES: CampaignStatus[] = ['planning', 'active', 'paused', 'completed']
+
+export function docToCampaign(d: QueryDocumentSnapshot<DocumentData>): Campaign {
+  const x = d.data()
+  const rawPlatform = String(x.platform ?? 'other') as CampaignPlatform
+  const rawStatus = String(x.status ?? 'planning') as CampaignStatus
+  const resultsLog = Array.isArray(x.resultsLog)
+    ? x.resultsLog
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null
+          const o = item as Record<string, unknown>
+          const text = typeof o.text === 'string' ? o.text.trim() : ''
+          const at = typeof o.at === 'string' ? o.at : ''
+          if (!text || !at) return null
+          return {
+            id: String(o.id ?? crypto.randomUUID()),
+            text,
+            at,
+            actorName:
+              typeof o.actorName === 'string' && o.actorName.trim()
+                ? o.actorName.trim()
+                : undefined,
+          }
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null)
+    : undefined
+  return {
+    id: d.id,
+    name: String(x.name ?? ''),
+    kind: x.kind === 'internal' ? 'internal' : 'client',
+    platform: CAMPAIGN_PLATFORMS.includes(rawPlatform) ? rawPlatform : 'other',
+    status: CAMPAIGN_STATUSES.includes(rawStatus) ? rawStatus : 'planning',
+    clientId:
+      typeof x.clientId === 'string' && x.clientId.trim() ? x.clientId.trim() : undefined,
+    projectId:
+      typeof x.projectId === 'string' && x.projectId.trim() ? x.projectId.trim() : undefined,
+    supplierId:
+      typeof x.supplierId === 'string' && x.supplierId.trim() ? x.supplierId.trim() : undefined,
+    performerUserId:
+      typeof x.performerUserId === 'string' && x.performerUserId.trim()
+        ? x.performerUserId.trim()
+        : undefined,
+    budget: typeof x.budget === 'number' && !Number.isNaN(x.budget) ? x.budget : undefined,
+    startDate:
+      typeof x.startDate === 'string' && x.startDate.trim() ? x.startDate.slice(0, 10) : undefined,
+    endDate:
+      typeof x.endDate === 'string' && x.endDate.trim() ? x.endDate.slice(0, 10) : undefined,
+    resultsUpdate:
+      typeof x.resultsUpdate === 'string' && x.resultsUpdate.trim()
+        ? x.resultsUpdate.trim()
+        : undefined,
+    resultsLog,
     createdAt: timestampToIso(x.createdAt),
   }
 }
@@ -306,14 +488,50 @@ export function docToTeamMember(
   d: QueryDocumentSnapshot<DocumentData>,
 ): TeamMember {
   const x = d.data()
+  const rawRole = String(x.role ?? '')
+  const role = rawRole === 'admin' || rawRole === 'superadmin' ? 'admin' : 'employee'
+  let monthlyWorkHours: number | null | undefined
+  if (!Object.prototype.hasOwnProperty.call(x, 'monthlyWorkHours')) {
+    monthlyWorkHours = undefined
+  } else if (x.monthlyWorkHours === null) {
+    monthlyWorkHours = null
+  } else if (typeof x.monthlyWorkHours === 'number' && Number.isFinite(x.monthlyWorkHours)) {
+    monthlyWorkHours = x.monthlyWorkHours
+  } else {
+    monthlyWorkHours = undefined
+  }
+
+  const scheduleDayStart =
+    typeof x.scheduleDayStart === 'string' && /^\d{1,2}:\d{2}$/.test(x.scheduleDayStart.trim())
+      ? x.scheduleDayStart.trim()
+      : undefined
+  const scheduleDayEnd =
+    typeof x.scheduleDayEnd === 'string' && /^\d{1,2}:\d{2}$/.test(x.scheduleDayEnd.trim())
+      ? x.scheduleDayEnd.trim()
+      : undefined
+  let scheduleBreakMinutes: number | null | undefined
+  if (!Object.prototype.hasOwnProperty.call(x, 'scheduleBreakMinutes')) {
+    scheduleBreakMinutes = undefined
+  } else if (x.scheduleBreakMinutes === null) {
+    scheduleBreakMinutes = null
+  } else if (typeof x.scheduleBreakMinutes === 'number' && Number.isFinite(x.scheduleBreakMinutes)) {
+    scheduleBreakMinutes = x.scheduleBreakMinutes
+  } else {
+    scheduleBreakMinutes = undefined
+  }
+
   return {
     id: d.id,
     name: String(x.name ?? ''),
     avatar: String(x.avatar ?? '?'),
     color: String(x.color ?? '#2563EB'),
-    role: String(x.role ?? ''),
+    role,
     email: typeof x.email === 'string' ? x.email : undefined,
     active: typeof x.active === 'boolean' ? x.active : true,
+    monthlyWorkHours,
+    scheduleDayStart,
+    scheduleDayEnd,
+    scheduleBreakMinutes,
   }
 }
 

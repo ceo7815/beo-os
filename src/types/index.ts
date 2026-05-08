@@ -21,6 +21,12 @@ export interface CollectionTracking {
   dueDate: string
   paidDate?: string
   note?: string
+  /** איך בוצעה דרישת התשלום האחרונה (טקסט חופשי) */
+  lastDemandMethod?: string
+  /** מענה הלקוח לאחר הדרישה (טקסט חופשי) */
+  lastDemandClientReply?: string
+  /** מתי נרשמה דרישת התשלום האחרונה (ISO — תאריך ושעה) */
+  lastDemandRecordedAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -38,15 +44,37 @@ export interface RetainerEntry {
   createdAt: string
 }
 
-export type ProjectStatus = 'planning' | 'active' | 'review' | 'done'
+/** פעיל · מושהה · הושלם (ערכים ישנים ב-Firestore ממופים בצד הלקוח ל־active) */
+export type ProjectStatus = 'active' | 'paused' | 'done'
 export type Priority = 'high' | 'medium' | 'low'
 export type TaskStatus = 'todo' | 'doing' | 'done' | 'blocked'
+export type LeadStatus =
+  | 'new'
+  | 'handling'
+  | 'specification'
+  | 'quote_sent'
+  | 'follow_up'
+  | 'closed'
+
+/** אופן שליחת הצעת המחיר כשהסטטוס «נשלחה הצעת מחיר» */
+export type LeadQuoteChannel = 'green_invoice' | 'pdf_file' | 'visual_link'
+export type CampaignPlatform =
+  | 'instagram'
+  | 'google_ads'
+  | 'facebook'
+  | 'tiktok'
+  | 'linkedin'
+  | 'other'
+export type CampaignKind = 'internal' | 'client'
+export type CampaignStatus = 'planning' | 'active' | 'paused' | 'completed'
 
 export interface Supplier {
   id: string
   name: string
   phone: string
   email: string
+  /** סוגים מקצועיים — מ־SUPPLIER_TYPE_OPTIONS (מערך) */
+  supplierTypes?: string[]
   createdAt: string
 }
 
@@ -119,6 +147,128 @@ export interface TeamMember {
   role: string
   email?: string
   active?: boolean
+  /** יעד שעות עבודה בחודש קלנדרי — מוגדר ע״י אדמין (לשכר / תכנון) */
+  monthlyWorkHours?: number | null
+  /** מועדי יום עבודה מקובלים (שעון מקומי HH:mm) — לאימות כניסה/יציאה */
+  scheduleDayStart?: string | null
+  scheduleDayEnd?: string | null
+  scheduleBreakMinutes?: number | null
+}
+
+export interface Lead {
+  id: string
+  name: string
+  company?: string
+  phone?: string
+  email?: string
+  /** שיוך אופציונלי לכרטיס לקוח קיים במערכת (לא נשמר אם ריק) */
+  clientId?: string
+  source?: string
+  status: LeadStatus
+  ownerId: string
+  clientNeeds?: string
+  lastActivityText?: string
+  lastActivityAt?: string
+  nextFollowUpDate?: string
+  activityLog?: Array<{
+    id: string
+    text: string
+    at: string
+    actorName?: string
+    nextFollowUpDate?: string
+  }>
+  /** פרטי שליחת הצעה — רלוונטי ל־quote_sent */
+  quoteChannel?: LeadQuoteChannel
+  quotePdfUrl?: string
+  quotePdfFileName?: string
+  quoteVisualUrl?: string
+  createdAt: string
+}
+
+export interface Campaign {
+  id: string
+  name: string
+  kind: CampaignKind
+  platform: CampaignPlatform
+  status: CampaignStatus
+  clientId?: string
+  projectId?: string
+  supplierId?: string
+  performerUserId?: string
+  budget?: number
+  startDate?: string
+  endDate?: string
+  resultsUpdate?: string
+  resultsLog?: Array<{
+    id: string
+    text: string
+    at: string
+    actorName?: string
+  }>
+  createdAt: string
+}
+
+export type AttendanceStatus = 'offline' | 'active' | 'paused_idle' | 'suspected_inactive'
+
+export interface AttendancePresence {
+  userId: string
+  status: AttendanceStatus
+  activeLogId?: string
+  activeProjectId?: string
+  activeClientId?: string
+  activeTaskId?: string
+  shiftStartedAt?: string
+  shiftEndedAt?: string
+  lastHeartbeatAt?: string
+  lastActivityAt?: string
+  lastCheckInAt?: string
+  lastVerifiedAt?: string
+  nextCheckInDueAt?: string
+  unverifiedMinutes?: number
+  missedCheckIns?: number
+  updatedAt: string
+}
+
+export interface AttendanceLog {
+  id: string
+  userId: string
+  startAt: string
+  endAt?: string
+  projectId?: string
+  clientId?: string
+  taskId?: string
+  note?: string
+  endReason?: 'manual' | 'idle_auto'
+}
+
+export interface AttendanceAnomaly {
+  id: string
+  userId: string
+  type: 'missing_heartbeat' | 'missing_activity'
+  statusBefore: AttendanceStatus
+  hbLagMinutes?: number
+  idleLagMinutes?: number
+  note?: string
+  enforcedAt: string
+}
+
+export interface AttendancePolicy {
+  id: string
+  autoDeductUnverified: boolean
+  checkInMinMinutes: number
+  checkInMaxMinutes: number
+  checkInGraceMinutes: number
+}
+
+export interface AttendanceCheckIn {
+  id: string
+  userId: string
+  sessionId?: string
+  text: string
+  responseMs: number
+  suspiciousFast: boolean
+  isLate: boolean
+  createdAt: string
 }
 
 export interface Client {
@@ -133,7 +283,7 @@ export interface Client {
   createdAt: string
 }
 
-/** רשומת אחסון — מאגר מידע בלבד (ללא תשלומים) */
+/** רשומה במאגר אחסון — מידע בלבד (ללא תשלומים) */
 export interface HostingRecord {
   id: string
   clientId: string

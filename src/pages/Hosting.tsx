@@ -401,7 +401,7 @@ export function Hosting() {
             מאגר אחסון 🖥️
           </h1>
           <p className="mt-1 text-[13px] text-[var(--text-mid)]">
-            מאגר מידע בלבד — ללא ניהול תשלומים · צבע לפי קרבת חידוש דומין / SSL
+            מאגר אחסון — מידע בלבד (ללא תשלומים) · צבע לפי קרבת חידוש דומיין ו־SSL
           </p>
         </div>
         <button
@@ -412,6 +412,12 @@ export function Hosting() {
           + הוסף אתר
         </button>
       </header>
+
+      <div className="rounded-[14px] border-2 border-red-300 bg-red-50 px-5 py-4 text-center shadow-sm">
+        <p className="text-[24px] font-extrabold leading-tight text-red-700 md:text-[30px]">
+          לאחר הדרכה HUB-POS אשר ואור נכנסים יחד לסדר את הנושא
+        </p>
+      </div>
 
       <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-sm md:flex-row md:flex-wrap md:items-end">
         <div className="min-w-[200px] flex-1">

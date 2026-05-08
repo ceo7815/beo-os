@@ -19,44 +19,23 @@ const statusBadgeClass: Record<TaskStatus, string> = {
 }
 
 type TimeBucket =
-  | 'sharedForMe'
   | 'overdue'
   | 'today'
   | 'tomorrow'
-  | 'later'
-  | 'done'
+  | 'dayAfterTomorrow'
+  | 'weekRest'
 
 const TIME_COLUMNS: {
   key: TimeBucket
   label: string
   badgeColor: string
 }[] = [
-  {
-    key: 'sharedForMe',
-    label: 'משותפות לביצוע',
-    badgeColor: '#7C3AED',
-  },
   { key: 'overdue', label: 'באיחור', badgeColor: '#EF4444' },
   { key: 'today', label: 'היום', badgeColor: '#F97316' },
   { key: 'tomorrow', label: 'מחר', badgeColor: '#2563EB' },
-  { key: 'later', label: 'אחר כך', badgeColor: '#64748B' },
-  { key: 'done', label: 'הושלמו', badgeColor: '#10B981' },
+  { key: 'dayAfterTomorrow', label: 'מחרתיים', badgeColor: '#0EA5E9' },
+  { key: 'weekRest', label: 'המשך השבוע', badgeColor: '#64748B' },
 ]
-
-/**
- * עמודת «משותפות לביצוע»: מופיע כאן אם
- * - שיתוף לכל הצוות (ישן), או
- * - המשתמש ברשימת השיתוף, או
- * - המשתמש יצר את המשימה והגדיר שיתוף עם מישהו (גם כשהוא האחראי)
- * משימה לא מוכפלת בעמודות תאריך.
- */
-function inSharedForMeColumn(t: Task, uid: string): boolean {
-  if (!uid || t.status === 'done') return false
-  if (t.teamWideShared) return true
-  if (t.sharedWithUserIds.includes(uid)) return true
-  if (t.createdBy === uid && t.sharedWithUserIds.length > 0) return true
-  return false
-}
 
 function dueYmd(t: Task): string | null {
   const d = (t.dueDate || '').slice(0, 10)
@@ -64,14 +43,19 @@ function dueYmd(t: Task): string | null {
   return d
 }
 
-function bucketFor(t: Task, today: string, tomorrow: string): TimeBucket {
-  if (t.status === 'done') return 'done'
+function bucketFor(
+  t: Task,
+  today: string,
+  tomorrow: string,
+  dayAfterTomorrow: string,
+): TimeBucket {
   const d = dueYmd(t)
-  if (!d) return 'later'
+  if (!d) return 'weekRest'
   if (d < today) return 'overdue'
   if (d === today) return 'today'
   if (d === tomorrow) return 'tomorrow'
-  return 'later'
+  if (d === dayAfterTomorrow) return 'dayAfterTomorrow'
+  return 'weekRest'
 }
 
 function sortInBucket(a: Task, b: Task): number {
@@ -84,21 +68,6 @@ function sortInBucket(a: Task, b: Task): number {
   return a.title.localeCompare(b.title, 'he')
 }
 
-function sharedTaskBadge(
-  task: Task,
-  memberById: Map<string, string>,
-): string | null {
-  if (task.teamWideShared) return 'שיתוף: כל הצוות'
-  if (task.sharedWithUserIds.length === 0) return null
-  const names = task.sharedWithUserIds
-    .map((id) => memberById.get(id) ?? id)
-    .slice(0, 4)
-  const more =
-    task.sharedWithUserIds.length > 4
-      ? ` +${task.sharedWithUserIds.length - 4}`
-      : ''
-  return `שותפים: ${names.join(', ')}${more}`
-}
 
 function TaskCard({
   task,
@@ -106,7 +75,6 @@ function TaskCard({
   supplierName,
   projectName,
   assigneeLabel,
-  sharedBadge,
   onOpenDrawer,
   onMarkComplete,
   onReopen,
@@ -114,13 +82,14 @@ function TaskCard({
   onDueDateChange,
   onPublishNote,
   canPublishNote,
+  onDragStart,
+  onDragEnd,
 }: {
   task: Task
   clientName: string | null
   supplierName: string | null
   projectName: string | null
   assigneeLabel: string | null
-  sharedBadge: string | null
   onOpenDrawer: () => void
   onMarkComplete: () => void
   onReopen: () => void
@@ -128,6 +97,8 @@ function TaskCard({
   onDueDateChange: (ymd: string) => void
   onPublishNote: (text: string) => Promise<void>
   canPublishNote: boolean
+  onDragStart: (taskId: string) => void
+  onDragEnd: () => void
 }) {
   const priorityColor =
     task.priority === 'high'
@@ -219,9 +190,6 @@ function TaskCard({
               <span className="font-semibold">{supplierName}</span>
             </p>
           ) : null}
-          {sharedBadge ? (
-            <p className="text-[12px] text-[var(--blue-mid)]">{sharedBadge}</p>
-          ) : null}
           <p>
             <span className="text-[var(--text-mid)]">תאריך יעד: </span>
             <span className="font-medium">{formatDateIL(task.dueDate)}</span>
@@ -271,6 +239,9 @@ function TaskCard({
         style={{ borderRight: `3px solid ${priorityColor}` }}
         role="button"
         tabIndex={0}
+        draggable
+        onDragStart={() => onDragStart(task.id)}
+        onDragEnd={onDragEnd}
         onClick={() => setPreviewOpen(true)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -288,14 +259,6 @@ function TaskCard({
             {clientName ? (
               <span className="max-w-full shrink-0 text-[16px] font-extrabold leading-tight tracking-tight text-[var(--blue-dark)] sm:text-[17px]">
                 {clientName}
-              </span>
-            ) : null}
-            {sharedBadge ? (
-              <span
-                title={sharedBadge}
-                className="max-w-[min(100%,14rem)] truncate rounded-full bg-[var(--blue-light)] px-2 py-0.5 text-[10px] font-bold text-[var(--blue-mid)]"
-              >
-                {sharedBadge}
               </span>
             ) : null}
           </div>
@@ -465,14 +428,32 @@ function KanbanColumn({
   count,
   badgeColor,
   children,
+  canDrop,
+  onDropTask,
+  onDragEnterColumn,
 }: {
   title: string
   count: number
   badgeColor: string
   children: React.ReactNode
+  canDrop: boolean
+  onDropTask: () => void
+  onDragEnterColumn: () => void
 }) {
   return (
-    <div className="flex min-w-[240px] flex-1 flex-col rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)]">
+    <div
+      className={`flex min-w-[240px] flex-1 flex-col rounded-[14px] border bg-[var(--bg-card)] transition ${
+        canDrop
+          ? 'border-[var(--blue-mid)] ring-2 ring-[var(--blue-light)]'
+          : 'border-[var(--border)]'
+      }`}
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnter={() => onDragEnterColumn()}
+      onDrop={(e) => {
+        e.preventDefault()
+        onDropTask()
+      }}
+    >
       <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2.5">
         <div className="text-[13px] font-bold text-[var(--blue-dark)]">{title}</div>
         <span
@@ -505,7 +486,12 @@ export function Tasks() {
   } = useTasks()
 
   const [q, setQ] = useState('')
-  /** מנהל על: null = כל הצוות; אחרת — תצוגת משימות אישית לאותו עובד */
+  const [sentTasksOpen, setSentTasksOpen] = useState(false)
+  const [completedByMeOpen, setCompletedByMeOpen] = useState(false)
+  const [myOpenTasksOpen, setMyOpenTasksOpen] = useState(false)
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<TimeBucket | null>(null)
+  /** מנהל מערכת: null = כל המשימות; אחרת — תצוגת משימות אישית לאותו עובד */
   const [viewAsUid, setViewAsUid] = useState<string | null>(null)
   /** תאריך ייחוס לעמודות היום / מחר / באיחור / אחר כך (ברירת מחדל: היום האמיתי) */
   const [boardAnchor, setBoardAnchor] = useState(() => todayYmd())
@@ -513,7 +499,7 @@ export function Tasks() {
   const defaultAssigneeId = user?.uid ?? teamMembers[0]?.id ?? ''
   const myRole =
     teamMembers.find((m) => m.id === user?.uid)?.role ?? 'employee'
-  const canViewAsOthers = myRole === 'superadmin'
+  const canViewAsOthers = myRole === 'admin' || myRole === 'superadmin'
 
   const assigneeForNewTask =
     canViewAsOthers && viewAsUid ? viewAsUid : defaultAssigneeId
@@ -560,21 +546,19 @@ export function Tasks() {
 
   const realToday = todayYmd()
   const anchorTomorrow = addDaysYmd(boardAnchor, 1)
+  const anchorDayAfterTomorrow = addDaysYmd(boardAnchor, 2)
 
   const visibleTasks = useMemo(
     () =>
       user?.uid
-        ? tasks.filter((t) => taskVisibleToUser(t, user.uid, ''))
+        ? tasks.filter((t) => taskVisibleToUser(t, user.uid, myRole))
         : [],
-    [tasks, user?.uid],
+    [tasks, user?.uid, myRole],
   )
 
   const perspectiveFiltered = useMemo(() => {
     if (!viewAsUid) return visibleTasks
-    return visibleTasks.filter(
-      (t) =>
-        t.assigneeId === viewAsUid || inSharedForMeColumn(t, viewAsUid),
-    )
+    return visibleTasks.filter((t) => t.assigneeId === viewAsUid)
   }, [visibleTasks, viewAsUid])
 
   const filtered = useMemo(() => {
@@ -596,29 +580,28 @@ export function Tasks() {
     })
   }, [perspectiveFiltered, q, clientById, projectById, projectRowById])
 
+  const openOnlyFiltered = useMemo(
+    () => filtered.filter((t) => t.status !== 'done'),
+    [filtered],
+  )
+
   const byBucket = useMemo(() => {
     const map: Record<TimeBucket, Task[]> = {
-      sharedForMe: [],
       overdue: [],
       today: [],
       tomorrow: [],
-      later: [],
-      done: [],
+      dayAfterTomorrow: [],
+      weekRest: [],
     }
-    const uidForShared = viewAsUid ?? user?.uid ?? ''
-    for (const t of filtered) {
-      if (uidForShared && inSharedForMeColumn(t, uidForShared)) {
-        map.sharedForMe.push(t)
-        continue
-      }
-      const b = bucketFor(t, boardAnchor, anchorTomorrow)
+    for (const t of openOnlyFiltered) {
+      const b = bucketFor(t, boardAnchor, anchorTomorrow, anchorDayAfterTomorrow)
       map[b].push(t)
     }
     for (const k of Object.keys(map) as TimeBucket[]) {
       map[k].sort(sortInBucket)
     }
     return map
-  }, [filtered, boardAnchor, anchorTomorrow, viewAsUid, user?.uid])
+  }, [openOnlyFiltered, boardAnchor, anchorTomorrow, anchorDayAfterTomorrow])
 
   const openCount = useMemo(
     () => filtered.filter((t) => t.status !== 'done').length,
@@ -658,9 +641,39 @@ export function Tasks() {
     [teamMembers],
   )
 
-  const boardSubtitle = viewAsUid
-    ? `${openCount} פתוחות · משימות של ${viewAsName} (אחראי או משותפות) · לפי תאריך יעד ביחס לתאריך הייחוס`
-    : `${openCount} פתוחות · כל הצוות · לפי תאריך יעד ביחס לתאריך הייחוס`
+  const boardSubtitle = canViewAsOthers
+    ? viewAsUid
+      ? `${openCount} פתוחות · תצוגת עובד: ${viewAsName} · לפי תאריך יעד ביחס לתאריך הייחוס`
+      : `${openCount} פתוחות · תצוגת מנהל: כל המשימות · לפי תאריך יעד ביחס לתאריך הייחוס`
+    : `${openCount} פתוחות · התצוגה הפרטית שלך · לפי תאריך יעד ביחס לתאריך הייחוס`
+
+  const sentTasks = useMemo(
+    () =>
+      user?.uid
+        ? tasks
+            .filter((t) => t.createdBy === user.uid && t.assigneeId !== user.uid)
+            .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+        : [],
+    [tasks, user?.uid],
+  )
+  const completedByMe = useMemo(
+    () =>
+      user?.uid
+        ? tasks
+            .filter((t) => t.assigneeId === user.uid && t.status === 'done')
+            .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
+        : [],
+    [tasks, user?.uid],
+  )
+  const myOpenTasks = useMemo(
+    () =>
+      user?.uid
+        ? tasks
+            .filter((t) => t.assigneeId === user.uid && t.status !== 'done')
+            .sort(sortInBucket)
+        : [],
+    [tasks, user?.uid],
+  )
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-6 px-6 py-8 md:px-8">
@@ -682,6 +695,27 @@ export function Tasks() {
           />
           <button
             type="button"
+            onClick={() => setMyOpenTasksOpen(true)}
+            className="rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] px-4 py-2 text-[13px] font-bold text-[#B45309] shadow-sm transition hover:bg-[#FEF3C7]"
+          >
+            כל המשימות הפתוחות שלי ({myOpenTasks.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setSentTasksOpen(true)}
+            className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-4 py-2 text-[13px] font-bold text-[var(--blue-dark)] shadow-sm transition hover:bg-[#DBEAFE]"
+          >
+            משימות ששלחתי ({sentTasks.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setCompletedByMeOpen(true)}
+            className="rounded-[10px] border border-[#BBF7D0] bg-[#ECFDF5] px-4 py-2 text-[13px] font-bold text-[#15803D] shadow-sm transition hover:bg-[#D1FAE5]"
+          >
+            משימות שהושלמו על ידי ({completedByMe.length})
+          </button>
+          <button
+            type="button"
             onClick={onNewTask}
             disabled={!assigneeForNewTask}
             className="rounded-[10px] bg-[var(--orange)] px-4 py-2 text-[13px] font-bold text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
@@ -698,7 +732,7 @@ export function Tasks() {
               htmlFor="tasks-view-as"
               className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]"
             >
-              תצוגת משימות לפי עובד (מנהל על)
+              תצוגת משימות לפי עובד (מנהל מערכת)
             </label>
             <select
               id="tasks-view-as"
@@ -716,15 +750,15 @@ export function Tasks() {
               ))}
             </select>
             <p className="mt-1 text-[11px] text-[var(--text-light)]">
-              בוחרים עובד — רואים רק משימות שהוא אחראי עליהן או ששותפו איתו.
+              רק מנהל יכול להחליף תצוגה כאן: כל המשימות או משימות של עובד ספציפי.
             </p>
           </div>
         ) : (
           <div className="text-[12px] text-[var(--text-mid)]">
             <span className="font-semibold text-[var(--text-dark)]">
-              תצוגת צוות מלאה.
+              תצוגה פרטית לעובד.
             </span>{' '}
-            מנהל על יכול לסנן כאן לפי עובד.
+            מוצגות כאן רק המשימות שהוקצו אליך.
           </div>
         )}
         <div>
@@ -784,14 +818,26 @@ export function Tasks() {
       {loading ? (
         <div className="text-[13px] text-[var(--text-mid)]">טוען משימות…</div>
       ) : (
-        <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           {TIME_COLUMNS.map((col) => {
             const list = byBucket[col.key]
+            const targetDueDate =
+              col.key === 'overdue'
+                ? addDaysYmd(boardAnchor, -1)
+                : col.key === 'today'
+                  ? boardAnchor
+                  : col.key === 'tomorrow'
+                    ? anchorTomorrow
+                    : col.key === 'dayAfterTomorrow'
+                      ? anchorDayAfterTomorrow
+                      : addDaysYmd(boardAnchor, 3)
             const columnTitle =
               col.key === 'today'
                 ? `${col.label} (${formatDateIL(boardAnchor)})`
                 : col.key === 'tomorrow'
                   ? `${col.label} (${formatDateIL(anchorTomorrow)})`
+                : col.key === 'dayAfterTomorrow'
+                  ? `${col.label} (${formatDateIL(anchorDayAfterTomorrow)})`
                   : col.key === 'overdue'
                     ? `${col.label} (לפני ${formatDateIL(boardAnchor)})`
                     : col.label
@@ -801,6 +847,29 @@ export function Tasks() {
                 title={columnTitle}
                 count={list.length}
                 badgeColor={col.badgeColor}
+                canDrop={Boolean(dragTaskId) && dragOverCol === col.key}
+                onDragEnterColumn={() => {
+                  if (!dragTaskId) return
+                  setDragOverCol(col.key)
+                }}
+                onDropTask={() => {
+                  if (!dragTaskId) return
+                  const task = tasks.find((t) => t.id === dragTaskId)
+                  if (!task || task.status === 'done') return
+                  const currentDue = dueYmd(task)
+                  if (currentDue === targetDueDate) {
+                    setDragTaskId(null)
+                    setDragOverCol(null)
+                    return
+                  }
+                  void updateTask(
+                    dragTaskId,
+                    { dueDate: targetDueDate },
+                    taskOpts,
+                  )
+                  setDragTaskId(null)
+                  setDragOverCol(null)
+                }}
               >
                 {list.map((task) => {
                   const projectRow = task.projectId
@@ -822,7 +891,6 @@ export function Tasks() {
                   const assigneeLabel = task.assigneeId
                     ? memberById.get(task.assigneeId) ?? null
                     : null
-                  const sharedBadge = sharedTaskBadge(task, memberById)
                   return (
                     <div key={task.id} className="w-full">
                       <TaskCard
@@ -831,7 +899,6 @@ export function Tasks() {
                         supplierName={supplierName}
                         projectName={projectName}
                         assigneeLabel={assigneeLabel}
-                        sharedBadge={sharedBadge}
                         onOpenDrawer={() => setDrawerTaskId(task.id)}
                         onMarkComplete={() =>
                           void updateTask(
@@ -867,6 +934,14 @@ export function Tasks() {
                         }}
                         canPublishNote={Boolean(user?.uid)}
                         onPublishNote={(text) => addTaskNote(task.id, text)}
+                        onDragStart={(taskId) => {
+                          setDragTaskId(taskId)
+                          setDragOverCol(col.key)
+                        }}
+                        onDragEnd={() => {
+                          setDragTaskId(null)
+                          setDragOverCol(null)
+                        }}
                       />
                     </div>
                   )
@@ -882,6 +957,154 @@ export function Tasks() {
           אין משימות להצגה.
         </div>
       ) : null}
+
+      <Modal
+        isOpen={myOpenTasksOpen}
+        onClose={() => setMyOpenTasksOpen(false)}
+        title="כל המשימות הפתוחות שלי"
+        size="lg"
+      >
+        <div className="space-y-3">
+          {myOpenTasks.length === 0 ? (
+            <p className="text-sm text-[var(--text-mid)]">אין לך כרגע משימות פתוחות.</p>
+          ) : (
+            <SentTasksSection
+              title="פתוחות"
+              tasks={myOpenTasks}
+              memberById={memberById}
+              projectById={projectById}
+              clientById={clientById}
+              onOpenTask={(taskId) => {
+                setMyOpenTasksOpen(false)
+                setDrawerTaskId(taskId)
+              }}
+            />
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={sentTasksOpen}
+        onClose={() => setSentTasksOpen(false)}
+        title="משימות ששלחתי לעובדים"
+        size="lg"
+      >
+        <div className="space-y-3">
+          {sentTasks.length === 0 ? (
+            <p className="text-sm text-[var(--text-mid)]">עדיין לא שלחת משימות לעובדים אחרים.</p>
+          ) : (
+            <div className="space-y-4">
+              <SentTasksSection
+                title="משימות ששלחתי"
+                tasks={sentTasks}
+                memberById={memberById}
+                projectById={projectById}
+                clientById={clientById}
+                onOpenTask={(taskId) => {
+                  setSentTasksOpen(false)
+                  setDrawerTaskId(taskId)
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={completedByMeOpen}
+        onClose={() => setCompletedByMeOpen(false)}
+        title="משימות שהושלמו על ידי"
+        size="lg"
+      >
+        <div className="space-y-3">
+          {completedByMe.length === 0 ? (
+            <p className="text-sm text-[var(--text-mid)]">אין משימות שהשלמת עדיין.</p>
+          ) : (
+            <SentTasksSection
+              title="הושלמו"
+              tasks={completedByMe}
+              memberById={memberById}
+              projectById={projectById}
+              clientById={clientById}
+              onOpenTask={(taskId) => {
+                setCompletedByMeOpen(false)
+                setDrawerTaskId(taskId)
+              }}
+            />
+          )}
+        </div>
+      </Modal>
     </div>
+  )
+}
+
+function SentTasksSection({
+  title,
+  tasks,
+  memberById,
+  projectById,
+  clientById,
+  onOpenTask,
+}: {
+  title: string
+  tasks: Task[]
+  memberById: Map<string, string>
+  projectById: Map<string, string>
+  clientById: Map<string, string>
+  onOpenTask: (taskId: string) => void
+}) {
+  return (
+    <section className="rounded-[12px] border border-[var(--border)]">
+      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[#F8FAFC] px-3 py-2">
+        <h3 className="text-[12px] font-bold text-[var(--blue-dark)]">{title}</h3>
+        <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[var(--text-mid)]">
+          {tasks.length}
+        </span>
+      </div>
+      {tasks.length === 0 ? (
+        <p className="px-3 py-3 text-xs text-[var(--text-light)]">אין משימות בקטגוריה זו.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
+                <th className="px-3 py-2">משימה</th>
+                <th className="px-3 py-2">לקוח</th>
+                <th className="px-3 py-2">פרויקט</th>
+                <th className="px-3 py-2">נשלחה ל</th>
+                <th className="px-3 py-2">סטטוס</th>
+                <th className="px-3 py-2">תאריך יעד</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((t) => (
+                <tr
+                  key={t.id}
+                  className="cursor-pointer border-t border-[var(--border)] transition hover:bg-[#F8FAFC]"
+                  onClick={() => onOpenTask(t.id)}
+                >
+                  <td className="px-3 py-2 font-semibold text-[var(--text-dark)]">{t.title}</td>
+                  <td className="px-3 py-2 text-[var(--text-mid)]">
+                    {t.clientId ? clientById.get(t.clientId) ?? '—' : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-[var(--text-mid)]">
+                    {t.projectId ? projectById.get(t.projectId) ?? '—' : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-[var(--text-mid)]">
+                    {memberById.get(t.assigneeId) ?? '—'}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${statusBadgeClass[t.status]}`}>
+                      {boardStatusHe(t.status)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-[var(--text-mid)]">{formatDateIL(t.dueDate)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   )
 }

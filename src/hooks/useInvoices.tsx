@@ -12,7 +12,7 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDocsFromServer,
+  onSnapshot,
   serverTimestamp,
   updateDoc,
 } from 'firebase/firestore'
@@ -74,35 +74,24 @@ export function InvoicesProvider({ children }: { children: ReactNode }) {
       return
     }
     setLoading(true)
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const snap = await getDocsFromServer(collection(db, 'invoices'))
-        if (cancelled) return
+    const unsub = onSnapshot(
+      collection(db, 'invoices'),
+      (snap) => {
         const today = todayYmd()
         const mapped = snap.docs.map((d) => docToInvoice(d))
         setInvoices(withDisplayOverdue(mapped, today))
         setLoading(false)
         setError(null)
-      } catch (err) {
-        if (cancelled) return
+      },
+      (err) => {
         console.error('invoices snapshot', err)
         toastFsError('שגיאה בטעינת חשבוניות', err, 'invoices snapshot')
         setError(err instanceof Error ? err : new Error(String(err)))
         setLoading(false)
-      }
-    }
+      },
+    )
 
-    void load()
-    const timer = window.setInterval(() => {
-      void load()
-    }, 15000)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
+    return () => unsub()
   }, [user])
 
   const addInvoice = useCallback(async (data: NewInvoiceInput) => {

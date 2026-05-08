@@ -12,7 +12,7 @@ type Props = {
 }
 
 function haystack(s: Supplier): string {
-  return `${s.name} ${s.email} ${s.phone}`.toLowerCase()
+  return `${s.name} ${s.email} ${s.phone} ${(s.supplierTypes ?? []).join(' ')}`.toLowerCase()
 }
 
 export function SupplierQuickSelect({
