@@ -1,4 +1,5 @@
 import { UserManagementContent } from '../components/UserManagementContent'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 export function Users() {
   return (
@@ -10,7 +11,7 @@ export function Users() {
         </p>
       </header>
 
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)] md:p-6">
+      <div className={`rounded-2xl ${hubSectionClass(0)} p-4 shadow-none md:p-6`}>
         <UserManagementContent />
       </div>
     </div>

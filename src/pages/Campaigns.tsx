@@ -11,6 +11,7 @@ import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { Badge } from '../components/shared/Badge'
 import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const platformLabels: Record<CampaignPlatform, string> = {
   instagram: 'אינסטגרם',
@@ -266,7 +267,7 @@ export function Campaigns() {
       </header>
 
       {formOpen ? (
-        <section className="grid grid-cols-1 gap-3 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:grid-cols-3">
+        <section className={`grid grid-cols-1 gap-3 rounded-2xl ${hubSectionClass(0)} p-4 md:grid-cols-3`}>
           <input placeholder="שם קמפיין *" value={name} onChange={(e) => setName(e.target.value)} className="md:col-span-2" />
           <HubDropdownSelect
             id="campaign-new-kind"
@@ -371,7 +372,7 @@ export function Campaigns() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button type="button" onClick={() => setStatusFilter('all')} className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-primary' : 'border border-[var(--border)] bg-white text-[var(--text-mid)]'}`}>
+        <button type="button" onClick={() => setStatusFilter('all')} className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-primary' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`}>
           הכל
         </button>
         {(Object.keys(statusLabels) as CampaignStatus[]).map((s) => (
@@ -379,7 +380,7 @@ export function Campaigns() {
             key={s}
             type="button"
             onClick={() => setStatusFilter(s)}
-            className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === s ? 'text-white' : 'border border-[var(--border)] bg-white text-[var(--text-mid)]'}`}
+            className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === s ? 'text-white' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`}
             style={statusFilter === s ? { backgroundColor: statusColors[s] } : undefined}
           >
             {statusLabels[s]}
@@ -388,8 +389,11 @@ export function Campaigns() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {filtered.map((c) => (
-          <article key={c.id} className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        {filtered.map((c, idx) => (
+          <article
+            key={c.id}
+            className={`rounded-2xl ${hubSectionClass(1 + idx)} p-4`}
+          >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="text-lg font-bold text-[var(--text-dark)]">{c.name}</h3>

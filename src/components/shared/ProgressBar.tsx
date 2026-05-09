@@ -88,7 +88,7 @@ export function ProgressBar({
                   }
                 }}
                 onBlur={() => commit()}
-                className="w-11 rounded border border-slate-300 bg-white px-1 py-0.5 text-center text-[11px] font-semibold text-slate-800"
+                className="w-11 rounded border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1 py-0.5 text-center text-[11px] font-semibold text-[var(--text-dark)]"
                 aria-label="אחוז התקדמות"
               />
               <span className="text-slate-500">%</span>

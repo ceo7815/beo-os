@@ -333,7 +333,8 @@ export const enforceAttendanceDiscipline = onSchedule('every 2 minutes', async (
 })
 
 /**
- * שליחת מייל למוקצה כשנוצרת משימה (נקרא מהלקוח אחרי יצירת מסמך).
+ * שליחת מייל למוקצה אחרי יצירת משימה או שינוי מוקצה.
+ * כל משתמש מחובר יכול ליזום (מי שמעדכן את המשימה בפועל ב-Firestore).
  * דורש משתני SMTP בסביבת ה-Function. ללא הגדרה — מחזיר skipped בלי שגיאה.
  */
 export const sendAssigneeTaskNotification = onCall(async (request) => {
@@ -351,14 +352,6 @@ export const sendAssigneeTaskNotification = onCall(async (request) => {
 
   const t = taskSnap.data() as Record<string, unknown>
   const assigneeId = String(t.assigneeId ?? '').trim()
-  const createdBy = String(t.createdBy ?? '').trim()
-
-  if (createdBy !== callerUid) {
-    throw new HttpsError(
-      'permission-denied',
-      'רק יוצר המשימה יכול ליזום שליחת המייל',
-    )
-  }
 
   if (!assigneeId || assigneeId === callerUid) {
     return { ok: true as const, skipped: true as const, reason: 'self_or_empty' as const }

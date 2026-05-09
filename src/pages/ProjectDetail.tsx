@@ -29,6 +29,7 @@ import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Modal } from '../components/shared/Modal'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const taskStatusLabels: Record<TaskStatus, string> = {
   todo: 'לביצוע',
@@ -97,7 +98,7 @@ function DocViewer({ doc, onClose }: DocViewerProps) {
   }, [text, doc.id, mode, patchDocContent])
 
   return (
-    <div className="mt-4 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+    <div className={`mt-4 rounded-2xl ${hubSectionClass(0)} shadow-none`}>
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
         <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-[var(--text-dark)]">
           {doc.title}
@@ -468,7 +469,7 @@ export function ProjectDetail() {
               return (
                 <div
                   key={t.id}
-                  className="relative flex items-stretch gap-3 rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] py-3 pl-12 pr-4 transition hover:border-[var(--blue-mid)]"
+                  className="relative flex items-stretch gap-3 rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-3 pl-12 pr-4 transition hover:border-[var(--orange)]"
                   style={{ borderRightWidth: 3, borderRightColor: pc }}
                 >
                   <button
@@ -547,7 +548,7 @@ export function ProjectDetail() {
                 className={`flex w-full items-center justify-between gap-2 rounded-[10px] border px-3 py-2 text-right shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition ${
                   activeDocId === d.id
                     ? 'border-[var(--blue-mid)] bg-[var(--blue-light)]'
-                    : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--blue-mid)]'
+                    : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:border-[var(--orange)]'
                 }`}
               >
                 <div className="min-w-0">

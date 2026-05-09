@@ -9,6 +9,7 @@ import { SUPPLIER_TYPE_OPTIONS } from '../lib/supplierTypes'
 import { useSuppliers } from '../hooks/useSuppliers'
 import { useHubStore } from '../store/useStore'
 import type { Supplier } from '../types'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 function isValidEmailOptional(email: string): boolean {
   const t = email.trim()
@@ -133,7 +134,7 @@ export function Suppliers() {
         )}
       </div>
 
-      <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+      <section className={`rounded-2xl ${hubSectionClass(0)} shadow-none`}>
         <div>
           <table className="w-full text-sm">
             <thead className="bg-[#F8FAFC]">

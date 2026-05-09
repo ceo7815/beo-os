@@ -257,7 +257,8 @@ exports.enforceAttendanceDiscipline = (0, scheduler_1.onSchedule)('every 2 minut
     }
 });
 /**
- * שליחת מייל למוקצה כשנוצרת משימה (נקרא מהלקוח אחרי יצירת מסמך).
+ * שליחת מייל למוקצה אחרי יצירת משימה או שינוי מוקצה.
+ * כל משתמש מחובר יכול ליזום (מי שמעדכן את המשימה בפועל ב-Firestore).
  * דורש משתני SMTP בסביבת ה-Function. ללא הגדרה — מחזיר skipped בלי שגיאה.
  */
 exports.sendAssigneeTaskNotification = (0, https_1.onCall)(async (request) => {
@@ -273,10 +274,6 @@ exports.sendAssigneeTaskNotification = (0, https_1.onCall)(async (request) => {
     }
     const t = taskSnap.data();
     const assigneeId = String(t.assigneeId ?? '').trim();
-    const createdBy = String(t.createdBy ?? '').trim();
-    if (createdBy !== callerUid) {
-        throw new https_1.HttpsError('permission-denied', 'רק יוצר המשימה יכול ליזום שליחת המייל');
-    }
     if (!assigneeId || assigneeId === callerUid) {
         return { ok: true, skipped: true, reason: 'self_or_empty' };
     }

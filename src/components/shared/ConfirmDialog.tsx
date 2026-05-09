@@ -23,7 +23,7 @@ export function ConfirmDialog({
     >
       <div className="absolute inset-0 bg-[rgba(15,23,42,0.5)] backdrop-blur-[4px]" />
       <div
-        className="relative z-10 w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
+        className="relative z-10 w-full max-w-sm rounded-2xl hub-dash-card p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
         role="alertdialog"
         aria-modal="true"
       >

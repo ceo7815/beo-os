@@ -15,6 +15,7 @@ import { useSuppliers } from '../hooks/useSuppliers'
 import { useTasks } from '../hooks/useTasks'
 import { useUsers } from '../hooks/useUsers'
 import type { Project, Task, TaskStatus } from '../types'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const statusBadgeClass: Record<TaskStatus, string> = {
   todo: 'bg-[#64748B]/15 text-[#64748B]',
@@ -240,7 +241,7 @@ function TaskCard({
       </Modal>
 
       <div
-        className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-3 text-start shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition hover:brightness-[1.02]"
+        className="rounded-2xl border border-black bg-[var(--dash-panel-bg)] p-3 text-start shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition hover:brightness-[1.02]"
         style={{ borderRight: `3px solid ${priorityColor}` }}
         role="button"
         tabIndex={0}
@@ -338,7 +339,7 @@ function TaskCard({
               onChange={(e) => setNoteDraft(e.target.value)}
               rows={3}
               placeholder="מה קרה במשימה? בעיה, התקדמות, בקשה מהלקוח…"
-              className="w-full resize-y rounded-md border border-[var(--border)] bg-white p-2 text-[12px] text-[var(--text-dark)] placeholder:text-[var(--text-light)]"
+              className="w-full resize-y rounded-md border border-[var(--border-orange-soft)] bg-[var(--bg-input)] p-2 text-[12px] text-[var(--text-dark)] placeholder:text-[var(--text-light)]"
             />
             <button
               type="submit"
@@ -382,7 +383,7 @@ function TaskCard({
               const v = e.target.value
               if (v) onDueDateChange(v)
             }}
-            className="max-w-full rounded-md border border-[var(--border)] bg-white px-1.5 py-1 text-[12px] text-[var(--text-dark)]"
+            className="max-w-full rounded-md border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1.5 py-1 text-[12px] text-[var(--text-dark)]"
             onClick={(e) => e.stopPropagation()}
           />
         </label>
@@ -407,7 +408,7 @@ function TaskCard({
               e.stopPropagation()
               onReopen()
             }}
-            className="rounded-md border border-[var(--border)] bg-white px-2 py-1 text-[11px] font-semibold text-[var(--text-dark)] hover:bg-slate-50"
+            className="rounded-md border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--text-dark)] hover:bg-[var(--surface-muted)]"
           >
             פתח מחדש
           </button>
@@ -443,6 +444,7 @@ function KanbanColumn({
   title,
   count,
   badgeColor,
+  sectionSeq,
   children,
   canDrop,
   onDropTask,
@@ -451,6 +453,7 @@ function KanbanColumn({
   title: string
   count: number
   badgeColor: string
+  sectionSeq: number
   children: React.ReactNode
   canDrop: boolean
   onDropTask: () => void
@@ -458,10 +461,10 @@ function KanbanColumn({
 }) {
   return (
     <div
-      className={`flex min-w-[240px] flex-1 flex-col rounded-[14px] border bg-[var(--bg-card)] transition ${
+      className={`flex min-w-[240px] flex-1 flex-col rounded-2xl ${hubSectionClass(sectionSeq)} transition ${
         canDrop
-          ? 'border-[var(--blue-mid)] ring-2 ring-[var(--blue-light)]'
-          : 'border-[var(--border)]'
+          ? 'ring-2 ring-[var(--orange-light)] ring-offset-2 ring-offset-[var(--bg-main)]'
+          : ''
       }`}
       onDragOver={(e) => e.preventDefault()}
       onDragEnter={() => onDragEnterColumn()}
@@ -706,7 +709,7 @@ export function Tasks() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="חיפוש…"
-            className="w-full min-w-[180px] flex-1 rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px] text-[var(--text-dark)] placeholder:text-[var(--text-mid)] lg:w-64 lg:flex-none"
+            className="w-full min-w-[180px] flex-1 rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-dark)] placeholder:text-[var(--text-mid)] lg:w-64 lg:flex-none"
           />
           <button
             type="button"
@@ -769,7 +772,7 @@ export function Tasks() {
         />
       ) : null}
 
-      <div className="grid gap-4 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] md:grid-cols-2">
+      <div className={`grid gap-4 rounded-2xl ${hubSectionClass(0)} p-4 md:grid-cols-2`}>
         {canViewAsOthers ? (
           <div>
             <label
@@ -784,7 +787,7 @@ export function Tasks() {
               onChange={(e) =>
                 setViewAsUid(e.target.value ? e.target.value : null)
               }
-              className="w-full max-w-md rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px] text-[var(--text-dark)]"
+              className="w-full max-w-md rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-dark)]"
             >
               <option value="">כל הצוות</option>
               {sortedMembers.map((m) => (
@@ -822,7 +825,7 @@ export function Tasks() {
                       : realToday,
                   )
                 }
-                className="rounded-[10px] border border-[var(--border)] bg-white px-2 py-1.5 text-[13px] text-[var(--text-dark)]"
+                className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1.5 text-[13px] text-[var(--text-dark)]"
               />
             </label>
             <label className="flex flex-col gap-1 text-[11px] font-semibold text-[var(--text-mid)]">
@@ -834,13 +837,13 @@ export function Tasks() {
                   const v = e.target.value
                   if (v && /^\d{4}-\d{2}$/.test(v)) setBoardAnchor(`${v}-01`)
                 }}
-                className="rounded-[10px] border border-[var(--border)] bg-white px-2 py-1.5 text-[13px] text-[var(--text-dark)]"
+                className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1.5 text-[13px] text-[var(--text-dark)]"
               />
             </label>
             <button
               type="button"
               onClick={() => setBoardAnchor(realToday)}
-              className="rounded-[10px] border border-[var(--border)] bg-[var(--blue-light)] px-3 py-2 text-[12px] font-bold text-[var(--blue-dark)] transition hover:bg-[#BFDBFE]"
+              className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-3 py-2 text-[12px] font-bold text-[var(--orange)] transition hover:bg-[var(--dash-panel-bg)]"
             >
               חזרה להיום ({formatDateIL(realToday)})
             </button>
@@ -863,7 +866,7 @@ export function Tasks() {
         <div className="text-[13px] text-[var(--text-mid)]">טוען משימות…</div>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {TIME_COLUMNS.map((col) => {
+          {TIME_COLUMNS.map((col, colIdx) => {
             const list = byBucket[col.key]
             const targetDueDate =
               col.key === 'overdue'
@@ -891,6 +894,7 @@ export function Tasks() {
                 title={columnTitle}
                 count={list.length}
                 badgeColor={col.badgeColor}
+                sectionSeq={colIdx + 1}
                 canDrop={Boolean(dragTaskId) && dragOverCol === col.key}
                 onDragEnterColumn={() => {
                   if (!dragTaskId) return
@@ -996,7 +1000,7 @@ export function Tasks() {
       )}
 
       {!loading && !errMsg && filtered.length === 0 ? (
-        <div className="rounded-[14px] border border-dashed border-[var(--border)] bg-[var(--bg-card)] p-8 text-center text-[13px] text-[var(--text-mid)]">
+        <div className="hub-empty-dashed rounded-[14px] p-8 text-center text-[13px] text-[var(--text-mid)]">
           אין משימות להצגה.
         </div>
       ) : null}
@@ -1097,10 +1101,10 @@ function SentTasksSection({
   onOpenTask: (taskId: string) => void
 }) {
   return (
-    <section className="rounded-[12px] border border-[var(--border)]">
-      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[#F8FAFC] px-3 py-2">
-        <h3 className="text-[12px] font-bold text-[var(--blue-dark)]">{title}</h3>
-        <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[var(--text-mid)]">
+    <section className={`overflow-hidden rounded-2xl ${hubSectionClass(0)} shadow-none`}>
+      <div className="flex items-center justify-between border-b border-[rgba(249,115,22,0.2)] bg-[var(--surface-muted)] px-3 py-2">
+        <h3 className="text-[12px] font-bold text-[var(--text-dark)]">{title}</h3>
+        <span className="rounded-full bg-[var(--dash-panel-bg)] px-2 py-0.5 text-[11px] font-bold text-[var(--text-mid)]">
           {tasks.length}
         </span>
       </div>
@@ -1123,7 +1127,7 @@ function SentTasksSection({
               {tasks.map((t) => (
                 <tr
                   key={t.id}
-                  className="cursor-pointer border-t border-[var(--border)] transition hover:bg-[#F8FAFC]"
+                  className="cursor-pointer border-t border-[rgba(249,115,22,0.15)] transition hover:bg-[var(--surface-muted)]"
                   onClick={() => onOpenTask(t.id)}
                 >
                   <td className="px-3 py-2 font-semibold text-[var(--text-dark)]">{t.title}</td>

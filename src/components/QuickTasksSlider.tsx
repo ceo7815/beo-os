@@ -88,11 +88,11 @@ export function QuickTasksSlider() {
             onClick={() => setQuickOpen(false)}
           />
           <aside
-            className="fixed bottom-0 left-0 top-0 z-[80] flex w-full max-w-[320px] flex-col border-e border-[var(--border)] bg-white shadow-[4px_0_24px_rgba(26,43,94,0.12)]"
+            className="fixed bottom-0 left-0 top-0 z-[80] flex w-full max-w-[320px] flex-col border-e-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] shadow-[4px_0_20px_rgba(15,23,42,0.07)]"
             dir="rtl"
           >
-            <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-3">
-              <h2 className="text-lg font-extrabold text-[var(--blue-dark)]">
+            <header className="flex shrink-0 items-center justify-between border-b border-[rgba(249,115,22,0.35)] px-4 py-3">
+              <h2 className="text-lg font-extrabold text-[var(--text-dark)]">
                 המשימות שלי
               </h2>
               <button
@@ -144,7 +144,7 @@ export function QuickTasksSlider() {
               />
             </div>
 
-            <footer className="shrink-0 border-t border-[var(--border)] p-4">
+            <footer className="shrink-0 border-t border-[rgba(249,115,22,0.35)] p-4">
               <p className="mb-2 text-[11px] font-bold text-[var(--text-mid)]">
                 + משימה מהירה
               </p>
@@ -177,7 +177,7 @@ function Section(props: {
 }) {
   return (
     <section>
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-[var(--blue-dark)]">
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-extrabold text-[var(--text-dark)]">
         <span>{props.emoji}</span>
         {props.title}
       </h3>
@@ -188,7 +188,7 @@ function Section(props: {
           {props.tasks.map((t) => (
             <li
               key={t.id}
-              className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-input)] px-2 py-2"
+              className="flex items-center gap-2 rounded-lg hub-dash-inset px-2 py-2"
             >
               <input
                 type="checkbox"

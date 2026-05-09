@@ -16,8 +16,10 @@ import {
   doc,
   getDoc,
   getDocsFromServer,
+  or,
   query,
   serverTimestamp,
+  where,
   writeBatch,
 } from 'firebase/firestore'
 import {
@@ -33,6 +35,7 @@ import {
   deleteTaskNotesSubcollection,
 } from '../lib/firestoreCascades'
 import { db } from '../lib/firebase'
+import { useHubStore } from '../store/useStore'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { requestAssigneeTaskEmail } from '../lib/taskAssignmentEmail'
@@ -398,6 +401,7 @@ async function spawnNextRecurringAfterCompletion(
 
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
+  const currentUser = useHubStore((s) => s.currentUser)
   const [rawTasks, setRawTasks] = useState<Task[]>([])
   const [activityByTaskId, setActivityByTaskId] = useState<
     Record<string, TaskActivity[]>
@@ -426,7 +430,33 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setLoading(true)
     let cancelled = false
-    const q = query(collection(db, 'tasks'))
+
+    const uid = user?.uid ?? ''
+    const role =
+      currentUser?.uid === uid && typeof currentUser.role === 'string'
+        ? currentUser.role
+        : currentUser?.uid === uid
+          ? 'employee'
+          : ''
+    const profileReady =
+      Boolean(uid) &&
+      currentUser?.uid === uid &&
+      (role === 'admin' ||
+        role === 'superadmin' ||
+        role === 'employee')
+
+    const tasksQuery =
+      !profileReady || !uid
+        ? null
+        : role === 'admin' || role === 'superadmin'
+          ? query(collection(db, 'tasks'))
+          : query(
+              collection(db, 'tasks'),
+              or(
+                where('assigneeId', '==', uid),
+                where('createdBy', '==', uid),
+              ),
+            )
 
     async function fetchNotesMap(
       taskIds: Set<string>,
@@ -457,8 +487,21 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     }
 
     const load = async (includeNotes: boolean) => {
+      if (!uid) {
+        if (cancelled) return
+        setRawTasks([])
+        setNotesByTaskId({})
+        setActivityByTaskId({})
+        setLoading(false)
+        setError(null)
+        return
+      }
+      if (!tasksQuery) {
+        /* ממתינים לפרופיל מ-Firestore (תפקיד) כדי לבנות שאילתה תואמת חוקים */
+        return
+      }
       try {
-        const snap = await getDocsFromServer(q)
+        const snap = await getDocsFromServer(tasksQuery)
         const taskList = snap.docs.map((d) => docToTask(d))
         const taskIds = new Set(taskList.map((t) => t.id))
 
@@ -482,14 +525,19 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void load(true)
+    if (!uid) {
+      void load(true)
+    } else if (tasksQuery) {
+      void load(true)
+    }
+
     const tasksPollMs = 18_000
     const notesPollMs = 50_000
     const timerTasks = window.setInterval(() => {
-      void load(false)
+      if (tasksQuery) void load(false)
     }, tasksPollMs)
     const timerNotes = window.setInterval(() => {
-      void load(true)
+      if (tasksQuery) void load(true)
     }, notesPollMs)
 
     return () => {
@@ -497,7 +545,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timerTasks)
       window.clearInterval(timerNotes)
     }
-  }, [])
+  }, [user?.uid, currentUser?.uid, currentUser?.role])
 
   const displayName = useCallback(() => {
     const u = user
@@ -812,6 +860,18 @@ export function TasksProvider({ children }: { children: ReactNode }) {
           ),
         )
         toastFsSuccess('המשימה עודכנה')
+
+        const nextAssigneeId = String(merged.assigneeId ?? '').trim()
+        const prevAssigneeId = String(prev.assigneeId ?? '').trim()
+        const assigneeChanged =
+          patch.assigneeId !== undefined && nextAssigneeId !== prevAssigneeId
+        if (
+          assigneeChanged &&
+          nextAssigneeId &&
+          nextAssigneeId !== uid
+        ) {
+          requestAssigneeTaskEmail(id)
+        }
 
         const mergedStatus = patch.status ?? prev.status
         if (

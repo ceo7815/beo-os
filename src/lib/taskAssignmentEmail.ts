@@ -6,9 +6,20 @@ const sendAssigneeTaskNotification = httpsCallable<
   { ok: boolean; skipped?: boolean; sent?: boolean; reason?: string }
 >(functionsClient, 'sendAssigneeTaskNotification')
 
-/** נקרא אחרי יצירת משימה — כישלון לא חוסם את הממשק */
+/** נקרא אחרי יצירת משימה / שינוי מוקצה — כישלון לא חוסם את הממשק */
 export function requestAssigneeTaskEmail(taskId: string): void {
-  void sendAssigneeTaskNotification({ taskId }).catch((err: unknown) => {
-    console.error('sendAssigneeTaskNotification', err)
-  })
+  void sendAssigneeTaskNotification({ taskId })
+    .then((res) => {
+      const d = res.data
+      if (d?.skipped && d.reason) {
+        console.warn(
+          '[sendAssigneeTaskNotification] לא נשלח מייל:',
+          d.reason,
+          '(בדוק SMTP ב-Functions או מייל ב-Firebase Auth למוקצה)',
+        )
+      }
+    })
+    .catch((err: unknown) => {
+      console.error('sendAssigneeTaskNotification', err)
+    })
 }

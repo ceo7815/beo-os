@@ -244,14 +244,14 @@ export function TaskDrawer() {
         onClick={requestClose}
       />
       <aside
-        className="fixed inset-y-0 right-0 z-[70] flex w-full max-w-[480px] flex-col border-r border-[var(--border)] bg-white shadow-[-8px_0_32px_rgba(26,43,94,0.12)]"
+        className="fixed inset-y-0 right-0 z-[70] flex w-full max-w-[480px] flex-col border-r-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] shadow-[-8px_0_32px_rgba(15,23,42,0.1)]"
         dir="rtl"
       >
-        <header className="flex shrink-0 items-start gap-3 border-b border-[var(--border)] px-5 py-4">
+        <header className="flex shrink-0 items-start gap-3 border-b border-[rgba(249,115,22,0.25)] px-5 py-4">
           <button
             type="button"
             onClick={requestClose}
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-lg text-[var(--text-mid)] transition hover:bg-[var(--bg-input)]"
+            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border-orange-soft)] text-lg text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]"
             aria-label="סגירה"
           >
             ×
@@ -491,7 +491,7 @@ export function TaskDrawer() {
                   {draft.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-white px-2.5 py-1 text-xs font-semibold text-[var(--text-dark)]"
+                      className="inline-flex items-center gap-1 rounded-full border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2.5 py-1 text-xs font-semibold text-[var(--text-dark)]"
                     >
                       {tag}
                       <button
@@ -581,7 +581,7 @@ export function TaskDrawer() {
                   onChange={(e) => setStreamDraft(e.target.value)}
                   rows={4}
                   placeholder="כתבו הערה או עדכון לצוות…"
-                  className="mb-2 w-full resize-y rounded-lg border border-[var(--border)] bg-white p-3 text-sm text-[var(--text-dark)] placeholder:text-[var(--text-light)]"
+                  className="mb-2 w-full resize-y rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] p-3 text-sm text-[var(--text-dark)] placeholder:text-[var(--text-light)]"
                 />
                 <button
                   type="button"
@@ -608,7 +608,7 @@ export function TaskDrawer() {
                 {task.manualNotes.map((n) => (
                   <li
                     key={n.id}
-                    className="rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 shadow-sm"
+                    className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2.5 shadow-sm"
                   >
                     <p className="text-[11px] font-bold text-[var(--text-mid)]">
                       {n.userName} · {formatDateTimeIL(n.createdAt)}
@@ -636,13 +636,13 @@ export function TaskDrawer() {
                     type="date"
                     value={remDate}
                     onChange={(e) => setRemDate(e.target.value)}
-                    className="min-w-[140px] flex-1 rounded-lg border border-[var(--border)] bg-white px-2 py-2 text-sm"
+                    className="min-w-[140px] flex-1 rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-2 text-sm"
                   />
                   <input
                     type="time"
                     value={remTime}
                     onChange={(e) => setRemTime(e.target.value)}
-                    className="w-[120px] rounded-lg border border-[var(--border)] bg-white px-2 py-2 text-sm"
+                    className="w-[120px] rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-2 text-sm"
                   />
                   <button
                     type="button"
@@ -670,7 +670,7 @@ export function TaskDrawer() {
                   return (
                     <li
                       key={r.id}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2.5"
+                      className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2.5"
                     >
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-[var(--text-dark)]">

@@ -42,7 +42,7 @@ export function QuickActionsFloat() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200/90 bg-[#2563EB] text-xl font-black text-white shadow-[0_8px_24px_rgba(37,99,235,0.35)] backdrop-blur-sm transition hover:bg-[#1D4ED8] hover:shadow-[0_10px_28px_rgba(37,99,235,0.45)] active:scale-95"
+          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl border-2 border-[var(--orange)] bg-[var(--orange)] text-xl font-black text-white shadow-[0_8px_24px_rgba(249,115,22,0.35)] backdrop-blur-sm transition hover:brightness-110 active:scale-95"
           aria-label="פתח פעולות מהירות"
           aria-expanded={false}
         >
@@ -50,18 +50,18 @@ export function QuickActionsFloat() {
         </button>
       ) : (
         <div
-          className="pointer-events-auto flex max-w-[220px] flex-col gap-1 rounded-2xl border border-slate-200/90 bg-white/95 p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.12)] backdrop-blur-md"
+          className="pointer-events-auto flex max-w-[220px] flex-col gap-1 rounded-2xl border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.12)]"
           role="toolbar"
           aria-label="פעולות מהירות"
         >
           <div className="flex items-center justify-between gap-2 px-1 pt-0.5">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)]">
               מהיר
             </p>
             <button
               type="button"
               onClick={close}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)] hover:text-[var(--text-dark)]"
               aria-label="סגור פעולות מהירות"
             >
               ×
@@ -73,17 +73,17 @@ export function QuickActionsFloat() {
               setQuickSliderOpen(true)
               close()
             }}
-            className={`${dockBtn} text-slate-800 hover:bg-emerald-50 hover:text-emerald-900`}
+            className={`${dockBtn} text-[var(--text-dark)] hover:bg-[var(--surface-muted)]`}
           >
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-base font-black text-emerald-700"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--orange-light)] text-base font-black text-[var(--orange)]"
               aria-hidden
             >
               +
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-extrabold leading-tight">הוסף משימה</span>
-              <span className="block text-[10px] font-medium text-slate-500">רשימה מהירה</span>
+              <span className="block text-[10px] font-medium text-[var(--text-light)]">רשימה מהירה</span>
             </span>
           </button>
           <button
@@ -92,17 +92,17 @@ export function QuickActionsFloat() {
               navigate('/leads', { state: { openAdd: true } })
               close()
             }}
-            className={`${dockBtn} text-slate-800 hover:bg-violet-50 hover:text-violet-900`}
+            className={`${dockBtn} text-[var(--text-dark)] hover:bg-[var(--surface-muted)]`}
           >
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-base font-black text-violet-700"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--orange-light)] text-base font-black text-[var(--orange)]"
               aria-hidden
             >
               +
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-extrabold leading-tight">הוסף ליד</span>
-              <span className="block text-[10px] font-medium text-slate-500">טופס חדש</span>
+              <span className="block text-[10px] font-medium text-[var(--text-light)]">טופס חדש</span>
             </span>
           </button>
           <button
@@ -111,17 +111,17 @@ export function QuickActionsFloat() {
               navigate('/clients', { state: { openAdd: true } })
               close()
             }}
-            className={`${dockBtn} text-slate-800 hover:bg-amber-50 hover:text-amber-900`}
+            className={`${dockBtn} text-[var(--text-dark)] hover:bg-[var(--surface-muted)]`}
           >
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-base font-black text-amber-700"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--orange-light)] text-base font-black text-[var(--orange)]"
               aria-hidden
             >
               +
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-extrabold leading-tight">הוסף לקוח</span>
-              <span className="block text-[10px] font-medium text-slate-500">כרטיס לקוח</span>
+              <span className="block text-[10px] font-medium text-[var(--text-light)]">כרטיס לקוח</span>
             </span>
           </button>
           <button
@@ -130,17 +130,17 @@ export function QuickActionsFloat() {
               navigate('/projects', { state: { openAdd: true } })
               close()
             }}
-            className={`${dockBtn} text-slate-800 hover:bg-sky-50 hover:text-sky-900`}
+            className={`${dockBtn} text-[var(--text-dark)] hover:bg-[var(--surface-muted)]`}
           >
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-base font-black text-sky-700"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--orange-light)] text-base font-black text-[var(--orange)]"
               aria-hidden
             >
               +
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-extrabold leading-tight">הוסף פרויקט</span>
-              <span className="block text-[10px] font-medium text-slate-500">פרויקט חדש</span>
+              <span className="block text-[10px] font-medium text-[var(--text-light)]">פרויקט חדש</span>
             </span>
           </button>
         </div>

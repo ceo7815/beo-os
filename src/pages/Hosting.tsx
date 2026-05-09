@@ -5,6 +5,7 @@ import { Modal } from '../components/shared/Modal'
 import { useClients } from '../hooks/useClients'
 import { useHosting } from '../hooks/useHosting'
 import type { HostingRecord } from '../types'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const SERVER_HINTS = [
   'Hostinger',
@@ -419,7 +420,7 @@ export function Hosting() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-sm md:flex-row md:flex-wrap md:items-end">
+      <div className={`flex flex-col gap-3 rounded-2xl ${hubSectionClass(0)} p-4 shadow-sm md:flex-row md:flex-wrap md:items-end`}>
         <div className="min-w-[200px] flex-1">
           <label
             htmlFor="hosting-search"
@@ -481,7 +482,7 @@ export function Hosting() {
       {loading ? (
         <p className="text-[var(--text-mid)]">טוען מאגר…</p>
       ) : groups.length === 0 ? (
-        <div className="rounded-[14px] border border-dashed border-[var(--border)] bg-[var(--bg-card)] p-10 text-center text-[var(--text-mid)]">
+        <div className="hub-empty-dashed rounded-[14px] p-10 text-center text-[var(--text-mid)]">
           אין רשומות להצגה. הוסיפו אתר עם הכפתור למעלה.
         </div>
       ) : (
@@ -489,7 +490,7 @@ export function Hosting() {
           {groups.map((g) => (
             <article
               key={g.clientId}
-              className="overflow-hidden rounded-[16px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_4px_24px_rgba(37,99,235,0.08)]"
+              className={`overflow-hidden rounded-2xl ${hubSectionClass(1)} shadow-none`}
             >
               <div className="border-b border-[var(--border)] bg-gradient-to-l from-[var(--blue-light)] to-white px-5 py-3">
                 <h2 className="text-[17px] font-extrabold text-[var(--blue-dark)]">

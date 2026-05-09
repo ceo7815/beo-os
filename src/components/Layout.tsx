@@ -19,6 +19,8 @@ const workspaceLinks = [
   { label: 'Docs', href: 'https://docs.google.com', dot: '#A78BFA' },
 ] as const
 
+const LAYOUT_LOGO_SRC = `${import.meta.env.BASE_URL}logo-hub-pos.png?v=3`
+
 const navBase =
   'flex items-center gap-2.5 rounded-none px-5 py-3 text-base transition'
 
@@ -82,20 +84,23 @@ export function Layout() {
         dir="rtl"
         className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-[100dvh] md:flex-row md:overflow-hidden"
       >
-        <aside className="flex w-full shrink-0 flex-col border-b border-[rgba(255,255,255,0.1)] bg-[var(--bg-sidebar)] md:h-full md:w-[200px] md:overflow-y-auto md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.1)]">
-          <div className="flex flex-1 flex-col gap-6 p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--orange)] text-xl font-bold text-white">
-                H
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-lg font-bold leading-tight text-white">
-                  האב
-                </div>
-                <div className="truncate text-[11px] text-[rgba(255,255,255,0.4)]">
-                  מערכות מתקדמות
-                </div>
-              </div>
+        <aside className="flex w-full shrink-0 flex-col border-b border-[rgba(255,255,255,0.08)] bg-[#454545] md:h-full md:w-[220px] md:overflow-y-auto md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.08)]">
+          <div className="flex flex-1 flex-col gap-5 p-4">
+            <div className="border-b border-white/10 pb-4">
+              <img
+                src={LAYOUT_LOGO_SRC}
+                alt="Hub-Pos"
+                className="mx-auto h-auto w-full max-w-[196px] select-none object-contain"
+                width={196}
+                height={72}
+                decoding="async"
+              />
+              <p className="mt-3 text-center text-[11px] font-semibold text-white/55">
+                שם ארגון:
+              </p>
+              <p className="mt-1 text-center text-[14px] font-bold leading-snug text-[#F97316]">
+                האב מערכות מתקדמות
+              </p>
             </div>
 
             <nav className="flex flex-col gap-0.5">
@@ -105,8 +110,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -124,8 +129,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -139,8 +144,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -154,8 +159,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -171,8 +176,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -186,8 +191,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -209,8 +214,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -224,8 +229,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -241,8 +246,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -257,8 +262,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >
@@ -276,8 +281,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-[rgba(255,255,255,0.12)] font-bold text-white'
-                      : 'border-r-[3px] border-transparent text-[rgba(255,255,255,0.55)] hover:bg-[rgba(255,255,255,0.08)] hover:text-white'
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
                   }`
                 }
               >

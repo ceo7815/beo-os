@@ -19,7 +19,7 @@ export function HubRealtimeBubbleHost() {
       {items.map((t) => (
         <div
           key={t.id}
-          className="hub-realtime-bubble-animate pointer-events-auto flex gap-3 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-3 shadow-[0_12px_36px_rgba(15,23,42,0.14)]"
+          className="hub-realtime-bubble-animate pointer-events-auto flex gap-3 rounded-2xl border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] px-3 py-3 shadow-[0_12px_36px_rgba(15,23,42,0.14)]"
         >
           <div className="flex shrink-0 flex-col items-center gap-1">
             <img

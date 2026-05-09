@@ -15,6 +15,7 @@ import {
 } from '../hooks/useCollectionTracking'
 import { toastFsError } from '../lib/fsToast'
 import type { Client, CollectionTracking } from '../types'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const GREEN_INVOICE_URL =
   (import.meta.env.VITE_GREEN_INVOICE_URL as string | undefined)?.trim() ||
@@ -81,15 +82,14 @@ function sortEntries(a: CollectionTracking, b: CollectionTracking, today: string
 }
 
 function KpiMini(props: {
+  seq: number
   label: string
   value: string
-  borderColor: string
   sub?: string
 }) {
   return (
     <div
-      className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
-      style={{ borderTopWidth: 4, borderTopColor: props.borderColor }}
+      className={`rounded-2xl ${hubSectionClass(props.seq)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.08)]`}
     >
       <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
         {props.value}
@@ -329,15 +329,15 @@ export function Collections() {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <KpiMini
+          seq={0}
           label="במעקב (לא סומן שולם)"
           value={String(kpis.openCount)}
-          borderColor="#2563EB"
           sub="לקוחות ברשימת המעקב"
         />
         <KpiMini
+          seq={1}
           label="באיחור (לפי יעד)"
           value={String(kpis.overdueCount)}
-          borderColor="#EF4444"
         />
       </section>
 
@@ -350,7 +350,7 @@ export function Collections() {
             המחלקה מוגדרת בכרטיס הלקוח. לקוח בלי מחלקה נספר תחת «ללא מחלקה». חודש
             נוכחי: {currentYm}.
           </p>
-          <div className="overflow-x-hidden rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+          <div className={`overflow-x-hidden rounded-2xl ${hubSectionClass(2)} shadow-[0_2px_8px_rgba(0,0,0,0.04)]`}>
             <table className="w-full table-fixed border-collapse text-right text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-main)] text-[11px] font-bold text-[var(--text-mid)]">
@@ -400,7 +400,7 @@ export function Collections() {
         </div>
       ) : null}
 
-      <div className="overflow-x-hidden rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+      <div className={`overflow-x-hidden rounded-2xl ${hubSectionClass(activeRows.length > 0 ? 3 : 2)} shadow-[0_2px_12px_rgba(0,0,0,0.06)]`}>
         <table className="w-full table-fixed border-collapse text-right text-[11px] sm:text-sm">
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--bg-main)] text-[10px] font-bold text-[var(--text-mid)] sm:text-[12px]">

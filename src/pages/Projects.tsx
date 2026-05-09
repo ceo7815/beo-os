@@ -33,6 +33,7 @@ import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { SupplierQuickSelect } from '../components/SupplierQuickSelect'
 import { Modal } from '../components/shared/Modal'
 import { ProgressBar } from '../components/shared/ProgressBar'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const PROJECT_COLORS = [
   '#6366F1',
@@ -66,7 +67,7 @@ const priorityLabels: Record<Priority, string> = {
 const uiButtonBase =
   'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
 const uiButtonGhost =
-  `${uiButtonBase} border border-[#E2E8F0] bg-white text-[var(--text-mid)] hover:bg-[#F8FAFC]`
+  `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
 const uiButtonPrimary = `${uiButtonBase} hub-btn-primary`
 
 function projectProgressPercent(p: Project): number {
@@ -525,19 +526,19 @@ export function Projects() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-2">
           <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2">
+            <div className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2">
               <p className="text-[10px] text-[var(--text-light)]">פעיל</p>
               <p className="text-lg font-extrabold text-[var(--blue-mid)]">
                 {projectKpis.active}
               </p>
             </div>
-            <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2">
+            <div className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2">
               <p className="text-[10px] text-[var(--text-light)]">מושהה</p>
               <p className="text-lg font-extrabold text-[#64748B]">
                 {projectKpis.paused}
               </p>
             </div>
-            <div className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2">
+            <div className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2">
               <p className="text-[10px] text-[var(--text-light)]">הושלם</p>
               <p className="text-lg font-extrabold text-[#16A34A]">
                 {projectKpis.completed}
@@ -597,7 +598,7 @@ export function Projects() {
                 className={`${uiButtonBase} ${
                   attentionOnly
                     ? 'border border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]'
-                    : 'border border-[#E2E8F0] bg-white text-[var(--text-mid)] hover:bg-[#F8FAFC]'
+                    : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
                 }`}
               >
                 צריך טיפול היום
@@ -612,7 +613,7 @@ export function Projects() {
             </span>
             <button
               type="button"
-                className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-2 text-[var(--text-mid)] hover:bg-white/70 hover:text-[var(--text-dark)]"
+                className="inline-flex h-8 min-w-[32px] items-center justify-center rounded-md px-2 text-[var(--text-mid)] hover:bg-[var(--surface-muted)] hover:text-[var(--text-dark)]"
               onClick={() => setSelectedClient(null)}
             >
               ✕
@@ -631,7 +632,7 @@ export function Projects() {
           </span>
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {activeFiltered.map((p) => {
+          {activeFiltered.map((p, idx) => {
           const client = p.clientId ? clientMap.get(p.clientId) : undefined
           const supplier = p.supplierId?.trim()
             ? supplierMap.get(p.supplierId.trim())
@@ -640,8 +641,7 @@ export function Projects() {
           return (
             <article
               key={p.id}
-              className="relative rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition hover:border-[var(--blue-mid)] hover:shadow-[0_4px_20px_rgba(37,99,235,0.12)]"
-              style={{ borderTopWidth: 4, borderTopColor: p.color }}
+              className={`relative rounded-2xl ${hubSectionClass(idx)} p-5 transition hover:brightness-[1.02]`}
             >
               <div className="flex items-start justify-between gap-2">
                 <button
@@ -706,7 +706,7 @@ export function Projects() {
                     ···
                   </button>
                   {menuId === p.id ? (
-                    <div className="absolute left-0 z-30 mt-1 min-w-[140px] overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+                    <div className="absolute left-0 z-30 mt-1 min-w-[140px] overflow-hidden rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
                       <button
                         type="button"
                         className="block h-9 w-full px-3 text-right text-xs font-semibold text-[var(--text-dark)] hover:bg-[var(--blue-light)]"
@@ -792,7 +792,7 @@ export function Projects() {
                     className={`${uiButtonBase} min-w-[124px] border ${
                       p.status === 'paused'
                         ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
-                        : 'border-[#E2E8F0] bg-white text-[var(--text-mid)] hover:bg-[#F8FAFC]'
+                        : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
                     }`}
                   >
                     {p.status === 'paused' ? '▶ החזר לפעיל' : '⏸ השהה'}
@@ -832,13 +832,13 @@ export function Projects() {
           </span>
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {pausedFiltered.map((p) => {
+          {pausedFiltered.map((p, idx) => {
             const client = p.clientId ? clientMap.get(p.clientId) : undefined
             const owner = memberMap.get(p.ownerId)
             return (
               <article
                 key={p.id}
-                className="rounded-[14px] border border-[#CBD5E1] bg-[#F8FAFC] p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+                className={`rounded-2xl ${hubSectionClass(activeFiltered.length + idx)} p-5 shadow-none`}
               >
                 <button
                   type="button"
@@ -1049,7 +1049,7 @@ export function Projects() {
                 onClick={() => setForm((f) => ({ ...f, type: 'client' }))}
                 className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
                   form.type === 'client'
-                    ? 'bg-white text-[var(--blue-mid)] shadow-sm'
+                    ? 'bg-[var(--dash-panel-bg)] text-[var(--blue-mid)] shadow-sm'
                     : 'text-[var(--text-mid)]'
                 }`}
               >
@@ -1062,7 +1062,7 @@ export function Projects() {
                 }
                 className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
                   form.type === 'internal'
-                    ? 'bg-white shadow-sm'
+                    ? 'bg-[var(--dash-panel-bg)] shadow-sm'
                     : 'text-[var(--text-mid)]'
                 }`}
                 style={
@@ -1087,7 +1087,7 @@ export function Projects() {
                 }
                 className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
                   form.projectBillingType === 'one-time'
-                    ? 'bg-white text-[var(--blue-mid)] shadow-sm'
+                    ? 'bg-[var(--dash-panel-bg)] text-[var(--blue-mid)] shadow-sm'
                     : 'text-[var(--text-mid)]'
                 }`}
               >
@@ -1104,7 +1104,7 @@ export function Projects() {
                 }
                 className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
                   form.projectBillingType === 'retainer'
-                    ? 'bg-white shadow-sm'
+                    ? 'bg-[var(--dash-panel-bg)] shadow-sm'
                     : 'text-[var(--text-mid)]'
                 }`}
                 style={

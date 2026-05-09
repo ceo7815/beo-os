@@ -36,12 +36,12 @@ export function Modal({
     >
       <div className="absolute inset-0 bg-[rgba(15,23,42,0.5)] backdrop-blur-[4px]" />
       <div
-        className={`relative z-10 w-full ${maxW} max-h-[min(90vh,880px)] overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]`}
+        className={`relative z-10 w-full ${maxW} max-h-[min(90vh,880px)] overflow-y-auto rounded-2xl hub-dash-card p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
       >
-        <div className="mb-4 flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] pb-4">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(249,115,22,0.25)] pb-4">
           <h2
             id="modal-title"
             className="min-w-0 flex-1 text-start text-[17px] font-bold leading-snug text-[var(--text-dark)]"
@@ -51,7 +51,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-light)] transition hover:bg-[var(--blue-light)] hover:text-[var(--text-dark)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-light)] transition hover:bg-[var(--orange-light)] hover:text-[var(--text-dark)]"
             aria-label="סגור"
           >
             ✕

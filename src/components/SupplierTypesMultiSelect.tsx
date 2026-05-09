@@ -127,7 +127,7 @@ export function SupplierTypesMultiSelect({
             <div
               ref={panelRef}
               dir="rtl"
-              className="fixed z-[200] max-h-[min(18rem,50vh)] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
+              className="fixed z-[200] max-h-[min(18rem,50vh)] overflow-y-auto rounded-xl border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] py-1 shadow-[0_16px_48px_rgba(15,23,42,0.18)]"
               style={{
                 top: pos.top,
                 left: pos.left,

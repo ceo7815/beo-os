@@ -23,6 +23,7 @@ import {
   teamMemberToDaySchedule,
 } from '../lib/workSchedule'
 import type { AttendanceCheckIn, AttendanceLog } from '../types'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const HEARTBEAT_MS = 60 * 1000
 const CHECKIN_RESPONSE_WINDOW_MS = 5 * 60 * 1000
@@ -460,7 +461,7 @@ export function Attendance() {
         </p>
       </header>
 
-      <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+      <section className={`rounded-2xl ${hubSectionClass(0)} p-4`}>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 className="text-base font-bold text-[var(--text-dark)]">לוח שבוע ותאריך דוח</h2>
@@ -557,7 +558,7 @@ export function Attendance() {
       </section>
 
       {isManager ? (
-        <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`rounded-2xl ${hubSectionClass(1)} p-4`}>
           <h2 className="mb-3 text-lg font-bold text-[var(--text-dark)]">ניטור מנהל מערכת</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -605,7 +606,7 @@ export function Attendance() {
           </div>
         </section>
       ) : (
-        <section className="space-y-4 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`space-y-4 rounded-2xl ${hubSectionClass(2)} p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-[var(--text-dark)]">
@@ -758,7 +759,7 @@ export function Attendance() {
       )}
 
       {!isManager ? (
-        <section className="space-y-4 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`space-y-4 rounded-2xl ${hubSectionClass(3)} p-4`}>
           <h2 className="text-base font-bold text-[var(--text-dark)]">
             דוח יום נבחר · {formatDateIL(reportDayYmd)} ({formatWeekdayShortIL(reportDayYmd)})
           </h2>
@@ -928,7 +929,7 @@ export function Attendance() {
       ) : null}
 
       {isManager ? (
-        <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`rounded-2xl ${hubSectionClass(4)} p-4`}>
           <h2 className="mb-1 text-lg font-bold text-[var(--text-dark)]">
             סיכום עובדים ליום {formatDateIL(reportDayYmd)}
           </h2>
@@ -1028,7 +1029,7 @@ export function Attendance() {
       ) : null}
 
       {isManager ? (
-        <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`rounded-2xl ${hubSectionClass(5)} p-4`}>
           <h2 className="mb-1 text-lg font-bold text-[var(--text-dark)]">סשנים ביום הנבחר</h2>
           <p className="mb-3 text-xs text-[var(--text-mid)]">
             עד 80 רשומות אחרונות לפי זמן התחלה. לכל סשן: כניסה, צ׳ק־אינים במשמרת, יציאה.
@@ -1092,7 +1093,7 @@ export function Attendance() {
       ) : null}
 
       {isManager ? (
-        <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`rounded-2xl ${hubSectionClass(6)} p-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-bold text-[var(--text-dark)]">מדיניות זמן לא מאומת</h3>
@@ -1109,7 +1110,7 @@ export function Attendance() {
 
       {isManager ? (
         <section className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+          <div className={`rounded-2xl ${hubSectionClass(7)} p-4`}>
             <h3 className="mb-1 text-base font-bold text-[var(--text-dark)]">זמן לפי פרויקט</h3>
             <p className="mb-2 text-[11px] text-[var(--text-mid)]">
               יום {formatDateIL(reportDayYmd)}
@@ -1128,7 +1129,7 @@ export function Attendance() {
               )}
             </ul>
           </div>
-          <div className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+          <div className={`rounded-2xl ${hubSectionClass(8)} p-4`}>
             <h3 className="mb-1 text-base font-bold text-[var(--text-dark)]">זמן לפי לקוח</h3>
             <p className="mb-2 text-[11px] text-[var(--text-mid)]">
               יום {formatDateIL(reportDayYmd)}
@@ -1151,7 +1152,7 @@ export function Attendance() {
       ) : null}
 
       {isManager ? (
-        <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`rounded-2xl ${hubSectionClass(9)} p-4`}>
           <h3 className="mb-2 text-base font-bold text-[var(--text-dark)]">Reliability Dashboard</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1185,7 +1186,7 @@ export function Attendance() {
       ) : null}
 
       {isManager ? (
-        <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+        <section className={`rounded-2xl ${hubSectionClass(10)} p-4`}>
           <h3 className="mb-1 text-base font-bold text-[var(--text-dark)]">דוח חריגות אכיפה אוטומטית</h3>
           <p className="mb-2 text-xs text-[var(--text-mid)]">מסונן לפי יום הנבחר בלוח: {formatDateIL(reportDayYmd)}</p>
           <div className="overflow-x-auto">

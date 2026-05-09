@@ -13,6 +13,7 @@ import type { LeadQuoteChannel, LeadStatus } from '../types'
 import { Badge } from '../components/shared/Badge'
 import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 /** ערך נשמר ב־Firestore בשדה `source` כשבוחרים מהרשימה הקבועה */
 const LEAD_SOURCE_BEO_SYSTEMS = 'Beo systems'
@@ -654,7 +655,7 @@ export function Leads() {
           className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
             statusFilter === 'all'
               ? 'border-[var(--blue-mid)] bg-[#EFF6FF] shadow-[0_1px_4px_rgba(37,99,235,0.15)]'
-              : 'border-[var(--border)] bg-[var(--bg-card)] hover:bg-[#F8FAFC]'
+              : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:bg-[var(--surface-muted)]'
           }`}
         >
           <span className="text-[11px] font-semibold text-[var(--text-mid)]">סה״כ לידים</span>
@@ -670,7 +671,7 @@ export function Leads() {
             className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
               statusFilter === s
                 ? 'shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
-                : 'border-[var(--border)] bg-[var(--bg-card)] hover:bg-[#F8FAFC]'
+                : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:bg-[var(--surface-muted)]'
             }`}
             style={
               statusFilter === s
@@ -693,7 +694,7 @@ export function Leads() {
       </section>
 
       {formOpen ? (
-        <section className="grid grid-cols-1 gap-3 rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:grid-cols-2">
+        <section className={`grid grid-cols-1 gap-3 rounded-2xl ${hubSectionClass(0)} p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:grid-cols-2`}>
           <input placeholder="שם ליד *" value={name} onChange={(e) => setName(e.target.value)} />
           <input placeholder="חברה" value={company} onChange={(e) => setCompany(e.target.value)} />
           <input placeholder="טלפון" value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -715,7 +716,7 @@ export function Leads() {
               linkedClientText.trim() &&
               clientLinkMatches.length > 0 ? (
                 <ul
-                  className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-[10px] border border-[var(--border)] bg-white py-1 shadow-[0_10px_24px_rgba(0,0,0,0.12)]"
+                  className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-[10px] border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] py-1 shadow-[0_10px_24px_rgba(0,0,0,0.12)]"
                   role="listbox"
                 >
                   {clientLinkMatches.map((c) => (
@@ -876,7 +877,7 @@ export function Leads() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button type="button" className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-primary' : 'border border-[var(--border)] bg-white text-[var(--text-mid)]'}`} onClick={() => setStatusFilter('all')}>
+        <button type="button" className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-primary' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`} onClick={() => setStatusFilter('all')}>
           הכל
         </button>
         {LEAD_STATUSES_ORDERED.map((s) => (
@@ -887,7 +888,7 @@ export function Leads() {
             className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${
               statusFilter === s
                 ? 'text-white'
-                : 'border border-[var(--border)] bg-white text-[var(--text-mid)]'
+                : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'
             }`}
             style={statusFilter === s ? { backgroundColor: statusColors[s] } : undefined}
           >
@@ -896,10 +897,10 @@ export function Leads() {
         ))}
       </section>
 
-      <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+      <section className={`rounded-2xl ${hubSectionClass(formOpen ? 1 : 0)} shadow-[0_2px_8px_rgba(0,0,0,0.06)]`}>
         <div className="min-w-0 overflow-x-auto">
           <table className="w-full min-w-[1024px] table-fixed text-sm">
-            <thead className="bg-[#F8FAFC]">
+            <thead className="bg-[var(--surface-muted)]">
               <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
                 <th className="px-3 py-3">שם ליד</th>
                 <th className="px-3 py-3">חברה</th>
@@ -1097,7 +1098,7 @@ export function Leads() {
                       <button
                         type="button"
                         onClick={() => setOpenActionLeadId(l.id)}
-                        className="w-full rounded-[8px] border border-[var(--border)] bg-white px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)]"
+                        className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)]"
                       >
                         פעולות ▾
                       </button>
@@ -1263,7 +1264,7 @@ export function Leads() {
             />
           </div>
           <div className="space-y-3">
-            <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[#2563EB] has-[:checked]:bg-[#EFF6FF]">
+            <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[var(--orange)] has-[:checked]:bg-[var(--orange-light)]">
               <input
                 type="radio"
                 name="quoteChannel"
@@ -1283,7 +1284,7 @@ export function Leads() {
                 </span>
               </span>
             </label>
-            <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[#2563EB] has-[:checked]:bg-[#EFF6FF]">
+            <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[var(--orange)] has-[:checked]:bg-[var(--orange-light)]">
               <input
                 type="radio"
                 name="quoteChannel"
@@ -1314,7 +1315,7 @@ export function Leads() {
                 />
               </span>
             </label>
-            <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[#2563EB] has-[:checked]:bg-[#EFF6FF]">
+            <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[var(--orange)] has-[:checked]:bg-[var(--orange-light)]">
               <input
                 type="radio"
                 name="quoteChannel"
@@ -1517,7 +1518,7 @@ export function Leads() {
       >
         {leadDetailsLead ? (
           <div className="min-w-0 space-y-4">
-            <section className="rounded-[12px] border border-[var(--border)] bg-[#F8FAFC] p-4">
+            <section className="rounded-[12px] hub-dash-inset p-4">
               <h3 className="mb-1 text-[12px] font-bold text-[var(--text-light)]">פרטים כלליים</h3>
               <div className="mt-2">
                 <LeadDetailRow label="שם ליד">{leadDetailsLead.name}</LeadDetailRow>
@@ -1587,7 +1588,7 @@ export function Leads() {
             leadDetailsLead.quoteChannel ||
             leadDetailsLead.quotePdfUrl ||
             leadDetailsLead.quoteVisualUrl ? (
-              <section className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+              <section className={`rounded-[12px] ${hubSectionClass(0)} p-4 shadow-none`}>
                 <h3 className="mb-1 text-[12px] font-bold text-[var(--text-light)]">הצעת מחיר</h3>
                 <p className="mb-3 text-[12px] text-[var(--text-mid)]">
                   אופן השליחה והקבצים / הקישורים השמורים על הליד.
@@ -1623,7 +1624,7 @@ export function Leads() {
                         <a
                           href={leadDetailsLead.quotePdfUrl}
                           download={leadDetailsLead.quotePdfFileName || 'quote.pdf'}
-                          className="inline-flex rounded-[8px] border border-[#BFDBFE] bg-white px-2.5 py-1 text-[11px] font-semibold text-[var(--blue-mid)] hover:bg-[#EFF6FF]"
+                          className="inline-flex rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--orange)] hover:bg-[var(--orange-light)]"
                         >
                           הורדה
                         </a>
@@ -1647,14 +1648,32 @@ export function Leads() {
               </section>
             ) : null}
 
-            <section className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <section
+              className={`rounded-[12px] ${hubSectionClass(
+                leadDetailsLead.status === 'quote_sent' ||
+                  !!leadDetailsLead.quoteChannel ||
+                  !!leadDetailsLead.quotePdfUrl ||
+                  !!leadDetailsLead.quoteVisualUrl
+                  ? 1
+                  : 0,
+              )} p-4 shadow-none`}
+            >
               <h3 className="mb-1 text-[12px] font-bold text-[var(--text-light)]">צרכי לקוח</h3>
               <p className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[var(--text-dark)]">
                 {leadDetailsLead.clientNeeds?.trim() ? leadDetailsLead.clientNeeds : '—'}
               </p>
             </section>
 
-            <section className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <section
+              className={`rounded-[12px] ${hubSectionClass(
+                leadDetailsLead.status === 'quote_sent' ||
+                  !!leadDetailsLead.quoteChannel ||
+                  !!leadDetailsLead.quotePdfUrl ||
+                  !!leadDetailsLead.quoteVisualUrl
+                  ? 2
+                  : 1,
+              )} p-4 shadow-none`}
+            >
               <h3 className="mb-1 text-[12px] font-bold text-[var(--text-light)]">תזמון מעקב</h3>
               <div className="mt-2">
                 <LeadDetailRow label="תאריך חזרה מתוכננת">
@@ -1687,7 +1706,16 @@ export function Leads() {
               </div>
             </section>
 
-            <section className="rounded-[12px] border border-[var(--border)] bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <section
+              className={`rounded-[12px] ${hubSectionClass(
+                leadDetailsLead.status === 'quote_sent' ||
+                  !!leadDetailsLead.quoteChannel ||
+                  !!leadDetailsLead.quotePdfUrl ||
+                  !!leadDetailsLead.quoteVisualUrl
+                  ? 3
+                  : 2,
+              )} p-4 shadow-none`}
+            >
               <h3 className="mb-2 text-[12px] font-bold text-[var(--text-light)]">שושלת עדכונים מלאה</h3>
               {(leadDetailsLead.activityLog ?? []).length === 0 ? (
                 leadDetailsLead.lastActivityText && leadDetailsLead.lastActivityAt ? (

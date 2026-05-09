@@ -2,11 +2,13 @@
 
 /* Design Tokens */
 :root {
-  /* רקעים */
-  --bg-main: #f0f4ff;
+  /* רקעים — חיצוני אפור עדין; קוביות לבן */
+  --bg-main: #f3f4f6;
   --bg-sidebar: #1a2b5e;
   --bg-card: #ffffff;
-  --bg-input: #f5f7ff;
+  /** פני כרטיסי דשבורד — לבן */
+  --dash-panel-bg: #ffffff;
+  --bg-input: #fafafa;
 
   /* מותג */
   --blue-dark: #1a2b5e;
@@ -15,10 +17,18 @@
   --orange: #f97316;
   --orange-light: #fff3e8;
 
-  /* טקסט */
+  /* טקסט — שחור חזק לקריאות עיקריות */
   --text-dark: #0f172a;
-  --text-mid: #475569;
-  --text-light: #94a3b8;
+  --text-mid: #334155;
+  --text-light: #64748b;
+
+  /* גבולות */
+  --border: #e2e8f0;
+  --border-dark: #cbd5e1;
+  /** מסגרת כתומה בולטת לכרטיסי דשבורד */
+  --border-orange-soft: rgba(249, 115, 22, 0.55);
+  /** רקע פנימי בכרטיס — אפור עדין */
+  --surface-muted: #e8eaef;
 
   /* סטטוס */
   --success: #10b981;
@@ -26,10 +36,6 @@
   --danger: #ef4444;
   --info: #2563eb;
   --retainer: #7c3aed;
-
-  /* גבולות */
-  --border: #e2e8f0;
-  --border-dark: #cbd5e1;
 
   /* תאימות לקוד קיים — אותה סמנטיקה, ערכים חדשים */
   --bg: var(--bg-main);
@@ -198,14 +204,14 @@ button {
 }
 
 /**
- * רשימות נפתחות — עיצוב אחיד עם שדות מובחרים (מסגרת תכלת, צל עדין).
+ * רשימות נפתחות — עיצוב אחיד עם שפת המותג (מסגרת כתומה רכה).
  * דורש className="hub-select" על ה־select (לא משפיע על select ללא המחלקה).
  */
 select.hub-select {
   cursor: pointer;
-  border: 2px solid #bfdbfe;
+  border: 2px solid rgba(249, 115, 22, 0.45);
   border-radius: 12px;
-  background-color: var(--bg-main);
+  background-color: var(--dash-panel-bg);
   padding-block: 10px;
   padding-inline-start: 40px;
   padding-inline-end: 14px;
@@ -226,17 +232,55 @@ select.hub-select {
 }
 
 select.hub-select:hover:not(:disabled) {
-  border-color: #93c5fd;
-  background-color: #f8fafc;
+  border-color: var(--orange);
+  background-color: var(--surface-muted);
 }
 
 select.hub-select:focus {
-  border-color: var(--blue-mid);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
 }
 
 select.hub-select:disabled {
   opacity: 0.52;
   cursor: not-allowed;
   background-color: var(--bg-input);
+}
+
+/** כרטיס / סקשן — מסגרת שחורה (ברירת מחדל); צמד עם .hub-dash-card--orange לסירוגין */
+.hub-dash-card {
+  border: 2px solid #0f172a;
+  background: var(--dash-panel-bg);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.hub-dash-card--orange {
+  border-color: var(--orange);
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.12),
+    0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+/** כותרת עליונה (דשבורד) — מסגרת כתומה מעט עבה יותר מכרטיסי הסקשן הרגילים */
+.hub-dash-card.hub-dash-card--hero {
+  border: 3px solid var(--orange);
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.18),
+    0 6px 22px rgba(249, 115, 22, 0.12),
+    0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+/** שורה/אזור פנימי — אפור עדין + מסגרת כתומה */
+.hub-dash-inset {
+  background: var(--surface-muted);
+  border: 1px solid rgba(249, 115, 22, 0.42);
+}
+
+/** מצב ריק / אזור מקווקו — תואם פאנל דשבורד */
+.hub-empty-dashed {
+  border: 2px dashed var(--border-orange-soft);
+  background: var(--dash-panel-bg);
+  box-shadow:
+    0 0 0 1px rgba(249, 115, 22, 0.08),
+    0 2px 10px rgba(15, 23, 42, 0.04);
 }

@@ -137,7 +137,7 @@ export function SupplierQuickSelect({
         {value ? (
           <button
             type="button"
-            className="shrink-0 rounded-[10px] border border-[var(--border)] px-2.5 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--blue-light)]"
+            className="shrink-0 rounded-[10px] border border-[var(--border-orange-soft)] px-2.5 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--orange-light)]"
             onClick={() => {
               onChange('')
               setDraft('')
@@ -167,7 +167,7 @@ export function SupplierQuickSelect({
                 value={quickName}
                 onChange={(e) => setQuickName(e.target.value)}
                 placeholder="שם הספק"
-                className="min-w-[140px] flex-1 rounded-md border border-[var(--border)] bg-white px-2 py-1.5 text-sm"
+                className="min-w-[140px] flex-1 rounded-md border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1.5 text-sm"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
@@ -191,7 +191,7 @@ export function SupplierQuickSelect({
         <ul
           id={id ? `${id}-supplier-list` : undefined}
           role="listbox"
-          className="absolute start-0 end-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] py-1 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
+          className="absolute start-0 end-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-[10px] border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] py-1 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
         >
           {filtered.map((s, i) => (
             <li key={s.id} role="presentation">
@@ -218,7 +218,7 @@ export function SupplierQuickSelect({
         </ul>
       ) : null}
       {open && needle && filtered.length === 0 ? (
-        <div className="absolute start-0 end-0 top-full z-20 mt-1 rounded-[10px] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-mid)] shadow-md">
+        <div className="absolute start-0 end-0 top-full z-20 mt-1 rounded-[10px] border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] px-3 py-2 text-sm text-[var(--text-mid)] shadow-md">
           לא נמצאו ספקים — השתמשו בהוספה המהירה למעלה
         </div>
       ) : null}

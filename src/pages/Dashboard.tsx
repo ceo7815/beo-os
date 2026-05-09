@@ -32,23 +32,23 @@ import type {
 import { Badge } from '../components/shared/Badge'
 import { EmptyState } from '../components/shared/EmptyState'
 import { ProgressBar } from '../components/shared/ProgressBar'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 function KpiCard(props: {
+  seq: number
   value: number
   label: string
-  borderColor: string
   hint: string
 }) {
   return (
     <div
-      className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-      style={{ boxShadow: `inset 0 3px 0 0 ${props.borderColor}` }}
+      className={`${hubSectionClass(props.seq)} rounded-2xl p-5 transition hover:-translate-y-0.5 hover:shadow-md`}
     >
-      <div className="text-[30px] font-black tabular-nums text-slate-900">
+      <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">
         {props.value}
       </div>
-      <div className="mt-1 text-[13px] font-semibold text-slate-700">{props.label}</div>
-      <div className="mt-1 text-[11px] text-slate-500">{props.hint}</div>
+      <div className="mt-1 text-[13px] font-semibold text-[var(--text-mid)]">{props.label}</div>
+      <div className="mt-1 text-[11px] text-[var(--text-light)]">{props.hint}</div>
     </div>
   )
 }
@@ -340,16 +340,16 @@ export function Dashboard() {
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 md:px-8 md:py-7">
-      <header className="rounded-2xl border border-slate-200/70 bg-gradient-to-br from-white via-slate-50/80 to-indigo-50/40 p-5 shadow-sm">
+      <header className="hub-dash-card hub-dash-card--hero rounded-2xl p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-light)]">
               {formatDateIL(todayDash)}
             </p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-900">
+            <h1 className="mt-1 text-3xl font-black tracking-tight text-[var(--text-dark)]">
               {myDisplayName ? `שלום, ${myDisplayName}` : 'דשבורד'}
             </h1>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-600">
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--text-mid)]">
               {privileged
                 ? 'סיכום צוותי: משימות, פרויקטים פעילים, לידים, קמפיינים וגבייה — לפי סדר דחיפות.'
                 : 'המיקוד שלך: משימות, לידים בטיפולך וקמפיינים שאתה מבצע.'}
@@ -359,28 +359,28 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate('/tasks')}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
             >
               משימות
             </button>
             <button
               type="button"
               onClick={() => navigate('/projects')}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
             >
               פרויקטים
             </button>
             <button
               type="button"
               onClick={() => navigate('/leads')}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
             >
               לידים
             </button>
             <button
               type="button"
               onClick={() => navigate('/campaigns')}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
             >
               קמפיינים
             </button>
@@ -401,7 +401,7 @@ export function Dashboard() {
           >
             <div>
               <p className="text-xs font-bold text-rose-700">דורש טיפול מיידי</p>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-[var(--text-dark)]">
                 {topOverdueTask.title}
               </p>
             </div>
@@ -418,7 +418,7 @@ export function Dashboard() {
           >
             <div>
               <p className="text-xs font-bold text-amber-800">מעקב לידים</p>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-[var(--text-dark)]">
                 {leadsDueUrgent === 1
                   ? 'ליד אחד עם פולואפ להיום או באיחור'
                   : `${leadsDueUrgent} לידים עם פולואפ להיום או באיחור`}
@@ -433,37 +433,37 @@ export function Dashboard() {
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
+          seq={0}
           value={kpis.overdue}
           label="משימות באיחור"
           hint="עדיפות ראשונה"
-          borderColor="#EF4444"
         />
         <KpiCard
+          seq={1}
           value={kpis.openTasks}
           label="משימות פתוחות"
           hint={openTasksHint}
-          borderColor="#10B981"
         />
         <KpiCard
+          seq={2}
           value={kpis.activeProjects}
           label="פרויקטים פעילים"
           hint="במצב «פעיל» בלבד"
-          borderColor="#2563EB"
         />
         <KpiCard
+          seq={3}
           value={openLeadsPool.length}
           label={privileged ? 'לידים בצינור' : 'הלידים שלי'}
           hint="ללא סטטוס «נסגר»"
-          borderColor="#7C3AED"
         />
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <article className={`flex flex-col rounded-2xl p-4 ${hubSectionClass(4)}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-base font-extrabold text-slate-900">לידים</h2>
-              <p className="text-xs text-slate-500">
+              <h2 className="text-base font-extrabold text-[var(--text-dark)]">לידים</h2>
+              <p className="text-xs text-[var(--text-light)]">
                 {privileged
                   ? 'הלידים הדחופים ביותר בצינור'
                   : 'לידים ששויכו אליך — לפי פולואפ וסטטוס'}
@@ -476,7 +476,7 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={() => navigate('/leads')}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[#dfe6f5]"
               >
                 כל הלידים
               </button>
@@ -484,7 +484,7 @@ export function Dashboard() {
           </div>
           <div className="min-h-[120px] flex-1 space-y-2">
             {leadsLoading ? (
-              <p className="text-sm text-slate-500">טוען לידים…</p>
+              <p className="text-sm text-[var(--text-light)]">טוען לידים…</p>
             ) : topLeadsDashboard.length === 0 ? (
               <EmptyState
                 title="אין לידים פתוחים להצגה"
@@ -505,13 +505,13 @@ export function Dashboard() {
                       <button
                         type="button"
                         onClick={() => navigate('/leads')}
-                        className="flex w-full flex-col gap-1 rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-right transition hover:border-violet-200 hover:bg-white"
+                        className="flex w-full flex-col gap-1 rounded-xl hub-dash-inset p-3 text-right transition hover:border-orange-200/45 hover:bg-white"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="truncate font-semibold text-slate-900">{l.name}</p>
+                            <p className="truncate font-semibold text-[var(--text-dark)]">{l.name}</p>
                             {l.company?.trim() ? (
-                              <p className="truncate text-xs text-slate-500">{l.company}</p>
+                              <p className="truncate text-xs text-[var(--text-light)]">{l.company}</p>
                             ) : null}
                           </div>
                           <Badge
@@ -519,16 +519,16 @@ export function Dashboard() {
                             color={LEAD_STATUS_COLORS[l.status]}
                           />
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--text-mid)]">
                           {fu && /^\d{4}-\d{2}-\d{2}$/.test(fu) ? (
                             <span className={fuBad ? 'font-bold text-amber-700' : ''}>
                               פולואפ: {formatDateIL(fu)}
                             </span>
                           ) : (
-                            <span className="text-slate-400">אין תאריך פולואפ</span>
+                            <span className="text-[var(--text-light)]">אין תאריך פולואפ</span>
                           )}
                           {privileged && l.ownerId ? (
-                            <span className="text-slate-400">
+                            <span className="text-[var(--text-light)]">
                               אחראי:{' '}
                               {teamMembers.find((m) => m.id === l.ownerId)?.name ?? '—'}
                             </span>
@@ -543,11 +543,11 @@ export function Dashboard() {
           </div>
         </article>
 
-        <article className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <article className={`flex flex-col rounded-2xl p-4 ${hubSectionClass(5)}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-base font-extrabold text-slate-900">קמפיינים</h2>
-              <p className="text-xs text-slate-500">
+              <h2 className="text-base font-extrabold text-[var(--text-dark)]">קמפיינים</h2>
+              <p className="text-xs text-[var(--text-light)]">
                 {privileged
                   ? 'קמפיינים בתכנון, פעילים או מושהים'
                   : 'קמפיינים שאתה מוגדר כמבצע'}
@@ -560,7 +560,7 @@ export function Dashboard() {
               <button
                 type="button"
                 onClick={() => navigate('/campaigns')}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[#dfe6f5]"
               >
                 כל הקמפיינים
               </button>
@@ -568,7 +568,7 @@ export function Dashboard() {
           </div>
           <div className="min-h-[120px] flex-1 space-y-2">
             {campaignsLoading ? (
-              <p className="text-sm text-slate-500">טוען קמפיינים…</p>
+              <p className="text-sm text-[var(--text-light)]">טוען קמפיינים…</p>
             ) : topCampaignsDashboard.length === 0 ? (
               <EmptyState
                 title="אין קמפיינים להצגה"
@@ -585,12 +585,12 @@ export function Dashboard() {
                     <button
                       type="button"
                       onClick={() => navigate('/campaigns')}
-                      className="flex w-full flex-col gap-1 rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-right transition hover:border-emerald-200 hover:bg-white"
+                      className="flex w-full flex-col gap-1 rounded-xl hub-dash-inset p-3 text-right transition hover:border-emerald-200/50 hover:bg-white"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold text-slate-900">{c.name}</p>
-                          <p className="text-xs text-slate-500">
+                          <p className="truncate font-semibold text-[var(--text-dark)]">{c.name}</p>
+                          <p className="text-xs text-[var(--text-light)]">
                             {PLATFORM_LABELS[c.platform]} · {CAMPAIGN_KIND_LABELS[c.kind]}
                           </p>
                         </div>
@@ -599,13 +599,13 @@ export function Dashboard() {
                           color={CAMPAIGN_STATUS_COLORS[c.status]}
                         />
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--text-mid)]">
                         {c.clientId ? (
                           <span className="truncate">
                             לקוח: {clientById.get(c.clientId) ?? c.clientId}
                           </span>
                         ) : (
-                          <span className="text-slate-400">ללא לקוח משויך</span>
+                          <span className="text-[var(--text-light)]">ללא לקוח משויך</span>
                         )}
                         {c.startDate?.trim() ? (
                           <span>התחלה: {formatDateIL(c.startDate)}</span>
@@ -621,15 +621,15 @@ export function Dashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <article className={`rounded-2xl p-4 ${hubSectionClass(6)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-slate-900">גבייה באיחור</h2>
+            <h2 className="text-base font-extrabold text-[var(--text-dark)]">גבייה באיחור</h2>
             <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-bold text-rose-700">
               {collectionOverdueList.length}
             </span>
           </div>
           {collectionOverdueList.length === 0 ? (
-            <p className="text-sm text-slate-500">אין לקוחות באיחור כרגע.</p>
+            <p className="text-sm text-[var(--text-light)]">אין לקוחות באיחור כרגע.</p>
           ) : (
             <ul className="max-h-[220px] space-y-2 overflow-y-auto pe-1">
               {collectionOverdueList.map((row) => {
@@ -638,9 +638,9 @@ export function Dashboard() {
                 return (
                   <li
                     key={row.id}
-                    className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                    className="flex items-center justify-between gap-2 rounded-xl hub-dash-inset px-3 py-2"
                   >
-                    <span className="truncate text-sm font-semibold text-slate-800">
+                    <span className="truncate text-sm font-semibold text-[var(--text-dark)]">
                       {clientById.get(row.clientId) ?? 'לקוח'}
                     </span>
                     <span className="shrink-0 text-xs font-semibold text-rose-700">
@@ -653,9 +653,9 @@ export function Dashboard() {
           )}
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <article className={`rounded-2xl p-4 ${hubSectionClass(7)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-slate-900">
+            <h2 className="text-base font-extrabold text-[var(--text-dark)]">
               יעד תשלום קרוב (10 ימים)
             </h2>
             <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700">
@@ -663,7 +663,7 @@ export function Dashboard() {
             </span>
           </div>
           {collectionDueWithin10Days.length === 0 ? (
-            <p className="text-sm text-slate-500">אין יעדי גבייה קרובים כרגע.</p>
+            <p className="text-sm text-[var(--text-light)]">אין יעדי גבייה קרובים כרגע.</p>
           ) : (
             <ul className="max-h-[220px] space-y-2 overflow-y-auto pe-1">
               {collectionDueWithin10Days.map((row) => {
@@ -672,12 +672,12 @@ export function Dashboard() {
                 return (
                   <li
                     key={row.id}
-                    className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                    className="flex items-center justify-between gap-2 rounded-xl hub-dash-inset px-3 py-2"
                   >
-                    <span className="truncate text-sm font-semibold text-slate-800">
+                    <span className="truncate text-sm font-semibold text-[var(--text-dark)]">
                       {clientById.get(row.clientId) ?? 'לקוח'}
                     </span>
-                    <span className="shrink-0 text-xs font-semibold text-slate-600">
+                    <span className="shrink-0 text-xs font-semibold text-[var(--text-mid)]">
                       {left === 0 ? 'היום' : `עוד ${left}`}
                     </span>
                   </li>
@@ -689,10 +689,10 @@ export function Dashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <article className={`rounded-2xl p-4 ${hubSectionClass(8)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-slate-900">פרויקטים חד-פעמיים</h2>
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">
+            <h2 className="text-base font-extrabold text-[var(--text-dark)]">פרויקטים חד-פעמיים</h2>
+            <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs font-bold text-[var(--text-mid)]">
               {openOneTimeList.length}
             </span>
           </div>
@@ -712,10 +712,10 @@ export function Dashboard() {
                   key={p.id}
                   type="button"
                   onClick={() => navigate(`/projects/${p.id}`)}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-right transition hover:border-slate-300 hover:shadow-sm"
+                  className="w-full rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] p-3 text-right transition hover:border-orange-300/45 hover:shadow-sm"
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-900">{p.name}</span>
+                    <span className="font-bold text-[var(--text-dark)]">{p.name}</span>
                     <div className="flex items-center gap-2">
                       <span
                         className="h-2 w-2 rounded-full"
@@ -724,12 +724,12 @@ export function Dashboard() {
                     </div>
                   </div>
                   {p.description?.trim() ? (
-                    <p className="line-clamp-2 text-xs text-slate-500">
+                    <p className="line-clamp-2 text-xs text-[var(--text-light)]">
                       {p.description.trim()}
                     </p>
                   ) : null}
-                  <div className="my-2 text-xs text-slate-600">
-                    <p className="font-semibold text-slate-700">{clientName}</p>
+                  <div className="my-2 text-xs text-[var(--text-mid)]">
+                    <p className="font-semibold text-[var(--text-mid)]">{clientName}</p>
                     <p>יעד: {formatDateIL(p.dueDate)}</p>
                     <p>{openLabel}</p>
                   </div>
@@ -751,9 +751,9 @@ export function Dashboard() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <article className={`rounded-2xl p-4 ${hubSectionClass(9)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-slate-900">פרויקטים שוטפים</h2>
+            <h2 className="text-base font-extrabold text-[var(--text-dark)]">פרויקטים שוטפים</h2>
             <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-700">
               {openRetainerList.length}
             </span>
@@ -774,10 +774,10 @@ export function Dashboard() {
                   key={p.id}
                   type="button"
                   onClick={() => navigate(`/projects/${p.id}`)}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-right transition hover:border-slate-300 hover:shadow-sm"
+                  className="w-full rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] p-3 text-right transition hover:border-orange-300/45 hover:shadow-sm"
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-900">{p.name}</span>
+                    <span className="font-bold text-[var(--text-dark)]">{p.name}</span>
                     <div className="flex items-center gap-2">
                       <span
                         className="h-2 w-2 rounded-full"
@@ -786,12 +786,12 @@ export function Dashboard() {
                     </div>
                   </div>
                   {p.description?.trim() ? (
-                    <p className="line-clamp-2 text-xs text-slate-500">
+                    <p className="line-clamp-2 text-xs text-[var(--text-light)]">
                       {p.description.trim()}
                     </p>
                   ) : null}
-                  <div className="my-2 text-xs text-slate-600">
-                    <p className="font-semibold text-slate-700">{clientName}</p>
+                  <div className="my-2 text-xs text-[var(--text-mid)]">
+                    <p className="font-semibold text-[var(--text-mid)]">{clientName}</p>
                     <p>
                       פעיל מאז{' '}
                       {p.startDate ? formatDateIL(p.startDate) : formatDateIL(p.dueDate)}
@@ -823,9 +823,9 @@ export function Dashboard() {
         </article>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-base font-extrabold text-slate-900">המשימות שלי באיחור</h2>
-        <p className="mt-1 text-xs text-slate-500">פוקוס רק על מה שדורש טיפול מיידי</p>
+      <section className={`rounded-2xl p-4 ${hubSectionClass(10)}`}>
+        <h2 className="text-base font-extrabold text-[var(--text-dark)]">המשימות שלי באיחור</h2>
+        <p className="mt-1 text-xs text-[var(--text-light)]">פוקוס רק על מה שדורש טיפול מיידי</p>
         {myOverdueTasks.length === 0 ? (
           <div className="mt-3">
             <EmptyState
@@ -841,14 +841,13 @@ export function Dashboard() {
               return (
                 <div
                   key={t.id}
-                  className="rounded-xl border border-slate-200 bg-white p-3"
-                  style={{ boxShadow: `inset 3px 0 0 0 ${pc}` }}
+                  className="rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-3"
                 >
-                  <div className="font-semibold text-slate-900">{t.title}</div>
-                  <div className="mt-1 text-xs text-slate-500">{proj?.name ?? 'פרויקט'}</div>
+                  <div className="font-semibold text-[var(--text-dark)]">{t.title}</div>
+                  <div className="mt-1 text-xs text-[var(--text-light)]">{proj?.name ?? 'פרויקט'}</div>
                   {proj?.description?.trim() ? (
                     <p
-                      className="mt-1 line-clamp-2 text-[11px] text-slate-400"
+                      className="mt-1 line-clamp-2 text-[11px] text-[var(--text-light)]"
                       title={proj.description.trim()}
                     >
                       {proj.description.trim()}
@@ -856,7 +855,7 @@ export function Dashboard() {
                   ) : null}
                   <div className="mt-2 flex items-center justify-between">
                     <Badge label={priorityLabel(t.priority)} color={pc} />
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-[var(--text-light)]">
                       יעד: {formatDateIL(t.dueDate)}
                     </span>
                   </div>

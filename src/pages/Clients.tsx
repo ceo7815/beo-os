@@ -8,6 +8,7 @@ import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { useHubStore } from '../store/useStore'
 import type { Client, ClientStatus } from '../types'
+import { hubSectionClass } from '../lib/hubSectionBorder'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -34,16 +35,13 @@ const emptyForm: ClientFormState = {
 const NEW_CLIENT_DAYS = 60
 
 function ClientKpiCard(props: {
+  seq: number
   label: string
   value: string
-  borderColor: string
   sub?: string
 }) {
   return (
-    <div
-      className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.08)]"
-      style={{ borderTopWidth: 4, borderTopColor: props.borderColor }}
-    >
+    <div className={`${hubSectionClass(props.seq)} rounded-2xl p-4`}>
       <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
         {props.value}
       </div>
@@ -175,21 +173,21 @@ export function Clients() {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <ClientKpiCard
+          seq={0}
           label="לקוחות פעילים"
           value={String(clientKpis.active)}
-          borderColor="#16A34A"
           sub="סטטוס «פעיל» בכרטיס הלקוח"
         />
         <ClientKpiCard
+          seq={1}
           label="לקוחות לא פעילים"
           value={String(clientKpis.inactive)}
-          borderColor="#64748B"
           sub="סטטוס «לא פעיל»"
         />
         <ClientKpiCard
+          seq={2}
           label="לקוחות חדשים"
           value={String(clientKpis.newInWindow)}
-          borderColor="#2563EB"
           sub={`נוספו למערכת ב־${NEW_CLIENT_DAYS} הימים האחרונים (תאריך כניסה)`}
         />
       </section>
@@ -202,7 +200,7 @@ export function Clients() {
         className="max-w-md"
       />
 
-      <section className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+      <section className={`rounded-2xl ${hubSectionClass(3)} shadow-none`}>
         <div>
           <table className="w-full table-fixed text-sm">
             <thead className="bg-[#F8FAFC]">
