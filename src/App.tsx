@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { FirestoreProviders } from './contexts/FirestoreProviders'
 import { Layout } from './components/Layout'
 import { RequireAuth } from './components/RequireAuth'
+import { RequireAdmin } from './components/RequireAdmin'
 import { Clients } from './pages/Clients'
 import { Collections } from './pages/Collections'
 import { Dashboard } from './pages/Dashboard'
@@ -16,6 +17,7 @@ import { Suppliers } from './pages/Suppliers'
 import { Tasks } from './pages/Tasks'
 import { Users } from './pages/Users'
 import { Attendance } from './pages/Attendance'
+import { Vault } from './pages/Vault'
 
 export default function App() {
   return (
@@ -36,8 +38,16 @@ export default function App() {
                 <Route path="projects" element={<Projects />} />
                 <Route path="projects/:id" element={<ProjectDetail />} />
                 <Route path="tasks" element={<Tasks />} />
-                <Route path="users" element={<Users />} />
+                <Route
+                  path="users"
+                  element={
+                    <RequireAdmin>
+                      <Users />
+                    </RequireAdmin>
+                  }
+                />
                 <Route path="attendance" element={<Attendance />} />
+                <Route path="vault" element={<Vault />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Route>

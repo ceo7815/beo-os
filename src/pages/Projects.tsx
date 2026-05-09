@@ -53,7 +53,7 @@ const statusLabels: Record<ProjectStatus, string> = {
 }
 
 const projectStatusBadgeColor: Record<ProjectStatus, string> = {
-  active: '#2563EB',
+  active: '#F97316',
   paused: '#64748B',
   done: '#16A34A',
 }
@@ -66,9 +66,15 @@ const priorityLabels: Record<Priority, string> = {
 
 const uiButtonBase =
   'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
-const uiButtonGhost =
-  `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
-const uiButtonPrimary = `${uiButtonBase} hub-btn-primary`
+/** פילטר / משנה — מסגרת כתומה רכה */
+const uiFilterInactive = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
+/** פילטר נבחר */
+const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+/** כפתור ראשי מותג */
+const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+/** כפתור משנה — כתום על אפור */
+const uiButtonBrandOutline = `${uiButtonBase} border border-[var(--orange)] bg-[var(--surface-muted)] text-[var(--orange)] hover:bg-[var(--orange-light)]`
+const uiButtonGhost = uiFilterInactive
 
 function projectProgressPercent(p: Project): number {
   if (typeof p.manualProgressPercent === 'number' && !Number.isNaN(p.manualProgressPercent)) {
@@ -460,6 +466,10 @@ export function Projects() {
     setMenuId(null)
   }
 
+  const reactivateCompletedProject = async (id: string) => {
+    await updateProject(id, { status: 'active' })
+  }
+
   const openTaskModal = (projectId: string, projectOwnerId?: string) => {
     setTaskProjectId(projectId)
     setTaskForm({
@@ -518,31 +528,40 @@ export function Projects() {
             מעקב לפי סטטוס פרויקט
           </p>
         </div>
-        <button type="button" onClick={openNew} className={uiButtonPrimary}>
+        <button type="button" onClick={openNew} className={uiButtonBrand}>
           + פרויקט חדש
         </button>
       </header>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-2">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2">
-              <p className="text-[10px] text-[var(--text-light)]">פעיל</p>
-              <p className="text-lg font-extrabold text-[var(--blue-mid)]">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className={`${hubSectionClass(0)} rounded-2xl p-4`}>
+              <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
                 {projectKpis.active}
-              </p>
+              </div>
+              <div className="mt-1 text-[12px] text-[var(--text-mid)]">פעיל</div>
+              <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+                סטטוס «פעיל» בפרויקט
+              </div>
             </div>
-            <div className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2">
-              <p className="text-[10px] text-[var(--text-light)]">מושהה</p>
-              <p className="text-lg font-extrabold text-[#64748B]">
+            <div className={`${hubSectionClass(1)} rounded-2xl p-4`}>
+              <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
                 {projectKpis.paused}
-              </p>
+              </div>
+              <div className="mt-1 text-[12px] text-[var(--text-mid)]">מושהה</div>
+              <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+                סטטוס «מושהה»
+              </div>
             </div>
-            <div className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2">
-              <p className="text-[10px] text-[var(--text-light)]">הושלם</p>
-              <p className="text-lg font-extrabold text-[#16A34A]">
+            <div className={`${hubSectionClass(2)} rounded-2xl p-4`}>
+              <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
                 {projectKpis.completed}
-              </p>
+              </div>
+              <div className="mt-1 text-[12px] text-[var(--text-mid)]">הושלם</div>
+              <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+                סטטוס «הושלם»
+              </div>
             </div>
           </div>
           <div className="space-y-1">
@@ -555,13 +574,13 @@ export function Projects() {
                   key={b.key}
                   type="button"
                   onClick={() => setKindFilter(b.key)}
-                  className={`${uiButtonBase} ${
+                  className={
                     kindFilter === b.key
                       ? b.key === 'internal'
-                        ? 'text-white shadow-sm'
-                        : 'hub-btn-primary border-transparent'
-                      : 'border border-[#BFDBFE] bg-[var(--blue-light)] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
-                  }`}
+                        ? `${uiButtonBase} border-transparent text-white shadow-sm`
+                        : uiFilterActive
+                      : uiFilterInactive
+                  }
                   style={
                     kindFilter === b.key && b.key === 'internal'
                       ? { backgroundColor: INTERNAL_PROJECT_BADGE_COLOR }
@@ -583,11 +602,9 @@ export function Projects() {
                   key={b.key}
                   type="button"
                   onClick={() => setStatusFilter(b.key)}
-                  className={`${uiButtonBase} ${
-                    statusFilter === b.key
-                      ? 'hub-btn-primary border-transparent'
-                      : 'border border-[#BFDBFE] bg-[var(--blue-light)] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
-                  }`}
+                  className={
+                    statusFilter === b.key ? uiFilterActive : uiFilterInactive
+                  }
                 >
                   {b.label}
                 </button>
@@ -700,7 +717,7 @@ export function Projects() {
                   <button
                     type="button"
                     aria-label="תפריט"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-mid)] hover:bg-[var(--blue-light)] hover:text-[var(--text-dark)]"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] text-[var(--text-mid)] hover:bg-[var(--orange-light)] hover:text-[var(--text-dark)]"
                     onClick={() => setMenuId((id) => (id === p.id ? null : p.id))}
                   >
                     ···
@@ -709,7 +726,7 @@ export function Projects() {
                     <div className="absolute left-0 z-30 mt-1 min-w-[140px] overflow-hidden rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
                       <button
                         type="button"
-                        className="block h-9 w-full px-3 text-right text-xs font-semibold text-[var(--text-dark)] hover:bg-[var(--blue-light)]"
+                        className="block h-9 w-full px-3 text-right text-xs font-semibold text-[var(--text-dark)] hover:bg-[var(--orange-light)]"
                         onClick={() => openEdit(p)}
                       >
                         עריכה
@@ -791,7 +808,7 @@ export function Projects() {
                     }}
                     className={`${uiButtonBase} min-w-[124px] border ${
                       p.status === 'paused'
-                        ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[var(--blue-mid)] hover:bg-[#DBEAFE]'
+                        ? 'border-[var(--orange)] bg-[var(--orange-light)] text-[var(--orange)] hover:bg-[#ffe8d4]'
                         : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
                     }`}
                   >
@@ -800,7 +817,7 @@ export function Projects() {
                   <button
                     type="button"
                     onClick={() => openTaskModal(p.id, p.ownerId)}
-                    className={`${uiButtonBase} min-w-[124px] border border-[#BFDBFE] bg-[#EFF6FF] text-[var(--blue-mid)] hover:bg-[#DBEAFE]`}
+                    className={`${uiButtonBrandOutline} min-w-[124px]`}
                   >
                     + הוסף משימה
                   </button>
@@ -866,7 +883,7 @@ export function Projects() {
                     onClick={() => {
                       void toggleProjectPause(p)
                     }}
-                    className={`${uiButtonBase} min-w-[124px] border border-[#BFDBFE] bg-[#EFF6FF] text-[var(--blue-mid)] hover:bg-[#DBEAFE]`}
+                    className={`${uiButtonBrandOutline} min-w-[124px]`}
                   >
                     ▶ החזר לפעיל
                   </button>
@@ -916,6 +933,15 @@ export function Projects() {
                     {owner ? <Avatar member={owner} size={24} /> : null}
                   </div>
                 </button>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void reactivateCompletedProject(p.id)}
+                    className={`${uiButtonBrandOutline} min-w-[124px]`}
+                  >
+                    ▶ החזר לפעיל
+                  </button>
+                </div>
               </article>
             )
           })}
@@ -1005,7 +1031,7 @@ export function Projects() {
             <button
               type="button"
               onClick={() => void submitQuickTask()}
-              className={uiButtonPrimary}
+              className={uiButtonBrand}
             >
               יצירת משימה
             </button>
@@ -1049,7 +1075,7 @@ export function Projects() {
                 onClick={() => setForm((f) => ({ ...f, type: 'client' }))}
                 className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
                   form.type === 'client'
-                    ? 'bg-[var(--dash-panel-bg)] text-[var(--blue-mid)] shadow-sm'
+                    ? 'bg-[var(--dash-panel-bg)] text-[var(--orange)] shadow-sm'
                     : 'text-[var(--text-mid)]'
                 }`}
               >
@@ -1087,7 +1113,7 @@ export function Projects() {
                 }
                 className={`flex-1 rounded-[8px] py-2.5 text-xs font-bold transition ${
                   form.projectBillingType === 'one-time'
-                    ? 'bg-[var(--dash-panel-bg)] text-[var(--blue-mid)] shadow-sm'
+                    ? 'bg-[var(--dash-panel-bg)] text-[var(--orange)] shadow-sm'
                     : 'text-[var(--text-mid)]'
                 }`}
               >
@@ -1262,10 +1288,10 @@ export function Projects() {
                   style={{
                     backgroundColor: c,
                     borderColor:
-                      form.color === c ? 'var(--blue-mid)' : 'transparent',
+                      form.color === c ? 'var(--orange)' : 'transparent',
                     boxShadow:
                       form.color === c
-                        ? '0 0 0 2px rgba(37,99,235,0.25)'
+                        ? '0 0 0 2px rgba(249,115,22,0.35)'
                         : undefined,
                   }}
                 />
@@ -1284,7 +1310,7 @@ export function Projects() {
               type="button"
               disabled={saving}
               onClick={() => void submit()}
-              className={`${uiButtonPrimary} disabled:cursor-not-allowed disabled:opacity-60`}
+              className={`${uiButtonBrand} disabled:cursor-not-allowed disabled:opacity-60`}
             >
               {saving ? 'שומר…' : 'שמור'}
             </button>

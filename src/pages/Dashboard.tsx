@@ -39,16 +39,41 @@ function KpiCard(props: {
   value: number
   label: string
   hint: string
+  /** שני מספרים בכרטיס — למשל משימות עליך לעומת משימות שיצרת לאחרים */
+  split?: {
+    secondaryValue: number
+    primaryCaption: string
+    secondaryCaption: string
+  }
 }) {
   return (
     <div
       className={`${hubSectionClass(props.seq)} rounded-2xl p-5 transition hover:-translate-y-0.5 hover:shadow-md`}
     >
-      <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">
-        {props.value}
-      </div>
-      <div className="mt-1 text-[13px] font-semibold text-[var(--text-mid)]">{props.label}</div>
-      <div className="mt-1 text-[11px] text-[var(--text-light)]">{props.hint}</div>
+      {props.split ? (
+        <div className="flex flex-wrap items-end justify-between gap-4 gap-y-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">
+              {props.value}
+            </div>
+            <div className="mt-0.5 text-[11px] font-semibold leading-snug text-[var(--text-mid)]">
+              {props.split.primaryCaption}
+            </div>
+          </div>
+          <div className="min-w-0 flex-1 border-s border-[var(--border)] ps-4">
+            <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">
+              {props.split.secondaryValue}
+            </div>
+            <div className="mt-0.5 text-[11px] font-semibold leading-snug text-[var(--text-mid)]">
+              {props.split.secondaryCaption}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">{props.value}</div>
+      )}
+      <div className="mt-2 text-[13px] font-semibold text-[var(--text-mid)]">{props.label}</div>
+      <div className="mt-1 text-[11px] leading-relaxed text-[var(--text-light)]">{props.hint}</div>
     </div>
   )
 }
@@ -207,18 +232,62 @@ export function Dashboard() {
 
   const kpis = useMemo(() => {
     const activeProjects = projects.filter((p) => p.status === 'active').length
-    const openTasks = taskScope.filter((t) => t.status !== 'done').length
+    const openNotDone = taskScope.filter((t) => t.status !== 'done')
+    let openTasksMine = 0
+    let openTasksDelegated = 0
+    if (myUid) {
+      for (const t of openNotDone) {
+        if (t.assigneeId === myUid) openTasksMine++
+        else if (t.createdBy === myUid && t.assigneeId !== myUid) openTasksDelegated++
+      }
+    }
+    const openTasksOther = myUid
+      ? Math.max(0, openNotDone.length - openTasksMine - openTasksDelegated)
+      : 0
     const overdue = taskScope.filter(
       (t) => t.status !== 'done' && t.dueDate.slice(0, 10) < todayDash,
     ).length
-    return { activeProjects, openTasks, overdue }
-  }, [projects, taskScope, todayDash])
+    return {
+      activeProjects,
+      openTasksTotal: openNotDone.length,
+      openTasksMine,
+      openTasksDelegated,
+      openTasksOther,
+      overdue,
+    }
+  }, [projects, taskScope, todayDash, myUid])
 
   const openLeadsPool = useMemo(() => {
     const open = leads.filter((l) => l.status !== 'closed')
     if (privileged) return open
     return open.filter((l) => l.ownerId === myUid)
   }, [leads, privileged, myUid])
+
+  const campaignsPipeline = useMemo(() => {
+    const running = campaigns.filter((c) => c.status !== 'completed')
+    if (privileged) return running
+    return running.filter((c) => c.performerUserId === myUid)
+  }, [campaigns, privileged, myUid])
+
+  /** עובד ללא לידים משויכים וללא קמפיינים כמבצע — מציגים ברשימות את כל הארגון */
+  const employeeShowOrgWideLeadsCampaigns =
+    !privileged &&
+    openLeadsPool.length === 0 &&
+    campaignsPipeline.length === 0
+
+  const dashboardLeadsSource = useMemo(() => {
+    const open = leads.filter((l) => l.status !== 'closed')
+    if (privileged) return open
+    if (employeeShowOrgWideLeadsCampaigns) return open
+    return open.filter((l) => l.ownerId === myUid)
+  }, [leads, privileged, myUid, employeeShowOrgWideLeadsCampaigns])
+
+  const dashboardCampaignsSource = useMemo(() => {
+    const running = campaigns.filter((c) => c.status !== 'completed')
+    if (privileged) return running
+    if (employeeShowOrgWideLeadsCampaigns) return running
+    return running.filter((c) => c.performerUserId === myUid)
+  }, [campaigns, privileged, myUid, employeeShowOrgWideLeadsCampaigns])
 
   const leadsDueUrgent = useMemo(() => {
     return openLeadsPool.filter((l) => {
@@ -227,19 +296,15 @@ export function Dashboard() {
     }).length
   }, [openLeadsPool, todayDash])
 
-  const campaignsPipeline = useMemo(() => {
-    const running = campaigns.filter((c) => c.status !== 'completed')
-    if (privileged) return running
-    return running.filter((c) => c.performerUserId === myUid)
-  }, [campaigns, privileged, myUid])
-
   const topLeadsDashboard = useMemo(() => {
-    return [...openLeadsPool].sort((a, b) => leadPipelineSort(a, b, todayDash)).slice(0, 6)
-  }, [openLeadsPool, todayDash])
+    return [...dashboardLeadsSource]
+      .sort((a, b) => leadPipelineSort(a, b, todayDash))
+      .slice(0, 6)
+  }, [dashboardLeadsSource, todayDash])
 
   const topCampaignsDashboard = useMemo(() => {
-    return [...campaignsPipeline].sort(campaignPipelineSort).slice(0, 5)
-  }, [campaignsPipeline])
+    return [...dashboardCampaignsSource].sort(campaignPipelineSort).slice(0, 5)
+  }, [dashboardCampaignsSource])
 
   const openDashboardProjectList = useMemo(
     () => projects.filter((p) => DASHBOARD_OPEN_STATUSES.includes(p.status)),
@@ -335,8 +400,14 @@ export function Dashboard() {
   const topOverdueTask = myOverdueTasks[0]
 
   const openTasksHint = privileged
-    ? 'כל המשימות הגלויות לתפקידך'
-    : 'משימות שהוקצו לך'
+    ? 'משימות פתוחות גלויות לך — פירוט לפי אחריות'
+    : 'משימות עליך לעומת משימות שיצרת לאחרים'
+
+  const openTasksHintFull =
+    openTasksHint +
+    (myUid && kpis.openTasksOther > 0
+      ? ` · עוד ${kpis.openTasksOther} משימות גלויות מהצוות`
+      : '')
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 md:px-8 md:py-7">
@@ -387,7 +458,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate('/collections')}
-              className="rounded-xl bg-[#2563EB] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1D4ED8]"
+              className="rounded-xl border border-[var(--orange)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--orange)] shadow-sm transition hover:bg-[var(--orange-light)]"
             >
               גבייה
             </button>
@@ -440,9 +511,18 @@ export function Dashboard() {
         />
         <KpiCard
           seq={1}
-          value={kpis.openTasks}
+          value={myUid ? kpis.openTasksMine : kpis.openTasksTotal}
           label="משימות פתוחות"
-          hint={openTasksHint}
+          hint={openTasksHintFull}
+          split={
+            myUid
+              ? {
+                  secondaryValue: kpis.openTasksDelegated,
+                  primaryCaption: 'מוקצות אליך',
+                  secondaryCaption: 'פתחת לעובדים אחרים',
+                }
+              : undefined
+          }
         />
         <KpiCard
           seq={2}
@@ -458,6 +538,12 @@ export function Dashboard() {
         />
       </section>
 
+      {employeeShowOrgWideLeadsCampaigns ? (
+        <div className="rounded-2xl border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] px-4 py-3 text-center text-sm font-semibold leading-relaxed text-[var(--text-dark)]">
+          אין לידים או קמפיינים לטיפול שלך — להלן כל הלידים והקמפיינים הפתוחים בארגון
+        </div>
+      ) : null}
+
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <article className={`flex flex-col rounded-2xl p-4 ${hubSectionClass(4)}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -466,12 +552,14 @@ export function Dashboard() {
               <p className="text-xs text-[var(--text-light)]">
                 {privileged
                   ? 'הלידים הדחופים ביותר בצינור'
-                  : 'לידים ששויכו אליך — לפי פולואפ וסטטוס'}
+                  : employeeShowOrgWideLeadsCampaigns
+                    ? 'כל הלידים הפתוחות בארגון'
+                    : 'לידים ששויכו אליך — לפי פולואפ וסטטוס'}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">
-                {openLeadsPool.length}
+                {dashboardLeadsSource.length}
               </span>
               <button
                 type="button"
@@ -491,15 +579,20 @@ export function Dashboard() {
                 description={
                   privileged
                     ? 'הוסיפו לידים או עדכנו סטטוס — כאן יופיע מה שדורש מעקב.'
-                    : 'כשיוקצו אליך לידים פתוחים, הם יופיעו כאן.'
+                    : employeeShowOrgWideLeadsCampaigns
+                      ? 'אין כרגע לידים פתוחות במערכת.'
+                      : 'כשיוקצו אליך לידים פתוחים, הם יופיעו כאן.'
                 }
               />
             ) : (
               <ul className="max-h-[320px] space-y-2 overflow-y-auto pe-1">
                 {topLeadsDashboard.map((l) => {
-                  const fu = l.nextFollowUpDate?.slice(0, 10) ?? ''
-                  const fuBad =
-                    /^\d{4}-\d{2}-\d{2}$/.test(fu) && fu <= todayDash
+                  const fuRaw = l.nextFollowUpDate?.slice(0, 10) ?? ''
+                  const qrRaw = l.quoteReturnByDate?.slice(0, 10) ?? ''
+                  const fuOk = /^\d{4}-\d{2}-\d{2}$/.test(fuRaw)
+                  const qrOk = /^\d{4}-\d{2}-\d{2}$/.test(qrRaw)
+                  const fuBad = fuOk && fuRaw <= todayDash
+                  const qrBad = !fuOk && qrOk && qrRaw <= todayDash
                   return (
                     <li key={l.id}>
                       <button
@@ -520,14 +613,19 @@ export function Dashboard() {
                           />
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--text-mid)]">
-                          {fu && /^\d{4}-\d{2}-\d{2}$/.test(fu) ? (
+                          {fuOk ? (
                             <span className={fuBad ? 'font-bold text-amber-700' : ''}>
-                              פולואפ: {formatDateIL(fu)}
+                              פולואפ: {formatDateIL(fuRaw)}
+                            </span>
+                          ) : qrOk ? (
+                            <span className={qrBad ? 'font-bold text-amber-700' : ''}>
+                              תאריך חזרה ללקוח: {formatDateIL(qrRaw)}
                             </span>
                           ) : (
                             <span className="text-[var(--text-light)]">אין תאריך פולואפ</span>
                           )}
-                          {privileged && l.ownerId ? (
+                          {(privileged || employeeShowOrgWideLeadsCampaigns) &&
+                          l.ownerId ? (
                             <span className="text-[var(--text-light)]">
                               אחראי:{' '}
                               {teamMembers.find((m) => m.id === l.ownerId)?.name ?? '—'}
@@ -550,12 +648,14 @@ export function Dashboard() {
               <p className="text-xs text-[var(--text-light)]">
                 {privileged
                   ? 'קמפיינים בתכנון, פעילים או מושהים'
-                  : 'קמפיינים שאתה מוגדר כמבצע'}
+                  : employeeShowOrgWideLeadsCampaigns
+                    ? 'כל הקמפיינים הפעילים בארגון'
+                    : 'קמפיינים שאתה מוגדר כמבצע'}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
-                {campaignsPipeline.length}
+                {dashboardCampaignsSource.length}
               </span>
               <button
                 type="button"
@@ -575,7 +675,9 @@ export function Dashboard() {
                 description={
                   privileged
                     ? 'קמפיינים שאינם «הושלם» יופיעו כאן לפי עדכניות.'
-                    : 'כשתשויך אליך קמפיין כמבצע, הוא יופיע כאן.'
+                    : employeeShowOrgWideLeadsCampaigns
+                      ? 'אין כרגע קמפיינים פעילים במערכת.'
+                      : 'כשתשויך אליך קמפיין כמבצע, הוא יופיע כאן.'
                 }
               />
             ) : (
@@ -609,6 +711,14 @@ export function Dashboard() {
                         )}
                         {c.startDate?.trim() ? (
                           <span>התחלה: {formatDateIL(c.startDate)}</span>
+                        ) : null}
+                        {employeeShowOrgWideLeadsCampaigns &&
+                        c.performerUserId?.trim() ? (
+                          <span className="text-[var(--text-light)]">
+                            מבצע:{' '}
+                            {teamMembers.find((m) => m.id === c.performerUserId)
+                              ?.name ?? c.performerUserId}
+                          </span>
                         ) : null}
                       </div>
                     </button>

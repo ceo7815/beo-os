@@ -18,7 +18,10 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
-export const functionsClient = getFunctions(app)
+const fnRegionRaw = import.meta.env.VITE_FUNCTIONS_REGION
+const functionsRegion =
+  (typeof fnRegionRaw === 'string' && fnRegionRaw.trim()) || 'us-central1'
+export const functionsClient = getFunctions(app, functionsRegion)
 
 /**
  * זיכרון בלבד — נמנע ממצבי IndexedDB ששוברים את ה־SDK ("INTERNAL ASSERTION FAILED").

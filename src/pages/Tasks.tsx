@@ -17,6 +17,9 @@ import { useUsers } from '../hooks/useUsers'
 import type { Project, Task, TaskStatus } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 
+/** תצוגת לוח למנהל מערכת: משימות שלי / כל הצוות / עובד ספציפי */
+type AdminTeamScope = 'mine' | 'all' | string
+
 const statusBadgeClass: Record<TaskStatus, string> = {
   todo: 'bg-[#64748B]/15 text-[#64748B]',
   doing: 'bg-[#2563EB]/15 text-[#2563EB]',
@@ -498,7 +501,7 @@ export function Tasks() {
     loading,
     error,
     setDrawerTaskId,
-    addTask,
+    openNewTaskDraft,
     addTaskNote,
     updateTask,
     deleteTask,
@@ -512,8 +515,8 @@ export function Tasks() {
   const [myOpenTasksOpen, setMyOpenTasksOpen] = useState(false)
   const [dragTaskId, setDragTaskId] = useState<string | null>(null)
   const [dragOverCol, setDragOverCol] = useState<TimeBucket | null>(null)
-  /** מנהל מערכת: null = כל המשימות; אחרת — תצוגת משימות אישית לאותו עובד */
-  const [viewAsUid, setViewAsUid] = useState<string | null>(null)
+  /** מנהל מערכת: mine = המשימות שלי (ברירת מחדל); all = כל הצוות; אחרת uid של עובד */
+  const [adminTeamScope, setAdminTeamScope] = useState<AdminTeamScope>('mine')
   /** תאריך ייחוס לעמודות היום / מחר / באיחור / אחר כך (ברירת מחדל: היום האמיתי) */
   const [boardAnchor, setBoardAnchor] = useState(() => todayYmd())
 
@@ -522,8 +525,13 @@ export function Tasks() {
     teamMembers.find((m) => m.id === user?.uid)?.role ?? 'employee'
   const canViewAsOthers = myRole === 'admin' || myRole === 'superadmin'
 
-  const assigneeForNewTask =
-    canViewAsOthers && viewAsUid ? viewAsUid : defaultAssigneeId
+  const assigneeForNewTask = useMemo(() => {
+    if (!canViewAsOthers) return defaultAssigneeId
+    if (adminTeamScope === 'all' || adminTeamScope === 'mine') {
+      return user?.uid ?? defaultAssigneeId
+    }
+    return adminTeamScope
+  }, [canViewAsOthers, adminTeamScope, user?.uid, defaultAssigneeId])
 
   const supplierById = useMemo(() => supplierNameMap(suppliers), [suppliers])
 
@@ -575,14 +583,27 @@ export function Tasks() {
   )
 
   const perspectiveFiltered = useMemo(() => {
-    if (!viewAsUid) return visibleTasks
-    return visibleTasks.filter((t) => t.assigneeId === viewAsUid)
-  }, [visibleTasks, viewAsUid])
+    if (!canViewAsOthers) return visibleTasks
+    if (adminTeamScope === 'all') return visibleTasks
+    const filterUid =
+      adminTeamScope === 'mine' ? user?.uid ?? '' : adminTeamScope
+    if (!filterUid) return visibleTasks
+    return visibleTasks.filter((t) => t.assigneeId === filterUid)
+  }, [visibleTasks, canViewAsOthers, adminTeamScope, user?.uid])
+
+  /** משימות שיצרת לאחרים — מוצגות רק ב«משימות ששלחתי», לא בלוח הקנבן */
+  const kanbanTaskSource = useMemo(() => {
+    const uid = user?.uid
+    if (!uid) return perspectiveFiltered
+    return perspectiveFiltered.filter(
+      (t) => !(t.createdBy === uid && t.assigneeId !== uid),
+    )
+  }, [perspectiveFiltered, user?.uid])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    if (!needle) return perspectiveFiltered
-    return perspectiveFiltered.filter((t) => {
+    if (!needle) return kanbanTaskSource
+    return kanbanTaskSource.filter((t) => {
       const proj = t.projectId ? projectRowById.get(t.projectId) : undefined
       const clientN = t.clientId
         ? (clientById.get(t.clientId) ?? '')
@@ -596,7 +617,7 @@ export function Tasks() {
         `${t.title} ${t.description || ''} ${clientN} ${projN}`.toLowerCase()
       return hay.includes(needle)
     })
-  }, [perspectiveFiltered, q, clientById, projectById, projectRowById])
+  }, [kanbanTaskSource, q, clientById, projectById, projectRowById])
 
   const openOnlyFiltered = useMemo(
     () => filtered.filter((t) => t.status !== 'done'),
@@ -628,31 +649,22 @@ export function Tasks() {
 
   const onNewTask = useCallback(() => {
     if (!assigneeForNewTask) return
-    void (async () => {
-      const id = await addTask({
-        title: 'משימה חדשה',
-        description: '',
-        status: 'todo',
-        priority: 'medium',
-        assigneeId: assigneeForNewTask,
-        dueDate: boardAnchor,
-        tags: [],
-        reminders: [],
-        sharedWithUserIds: [],
-        clientId: undefined,
-        supplierId: undefined,
-        projectId: undefined,
-        reminderDate: undefined,
-      })
-      if (id) setDrawerTaskId(id)
-    })()
-  }, [addTask, assigneeForNewTask, boardAnchor, setDrawerTaskId])
+    openNewTaskDraft({
+      assigneeId: assigneeForNewTask,
+      dueDate: boardAnchor,
+    })
+  }, [assigneeForNewTask, boardAnchor, openNewTaskDraft])
 
   const errMsg = error?.message ?? null
 
-  const viewAsName = viewAsUid
-    ? (memberById.get(viewAsUid) ?? viewAsUid)
-    : null
+  const adminBoardLabel = useMemo(() => {
+    if (!canViewAsOthers) return ''
+    if (adminTeamScope === 'all') return 'כל הצוות'
+    const uid =
+      adminTeamScope === 'mine' ? user?.uid ?? '' : adminTeamScope
+    if (!uid) return ''
+    return memberById.get(uid) ?? uid
+  }, [canViewAsOthers, adminTeamScope, user?.uid, memberById])
 
   const sortedMembers = useMemo(
     () => [...teamMembers].sort((a, b) => a.name.localeCompare(b.name, 'he')),
@@ -660,9 +672,9 @@ export function Tasks() {
   )
 
   const boardSubtitle = canViewAsOthers
-    ? viewAsUid
-      ? `${openCount} פתוחות · תצוגת עובד: ${viewAsName} · לפי תאריך יעד ביחס לתאריך הייחוס`
-      : `${openCount} פתוחות · תצוגת מנהל: כל המשימות · לפי תאריך יעד ביחס לתאריך הייחוס`
+    ? adminTeamScope === 'all'
+      ? `${openCount} פתוחות · תצוגת מנהל: כל הצוות · לפי תאריך יעד ביחס לתאריך הייחוס`
+      : `${openCount} פתוחות · תצוגת עובד: ${adminBoardLabel} · לפי תאריך יעד ביחס לתאריך הייחוס`
     : `${openCount} פתוחות · התצוגה הפרטית שלך · לפי תאריך יעד ביחס לתאריך הייחוס`
 
   const sentTasks = useMemo(
@@ -783,13 +795,23 @@ export function Tasks() {
             </label>
             <select
               id="tasks-view-as"
-              value={viewAsUid ?? ''}
-              onChange={(e) =>
-                setViewAsUid(e.target.value ? e.target.value : null)
+              value={
+                adminTeamScope === 'mine'
+                  ? '__mine__'
+                  : adminTeamScope === 'all'
+                    ? '__all__'
+                    : adminTeamScope
               }
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === '__mine__') setAdminTeamScope('mine')
+                else if (v === '__all__') setAdminTeamScope('all')
+                else setAdminTeamScope(v)
+              }}
               className="w-full max-w-md rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-dark)]"
             >
-              <option value="">כל הצוות</option>
+              <option value="__mine__">המשימות שלי</option>
+              <option value="__all__">כל הצוות</option>
               {sortedMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -797,7 +819,7 @@ export function Tasks() {
               ))}
             </select>
             <p className="mt-1 text-[11px] text-[var(--text-light)]">
-              רק מנהל יכול להחליף תצוגה כאן: כל המשימות או משימות של עובד ספציפי.
+              ברירת מחדל: המשימות שהוקצו אליך. בחר «כל הצוות» כדי לראות את כל המשימות — לאחר מכן ניתן לבחור עובד ספציפי מהרשימה.
             </p>
           </div>
         ) : (
@@ -805,7 +827,7 @@ export function Tasks() {
             <span className="font-semibold text-[var(--text-dark)]">
               תצוגה פרטית לעובד.
             </span>{' '}
-            מוצגות כאן רק המשימות שהוקצו אליך.
+            בלוח מוצגות רק משימות שהוקצו אליך. משימות שפתחת לאחרים נמצאות ב«משימות ששלחתי». לא ניתן לצפות במשימות של שאר הצוות.
           </div>
         )}
         <div>

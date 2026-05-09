@@ -96,6 +96,8 @@ export interface Supplier {
   email: string
   /** סוגים מקצועיים — מ־SUPPLIER_TYPE_OPTIONS (מערך) */
   supplierTypes?: string[]
+  /** ברירת מחדל למסמכים ישנים: פעיל */
+  active?: boolean
   createdAt: string
 }
 
@@ -163,6 +165,31 @@ export type BoardTask = Task
 export type BoardTaskStatus = TaskStatus
 
 export type DocType = 'spec' | 'meeting' | 'brief' | 'note'
+
+/** אופן התחברות לפריט בכספת — `google` = ללא סיסמה שמורה (כניסה עם חשבון Google) */
+export type VaultLoginType = 'password' | 'google'
+
+/** רשומה בכספת סיסמאות — אוסף Firestore `passwords_vault` */
+export interface PasswordVaultEntry {
+  id: string
+  title: string
+  category: string
+  username: string
+  password: string
+  /** ברירת מחדל למסמכים ישנים: password */
+  loginType: VaultLoginType
+  url: string
+  notes: string
+  /** משתמשים (uid) שרשאים לצפות בפריט ובסיסמה; ריק = רק אדמינים */
+  visibleUserIds: string[]
+  /** מזהה לקוח ב-`clients` (אופציונלי) */
+  clientId: string
+  updatedBy: string
+  updatedAt: string
+}
+
+/** נתונים לשמירה ב-Firestore — `updatedBy` נקבע בשרת/הוק לפי המשתמש המחובר */
+export type PasswordVaultWrite = Omit<PasswordVaultEntry, 'id' | 'updatedAt' | 'updatedBy'>
 
 export interface TeamMember {
   id: string

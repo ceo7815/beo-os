@@ -30,11 +30,20 @@ const statusLabels: Record<CampaignStatus, string> = {
 }
 
 const statusColors: Record<CampaignStatus, string> = {
-  planning: '#2563EB',
-  active: '#16A34A',
+  planning: '#94A3B8',
+  active: '#F97316',
   paused: '#64748B',
-  completed: '#0F766E',
+  completed: '#15803D',
 }
+
+const uiButtonBase =
+  'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
+const uiFilterInactive = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
+const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiButtonBrandOutline = `${uiButtonBase} border border-[var(--orange)] bg-[var(--surface-muted)] text-[var(--orange)] hover:bg-[var(--orange-light)]`
+const uiButtonGhost = uiFilterInactive
+const uiCardAction = `${uiButtonBase} min-w-0 px-2.5 py-1 text-[11px]`
 
 const kindDropdownOptions: HubDropdownOption[] = [
   { value: 'client', label: 'קמפיין ללקוח' },
@@ -141,6 +150,13 @@ export function Campaigns() {
       })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }, [campaigns, statusFilter, q, clientNameById])
+
+  const campaignKpis = useMemo(() => {
+    const active = campaigns.filter((c) => c.status === 'active').length
+    const paused = campaigns.filter((c) => c.status === 'paused').length
+    const completed = campaigns.filter((c) => c.status === 'completed').length
+    return { active, paused, completed }
+  }, [campaigns])
   const actorName =
     user?.displayName?.trim() || user?.email?.split('@')[0] || 'משתמש'
   const resultsModalCampaign = useMemo(
@@ -261,10 +277,62 @@ export function Campaigns() {
             ניהול קמפיינים עם שיוך ללקוח, פרויקט וספק
           </p>
         </div>
-        <button type="button" className="hub-btn-primary text-sm" onClick={() => setFormOpen((v) => !v)}>
+        <button
+          type="button"
+          className={formOpen ? uiButtonGhost : uiButtonBrand}
+          onClick={() => setFormOpen((v) => !v)}
+        >
           {formOpen ? 'סגירה' : '+ קמפיין חדש'}
         </button>
       </header>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => setStatusFilter('active')}
+          className={`text-right transition ${hubSectionClass(0)} rounded-2xl p-4 ${
+            statusFilter === 'active' ? 'ring-2 ring-[var(--orange)] ring-offset-2' : ''
+          }`}
+        >
+          <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+            {campaignKpis.active}
+          </div>
+          <div className="mt-1 text-[12px] text-[var(--text-mid)]">פעיל</div>
+          <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+            קמפיינים בסטטוס «פעיל»
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('paused')}
+          className={`text-right transition ${hubSectionClass(1)} rounded-2xl p-4 ${
+            statusFilter === 'paused' ? 'ring-2 ring-[var(--orange)] ring-offset-2' : ''
+          }`}
+        >
+          <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+            {campaignKpis.paused}
+          </div>
+          <div className="mt-1 text-[12px] text-[var(--text-mid)]">מושהה</div>
+          <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+            קמפיינים בסטטוס «מושהה»
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter('completed')}
+          className={`text-right transition ${hubSectionClass(2)} rounded-2xl p-4 ${
+            statusFilter === 'completed' ? 'ring-2 ring-[var(--orange)] ring-offset-2' : ''
+          }`}
+        >
+          <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+            {campaignKpis.completed}
+          </div>
+          <div className="mt-1 text-[12px] text-[var(--text-mid)]">הושלם</div>
+          <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+            קמפיינים בסטטוס «הושלם»
+          </div>
+        </button>
+      </section>
 
       {formOpen ? (
         <section className={`grid grid-cols-1 gap-3 rounded-2xl ${hubSectionClass(0)} p-4 md:grid-cols-3`}>
@@ -288,7 +356,7 @@ export function Campaigns() {
             options={campaignStatusOptions}
           />
           <input type="number" placeholder="תקציב" value={budget} onChange={(e) => setBudget(e.target.value)} />
-          <div className="rounded-xl border-2 border-[#BFDBFE] bg-[var(--bg-main)] px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <div className="rounded-xl border-2 border-[var(--border-orange-soft)] bg-[var(--bg-main)] px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <ClientQuickSelect
               id="campaign-new-client"
               clients={clients}
@@ -355,37 +423,42 @@ export function Campaigns() {
             className="md:col-span-3"
           />
           <div className="md:col-span-3 flex justify-end gap-2">
-            <button type="button" className="hub-btn-secondary text-sm" onClick={() => setFormOpen(false)}>
+            <button type="button" className={uiButtonGhost} onClick={() => setFormOpen(false)}>
               ביטול
             </button>
-            <button type="button" className="hub-btn-primary text-sm" onClick={() => void submit()}>
+            <button type="button" className={uiButtonBrand} onClick={() => void submit()}>
               שמירת קמפיין
             </button>
           </div>
         </section>
       ) : null}
 
-      <section className="flex flex-wrap items-center gap-2">
+      <section className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <input
           className="w-full max-w-[320px]"
           placeholder="חיפוש קמפיין..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button type="button" onClick={() => setStatusFilter('all')} className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-primary' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`}>
-          הכל
-        </button>
-        {(Object.keys(statusLabels) as CampaignStatus[]).map((s) => (
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            key={s}
             type="button"
-            onClick={() => setStatusFilter(s)}
-            className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === s ? 'text-white' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`}
-            style={statusFilter === s ? { backgroundColor: statusColors[s] } : undefined}
+            onClick={() => setStatusFilter('all')}
+            className={statusFilter === 'all' ? uiFilterActive : uiFilterInactive}
           >
-            {statusLabels[s]}
+            הכל
           </button>
-        ))}
+          {(Object.keys(statusLabels) as CampaignStatus[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatusFilter(s)}
+              className={statusFilter === s ? uiFilterActive : uiFilterInactive}
+            >
+              {statusLabels[s]}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -428,12 +501,11 @@ export function Campaigns() {
                   key={s}
                   type="button"
                   onClick={() => void updateCampaignStatus(c.id, s)}
-                  className="rounded-[8px] border px-2.5 py-1 text-[11px] font-semibold"
-                  style={{
-                    borderColor: statusColors[s],
-                    color: c.status === s ? '#fff' : statusColors[s],
-                    backgroundColor: c.status === s ? statusColors[s] : '#fff',
-                  }}
+                  className={`${uiCardAction} font-semibold ${
+                    c.status === s
+                      ? 'border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm'
+                      : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+                  }`}
                 >
                   {statusLabels[s]}
                 </button>
@@ -441,7 +513,7 @@ export function Campaigns() {
               <button
                 type="button"
                 onClick={() => openEdit(c)}
-                className="rounded-[8px] border border-[#E2E8F0] bg-white px-2.5 py-1 text-[11px] font-semibold text-[var(--text-dark)] hover:bg-[#F8FAFC]"
+                className={`${uiCardAction} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] font-semibold text-[var(--text-dark)] hover:bg-[var(--surface-muted)]`}
               >
                 עריכה
               </button>
@@ -452,7 +524,7 @@ export function Campaigns() {
                   setResultsModalCampaignId(c.id)
                   setResultsModalText(defaultText)
                 }}
-                className="rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-[var(--blue-mid)]"
+                className={`${uiButtonBrandOutline} min-w-0 px-2.5 py-1 text-[11px]`}
               >
                 עדכון תוצאות
               </button>
@@ -525,7 +597,7 @@ export function Campaigns() {
             value={editBudget}
             onChange={(e) => setEditBudget(e.target.value)}
           />
-          <div className="rounded-xl border-2 border-[#BFDBFE] bg-[var(--bg-main)] px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <div className="rounded-xl border-2 border-[var(--border-orange-soft)] bg-[var(--bg-main)] px-3 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <ClientQuickSelect
               id="campaign-edit-client"
               clients={clients}
@@ -578,12 +650,12 @@ export function Campaigns() {
           «עדכון תוצאות» והיסטוריה נשארים כפי שהם — מעדכנים בנפרד בכפתור «עדכון תוצאות».
         </p>
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" className="hub-btn-secondary text-sm" onClick={closeEdit}>
+          <button type="button" className={uiButtonGhost} onClick={closeEdit}>
             ביטול
           </button>
           <button
             type="button"
-            className="hub-btn-primary text-sm"
+            className={uiButtonBrand}
             onClick={() => void submitEdit()}
           >
             שמירת שינויים
@@ -613,7 +685,7 @@ export function Campaigns() {
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              className="hub-btn-secondary text-sm"
+              className={uiButtonGhost}
               onClick={() => {
                 setResultsModalCampaignId(null)
                 setResultsModalText('')
@@ -623,7 +695,7 @@ export function Campaigns() {
             </button>
             <button
               type="button"
-              className="hub-btn-primary text-sm"
+              className={uiButtonBrand}
               onClick={() => {
                 if (!resultsModalCampaign) return
                 void updateCampaignResults(resultsModalCampaign.id, resultsModalText)

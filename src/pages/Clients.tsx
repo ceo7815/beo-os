@@ -9,6 +9,7 @@ import { useProjects } from '../hooks/useProjects'
 import { useHubStore } from '../store/useStore'
 import type { Client, ClientStatus } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { ClientActivityModal } from '../components/ClientActivityModal'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -67,6 +68,7 @@ export function Clients() {
   const [form, setForm] = useState<ClientFormState>(emptyForm)
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({})
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [activityClient, setActivityClient] = useState<Client | null>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -223,8 +225,14 @@ export function Clients() {
                 const count = projectCount(c.id)
                 return (
                   <tr key={c.id} className="border-t border-[var(--border)] align-top">
-                    <td className="px-3 py-3 font-semibold text-[var(--text-dark)] break-words">
-                      {c.name}
+                    <td className="px-3 py-3 break-words">
+                      <button
+                        type="button"
+                        onClick={() => setActivityClient(c)}
+                        className="text-right font-semibold text-[var(--orange)] underline-offset-2 hover:underline"
+                      >
+                        {c.name}
+                      </button>
                     </td>
                     <td className="px-3 py-3 text-[var(--text-mid)] break-words">
                       {c.contact || '—'}
@@ -402,6 +410,12 @@ export function Clients() {
           if (deleteId) deleteClient(deleteId)
         }}
         message="למחוק לקוח זה? יימחקו גם כל הפרויקטים, המשימות והמסמכים הקשורים אליו."
+      />
+
+      <ClientActivityModal
+        client={activityClient}
+        open={activityClient !== null}
+        onClose={() => setActivityClient(null)}
       />
     </div>
   )

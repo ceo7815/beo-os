@@ -10,6 +10,7 @@ import { ToastHost } from './shared/Toast'
 import { QuickActionsFloat } from './QuickActionsFloat'
 import { QuickTasksSlider } from './QuickTasksSlider'
 import { TaskDrawer } from './TaskDrawer'
+import { isAdminRole } from './RequireAdmin'
 
 const workspaceLinks = [
   { label: 'Drive', href: 'https://drive.google.com', dot: '#FCD34D' },
@@ -77,6 +78,8 @@ export function Layout() {
       role: 'מחובר',
     }
   }, [user, teamMembers])
+
+  const showUsersNav = isAdminRole(mainUser.role)
 
   return (
     <>
@@ -274,10 +277,8 @@ export function Layout() {
                 נוכחות
               </NavLink>
 
-              <div className="my-2 border-t border-[rgba(255,255,255,0.1)]" />
-
               <NavLink
-                to="/users"
+                to="/vault"
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
@@ -287,12 +288,35 @@ export function Layout() {
                 }
               >
                 <NavGlyph>
-                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                  <path d="M7 11V7a5 5 0 0110 0v4M6 11h12v10a1 1 0 01-1 1H7a1 1 0 01-1-1V11z" />
+                  <circle cx="12" cy="16" r="1.5" fill="currentColor" stroke="none" />
                 </NavGlyph>
-                משתמשים
+                כספת סיסמאות
               </NavLink>
+
+              {showUsersNav ? (
+                <>
+                  <div className="my-2 border-t border-[rgba(255,255,255,0.1)]" />
+
+                  <NavLink
+                    to="/users"
+                    className={({ isActive }) =>
+                      `${navBase} ${
+                        isActive
+                          ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                          : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                      }`
+                    }
+                  >
+                    <NavGlyph>
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                    </NavGlyph>
+                    משתמשים
+                  </NavLink>
+                </>
+              ) : null}
             </nav>
 
             <div className="mt-auto space-y-2 border-t border-[rgba(255,255,255,0.1)] pt-4">

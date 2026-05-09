@@ -10,7 +10,8 @@ import { formatDateTimeIL, todayYmd, toDateInputYmd } from '../lib/dates'
 import { boardStatusHe } from '../lib/boardTaskLabels'
 import { formatRelativeHebrew } from '../lib/relativeTimeHe'
 import { reminderBadgeHe } from '../lib/reminderBadgeHe'
-import { toastFsSuccess } from '../lib/fsToast'
+import { toastFsError, toastFsSuccess } from '../lib/fsToast'
+import { NEW_TASK_DRAWER_ID } from '../lib/taskDrawerIds'
 import { ClientQuickSelect } from './ClientQuickSelect'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
@@ -80,6 +81,32 @@ function buildPatch(task: Task, d: TaskDraft): Partial<Task> {
   return patch
 }
 
+function localUnsavedTaskFromSeed(
+  seed: { assigneeId: string; dueDate: string },
+  createdBy: string,
+): Task {
+  return {
+    id: NEW_TASK_DRAWER_ID,
+    title: '',
+    description: '',
+    status: 'todo',
+    priority: 'medium',
+    assigneeId: seed.assigneeId,
+    clientId: undefined,
+    projectId: undefined,
+    supplierId: undefined,
+    dueDate: seed.dueDate,
+    tags: [],
+    reminders: [],
+    createdAt: new Date().toISOString(),
+    createdBy,
+    sharedWithUserIds: [],
+    teamWideShared: false,
+    activity: [],
+    manualNotes: [],
+  }
+}
+
 function applyPatchToTask(task: Task, patch: Partial<Task>): Task {
   return {
     ...task,
@@ -105,18 +132,28 @@ export function TaskDrawer() {
   const {
     tasks,
     drawerTaskId: taskId,
+    newTaskDraftSeed,
     setDrawerTaskId,
     updateTask,
+    addTask,
     addTaskNote,
   } = useTasks()
-  const task = tasks.find((t) => t.id === taskId) ?? null
+  const { user } = useAuth()
+  const userId = user?.uid ?? ''
+
+  const task = useMemo(() => {
+    if (taskId === NEW_TASK_DRAWER_ID) {
+      if (!newTaskDraftSeed || !userId) return null
+      return localUnsavedTaskFromSeed(newTaskDraftSeed, userId)
+    }
+    return tasks.find((t) => t.id === taskId) ?? null
+  }, [taskId, newTaskDraftSeed, tasks, userId])
+
+  const isNewUnsaved = taskId === NEW_TASK_DRAWER_ID
   const { suppliers } = useSuppliers()
   const { clients } = useClients()
   const { projects } = useProjects()
   const { users: teamMembers } = useUsers()
-
-  const { user } = useAuth()
-  const userId = user?.uid ?? ''
   const taskOpts = useMemo(
     () => ({
       memberNameById: (id: string) =>
@@ -175,6 +212,11 @@ export function TaskDrawer() {
     return Object.keys(buildPatch(task, draft)).length > 0
   }, [task, draft])
 
+  const canSaveNew =
+    isNewUnsaved &&
+    Boolean(draft?.title?.trim()) &&
+    Boolean(draft?.assigneeId?.trim())
+
   const requestClose = () => {
     if (dirty) {
       if (!window.confirm('יש שינויים שלא נשמרו. לסגור בלי לשמור?')) return
@@ -184,6 +226,55 @@ export function TaskDrawer() {
 
   const saveTask = async () => {
     if (!userId || !task || !draft) return
+
+    if (isNewUnsaved) {
+      const title = draft.title.trim()
+      if (!title) {
+        toastFsError(
+          'נא להזין כותרת למשימה',
+          new Error('validation'),
+          'saveTask',
+        )
+        return
+      }
+      if (!draft.assigneeId.trim()) {
+        toastFsError(
+          'נא לבחור אחראי למשימה',
+          new Error('validation'),
+          'saveTask',
+        )
+        return
+      }
+      setSaving(true)
+      try {
+        const id = await addTask(
+          {
+            title,
+            description: draft.description,
+            status: draft.status,
+            priority: draft.priority,
+            assigneeId: draft.assigneeId,
+            clientId: draft.clientId.trim() || undefined,
+            projectId: draft.projectId.trim() || undefined,
+            supplierId: draft.supplierId.trim() || undefined,
+            dueDate: draft.dueDate,
+            reminderDate: undefined,
+            tags: draft.tags,
+            reminders: draft.reminders,
+            sharedWithUserIds: [],
+          },
+          { quiet: true },
+        )
+        if (id) {
+          toastFsSuccess('המשימה נשמרה')
+          setDrawerTaskId(id)
+        }
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     const patch = buildPatch(task, draft)
     if (Object.keys(patch).length === 0) {
       toastFsSuccess('אין שינויים לשמירה')
@@ -262,6 +353,9 @@ export function TaskDrawer() {
               onChange={(e) =>
                 setDraft((d) => (d ? { ...d, title: e.target.value } : d))
               }
+              placeholder={
+                isNewUnsaved ? 'הזן כותרת — המשימה תישמר רק בלחיצה למטה' : undefined
+              }
               className="w-full border-0 bg-transparent text-lg font-extrabold text-[var(--blue-dark)] outline-none ring-0 focus:ring-0"
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -270,6 +364,11 @@ export function TaskDrawer() {
               >
                 {boardStatusHe(draft.status)}
               </span>
+              {isNewUnsaved ? (
+                <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-bold text-[#4338CA]">
+                  טיוטה
+                </span>
+              ) : null}
               {dirty ? (
                 <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-bold text-[#B45309]">
                   שינויים שלא נשמרו
@@ -516,13 +615,21 @@ export function TaskDrawer() {
               <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-4">
                 <button
                   type="button"
-                  disabled={!dirty || !userId || saving}
+                  disabled={
+                    saving ||
+                    !userId ||
+                    (isNewUnsaved ? !canSaveNew : !dirty)
+                  }
                   onClick={() => void saveTask()}
                   className="w-full rounded-xl bg-[var(--blue-mid)] py-3 text-sm font-bold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {saving ? 'שומר…' : 'שמור משימה'}
                 </button>
-                {!dirty ? (
+                {isNewUnsaved ? (
+                  <p className="text-center text-[11px] text-[var(--text-light)]">
+                    המשימה תיווצר במערכת רק אחרי לחיצה על «שמור משימה».
+                  </p>
+                ) : !dirty ? (
                   <p className="text-center text-[11px] text-[var(--text-light)]">
                     שינויים בפרטים נשמרים רק בלחיצה על «שמור משימה»
                   </p>
@@ -585,7 +692,7 @@ export function TaskDrawer() {
                 />
                 <button
                   type="button"
-                  disabled={!streamDraft.trim() || !userId}
+                  disabled={!streamDraft.trim() || !userId || isNewUnsaved}
                   onClick={() => {
                     const t = streamDraft.trim()
                     if (!t || !userId) return

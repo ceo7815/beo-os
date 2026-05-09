@@ -2,11 +2,16 @@ import { useMemo, useState } from 'react'
 import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { Modal } from '../components/shared/Modal'
+import { SupplierDetailModal } from '../components/SupplierDetailModal'
 import { formatDateIL } from '../lib/dates'
 import { HUB_SUPPLIER_ID } from '../lib/hubSupplier'
 import { SupplierTypesMultiSelect } from '../components/SupplierTypesMultiSelect'
 import { SUPPLIER_TYPE_OPTIONS } from '../lib/supplierTypes'
+import { useCampaigns } from '../hooks/useCampaigns'
+import { useClients } from '../hooks/useClients'
+import { useProjects } from '../hooks/useProjects'
 import { useSuppliers } from '../hooks/useSuppliers'
+import { useTasks } from '../hooks/useTasks'
 import { useHubStore } from '../store/useStore'
 import type { Supplier } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
@@ -17,11 +22,24 @@ function isValidEmailOptional(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)
 }
 
+function isSupplierListedActive(s: Supplier): boolean {
+  return s.active !== false
+}
+
+const uiButtonBase =
+  'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
+const uiFilterInactive = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
+const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiButtonGhost = uiFilterInactive
+const uiBtnSmOutline = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--orange)] hover:bg-[var(--orange-light)]`
+
 interface SupplierFormState {
   name: string
   phone: string
   email: string
   supplierTypes: string[]
+  active: boolean
 }
 
 const emptyForm: SupplierFormState = {
@@ -29,19 +47,44 @@ const emptyForm: SupplierFormState = {
   phone: '',
   email: '',
   supplierTypes: [],
+  active: true,
 }
+
+type SupplierFilter = 'all' | 'active' | 'inactive'
 
 export function Suppliers() {
   const { suppliers, loading, addSupplier, updateSupplier, deleteSupplier } =
     useSuppliers()
+  const { projects } = useProjects()
+  const { campaigns } = useCampaigns()
+  const { tasks } = useTasks()
+  const { clients } = useClients()
   const pushToast = useHubStore((s) => s.pushToast)
 
   const [query, setQuery] = useState('')
+  const [supplierFilter, setSupplierFilter] = useState<SupplierFilter>('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<SupplierFormState>(emptyForm)
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({})
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [detailSupplier, setDetailSupplier] = useState<Supplier | null>(null)
+
+  const clientNameById = useMemo(() => {
+    const m = new Map<string, string>()
+    clients.forEach((c) => m.set(c.id, c.name))
+    return m
+  }, [clients])
+
+  const supplierKpis = useMemo(() => {
+    let active = 0
+    let inactive = 0
+    for (const s of suppliers) {
+      if (isSupplierListedActive(s)) active += 1
+      else inactive += 1
+    }
+    return { active, inactive }
+  }, [suppliers])
 
   const sorted = useMemo(() => {
     return [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'he'))
@@ -49,13 +92,15 @@ export function Suppliers() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return sorted
     return sorted.filter((s) => {
+      if (supplierFilter === 'active' && !isSupplierListedActive(s)) return false
+      if (supplierFilter === 'inactive' && isSupplierListedActive(s)) return false
+      if (!q) return true
       const hay =
         `${s.name} ${s.phone} ${s.email} ${(s.supplierTypes ?? []).join(' ')}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [sorted, query])
+  }, [sorted, query, supplierFilter])
 
   const openNew = () => {
     setEditingId(null)
@@ -71,6 +116,7 @@ export function Suppliers() {
       phone: s.phone,
       email: s.email,
       supplierTypes: [...(s.supplierTypes ?? [])],
+      active: isSupplierListedActive(s),
     })
     setErrors({})
     setModalOpen(true)
@@ -91,6 +137,7 @@ export function Suppliers() {
       phone: form.phone.trim(),
       email: form.email.trim(),
       supplierTypes: form.supplierTypes,
+      active: form.active,
     }
     if (editingId) {
       await updateSupplier(editingId, payload)
@@ -103,7 +150,7 @@ export function Suppliers() {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
-      <header className="flex flex-col gap-4 border-b border-[var(--border)] pb-6 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">
             ספקים
@@ -112,12 +159,49 @@ export function Suppliers() {
             רשימת ספקי ביצוע — הוספה ועריכה במקום אחד
           </p>
         </div>
-        <button type="button" onClick={openNew} className="hub-btn-primary text-sm">
+        <button type="button" onClick={openNew} className={uiButtonBrand}>
           + הוסף ספק
         </button>
       </header>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() =>
+            setSupplierFilter((f) => (f === 'active' ? 'all' : 'active'))
+          }
+          className={`text-right transition ${hubSectionClass(0)} rounded-2xl p-4 ${
+            supplierFilter === 'active' ? 'ring-2 ring-[var(--orange)] ring-offset-2' : ''
+          }`}
+        >
+          <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+            {supplierKpis.active}
+          </div>
+          <div className="mt-1 text-[12px] text-[var(--text-mid)]">ספקים פעילים</div>
+          <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+            מופיעים ברשימה כ«פעיל» · לחיצה מסננת טבלה
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            setSupplierFilter((f) => (f === 'inactive' ? 'all' : 'inactive'))
+          }
+          className={`text-right transition ${hubSectionClass(1)} rounded-2xl p-4 ${
+            supplierFilter === 'inactive' ? 'ring-2 ring-[var(--orange)] ring-offset-2' : ''
+          }`}
+        >
+          <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+            {supplierKpis.inactive}
+          </div>
+          <div className="mt-1 text-[12px] text-[var(--text-mid)]">ספקים לא פעילים</div>
+          <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+            סומנו כלא פעילים · לחיצה מסננת טבלה
+          </div>
+        </button>
+      </section>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <input
           type="search"
           placeholder="חיפוש לפי שם, טלפון או אימייל…"
@@ -125,40 +209,63 @@ export function Suppliers() {
           onChange={(e) => setQuery(e.target.value)}
           className="max-w-md"
         />
-        {loading ? (
-          <span className="text-sm text-[var(--text-mid)]">טוען…</span>
-        ) : (
-          <span className="text-sm text-[var(--text-mid)]">
-            {filtered.length} ספקים
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={supplierFilter === 'all' ? uiFilterActive : uiFilterInactive}
+            onClick={() => setSupplierFilter('all')}
+          >
+            הכל
+          </button>
+          {loading ? (
+            <span className="text-sm text-[var(--text-mid)]">טוען…</span>
+          ) : (
+            <span className="text-sm text-[var(--text-mid)]">
+              {filtered.length} ספקים
+            </span>
+          )}
+        </div>
       </div>
 
-      <section className={`rounded-2xl ${hubSectionClass(0)} shadow-none`}>
-        <div>
-          <table className="w-full text-sm">
-            <thead className="bg-[#F8FAFC]">
+      <section className={`rounded-2xl ${hubSectionClass(2)} shadow-none`}>
+        <div className="min-w-0 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className="bg-[var(--surface-muted)]">
               <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
-                <th className="w-[26%] px-3 py-3">שם ספק</th>
-                <th className="w-[18%] px-3 py-3">טלפון</th>
-                <th className="w-[22%] px-3 py-3">אימייל</th>
+                <th className="w-[22%] px-3 py-3">שם ספק</th>
+                <th className="w-[12%] px-3 py-3">סטטוס</th>
+                <th className="w-[16%] px-3 py-3">טלפון</th>
+                <th className="w-[18%] px-3 py-3">אימייל</th>
                 <th className="w-[14%] px-3 py-3">סוגי ספק</th>
-                <th className="w-[12%] px-3 py-3">תאריך יצירה</th>
+                <th className="w-[10%] px-3 py-3">תאריך יצירה</th>
                 <th className="w-[10%] px-3 py-3">פעולות</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((s) => {
                 const isHub = s.id === HUB_SUPPLIER_ID
+                const listedActive = isSupplierListedActive(s)
                 return (
                   <tr key={s.id} className="border-t border-[var(--border)] align-top">
-                    <td className="px-3 py-3 font-semibold text-[var(--text-dark)] break-words">
-                      {s.name}
+                    <td className="px-3 py-3 break-words">
+                      <button
+                        type="button"
+                        onClick={() => setDetailSupplier(s)}
+                        className="text-right font-semibold text-[var(--orange)] underline-offset-2 hover:underline"
+                      >
+                        {s.name}
+                      </button>
+                    </td>
+                    <td className="px-3 py-3">
+                      <Badge
+                        label={listedActive ? 'פעיל' : 'לא פעיל'}
+                        color={listedActive ? '#16A34A' : '#64748B'}
+                      />
                     </td>
                     <td className="px-3 py-3 text-right text-[var(--text-mid)]" dir="ltr">
                       {s.phone ? (
                         <a
-                          className="inline-block w-full text-right font-medium text-[var(--blue-mid)] hover:underline"
+                          className="inline-block w-full text-right font-medium text-[var(--orange)] hover:underline"
                           href={`tel:${s.phone.replace(/\s/g, '')}`}
                         >
                           {s.phone}
@@ -170,7 +277,7 @@ export function Suppliers() {
                     <td className="px-3 py-3 text-right text-[var(--text-mid)]" dir="ltr">
                       {s.email ? (
                         <a
-                          className="inline-block w-full text-right font-medium text-[var(--blue-mid)] hover:underline"
+                          className="inline-block w-full text-right font-medium text-[var(--orange)] hover:underline"
                           href={`mailto:${s.email}`}
                         >
                           {s.email}
@@ -182,13 +289,13 @@ export function Suppliers() {
                     <td className="px-3 py-3 text-[13px] text-[var(--text-mid)]">
                       {isHub ? (
                         <div className="space-y-1.5">
-                          <Badge label="ספק ברירת מחדל" color="#2563EB" />
+                          <Badge label="ספק ברירת מחדל" color="#F97316" />
                           {(s.supplierTypes?.length ?? 0) > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {(s.supplierTypes ?? []).map((t) => (
                                 <span
                                   key={t}
-                                  className="inline-block rounded-md bg-[#EFF6FF] px-1.5 py-0.5 text-[11px] font-medium text-[#1D4ED8]"
+                                  className="inline-block rounded-md bg-[var(--orange-light)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--orange)]"
                                 >
                                   {t}
                                 </span>
@@ -201,7 +308,7 @@ export function Suppliers() {
                           {(s.supplierTypes ?? []).map((t) => (
                             <span
                               key={t}
-                              className="inline-block rounded-md bg-[#F1F5F9] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-dark)]"
+                              className="inline-block rounded-md bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-dark)]"
                             >
                               {t}
                             </span>
@@ -219,7 +326,7 @@ export function Suppliers() {
                         <button
                           type="button"
                           onClick={() => openEdit(s)}
-                          className="rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-1.5 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE]"
+                          className={uiBtnSmOutline}
                         >
                           עריכה
                         </button>
@@ -292,6 +399,20 @@ export function Suppliers() {
             ) : null}
           </div>
           <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              סטטוס ברשימה
+            </label>
+            <select
+              value={form.active ? 'active' : 'inactive'}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, active: e.target.value === 'active' }))
+              }
+            >
+              <option value="active">פעיל</option>
+              <option value="inactive">לא פעיל</option>
+            </select>
+          </div>
+          <div>
             <label className="mb-1 block text-xs font-semibold text-[var(--text-dark)]">
               סוגי ספק
             </label>
@@ -310,16 +431,26 @@ export function Suppliers() {
             <button
               type="button"
               onClick={() => setModalOpen(false)}
-              className="hub-btn-secondary text-sm"
+              className={uiButtonGhost}
             >
               ביטול
             </button>
-            <button type="button" onClick={() => void submit()} className="hub-btn-primary text-sm">
+            <button type="button" onClick={() => void submit()} className={uiButtonBrand}>
               שמור
             </button>
           </div>
         </div>
       </Modal>
+
+      <SupplierDetailModal
+        supplier={detailSupplier}
+        open={detailSupplier !== null}
+        onClose={() => setDetailSupplier(null)}
+        projects={projects}
+        campaigns={campaigns}
+        tasks={tasks}
+        clientNameById={clientNameById}
+      />
 
       <ConfirmDialog
         isOpen={deleteId !== null}

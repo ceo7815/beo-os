@@ -90,6 +90,7 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
           phone: data.phone,
           email: data.email,
           ...(types.length ? { supplierTypes: types } : {}),
+          active: data.active !== false,
           createdAt: serverTimestamp(),
           createdByUserId: user.uid,
           createdByUserName: uname,
@@ -102,6 +103,7 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
           phone: data.phone,
           email: data.email,
           ...(types.length ? { supplierTypes: types } : {}),
+          ...(data.active === false ? { active: false } : {}),
           createdAt: new Date().toISOString(),
         }
         setSuppliers((prev) => {
@@ -134,6 +136,7 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
           patch.supplierTypes = types.length ? types : deleteField()
           patch.supplierType = deleteField()
         }
+        if (data.active !== undefined) patch.active = data.active
         const uname = displayName()
         patch.lastActorUserId = user.uid
         patch.lastActorUserName = uname
@@ -149,6 +152,7 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
               const types = normalizeSupplierTypesForSave(data.supplierTypes)
               next.supplierTypes = types.length ? types : undefined
             }
+            if (data.active !== undefined) next.active = data.active
             return next
           }),
         )

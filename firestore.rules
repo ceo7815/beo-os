@@ -94,9 +94,22 @@ service cloud.firestore {
       allow read, write: if signedIn();
     }
 
-    // שאר המודולים: דורשים משתמש מחובר.
+    /**
+     * כספת סיסמאות: אדמינים — מלא; עובד — קריאה רק אם ה-uid שלו ב-visibleUserIds.
+     * מסמכים ישנים בלי visibleUserIds — נגישים רק לאדמין.
+     */
+    match /passwords_vault/{entryId} {
+      allow read: if isAdmin() || (
+        signedIn() &&
+        resource.data.visibleUserIds is list &&
+        me() in resource.data.visibleUserIds
+      );
+      allow create, update, delete: if isAdmin();
+    }
+
+    // שאר המודולים: דורשים משתמש מחובר (ללא כספת הסיסמאות).
     match /{document=**} {
-      allow read, write: if signedIn();
+      allow read, write: if signedIn() && !document.matches('passwords_vault/.*');
     }
   }
 }

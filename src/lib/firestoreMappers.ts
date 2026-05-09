@@ -311,12 +311,15 @@ export function activityDocToTaskActivity(
 
 export function docToSupplier(d: QueryDocumentSnapshot<DocumentData>): Supplier {
   const x = d.data()
+  const activeRaw = x.active
+  const active = activeRaw === false ? false : true
   return {
     id: d.id,
     name: String(x.name ?? ''),
     phone: String(x.phone ?? ''),
     email: String(x.email ?? ''),
     supplierTypes: parseFirestoreSupplierTypes(x as Record<string, unknown>),
+    ...(active === false ? { active: false } : {}),
     createdAt: timestampToIso(x.createdAt),
   }
 }

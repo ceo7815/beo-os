@@ -72,7 +72,7 @@ const statusLabels: Record<LeadStatus, string> = {
 }
 
 const statusColors: Record<LeadStatus, string> = {
-  new: '#2563EB',
+  new: '#F97316',
   specification: '#7C3AED',
   quote_sent: '#D97706',
   follow_up: '#EA580C',
@@ -366,7 +366,7 @@ export function Leads() {
     if (next <= new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)) {
       return { label: 'לטיפול בקרוב', color: '#D97706' }
     }
-    return { label: 'מתוכנן', color: '#2563EB' }
+    return { label: 'מתוכנן', color: '#64748B' }
   }
 
   const buildFullActivityLog = (lead: (typeof leads)[number]) => {
@@ -640,7 +640,7 @@ export function Leads() {
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">לידים</h1>
           <p className="mt-1 text-[13px] text-[var(--text-mid)]">ניהול ומעקב לידים לצוות</p>
         </div>
-        <button type="button" className="hub-btn-primary text-sm" onClick={() => setFormOpen((v) => !v)}>
+        <button type="button" className="hub-btn-orange text-sm" onClick={() => setFormOpen((v) => !v)}>
           {formOpen ? 'סגירה' : '+ ליד חדש'}
         </button>
       </header>
@@ -654,7 +654,7 @@ export function Leads() {
           onClick={() => setStatusFilter('all')}
           className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
             statusFilter === 'all'
-              ? 'border-[var(--blue-mid)] bg-[#EFF6FF] shadow-[0_1px_4px_rgba(37,99,235,0.15)]'
+              ? 'border-[var(--orange)] bg-[var(--orange-light)] shadow-[0_1px_4px_rgba(249,115,22,0.18)]'
               : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:bg-[var(--surface-muted)]'
           }`}
         >
@@ -723,7 +723,7 @@ export function Leads() {
                     <li key={c.id} role="option">
                       <button
                         type="button"
-                        className="w-full px-3 py-2 text-right text-[13px] text-[var(--text-dark)] hover:bg-[#EFF6FF]"
+                        className="w-full px-3 py-2 text-right text-[13px] text-[var(--text-dark)] hover:bg-[var(--orange-light)]"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => pickLinkedClient(c.id)}
                       >
@@ -745,7 +745,7 @@ export function Leads() {
               ) : null}
             </div>
             {linkedClientId ? (
-              <p className="mt-1 text-[10px] font-medium text-[var(--blue-mid)]">
+              <p className="mt-1 text-[10px] font-medium text-[var(--orange)]">
                 משויך לכרטיס: {clientNameById.get(linkedClientId) ?? linkedClientId}
               </p>
             ) : linkedClientText.trim() ? (
@@ -765,7 +765,7 @@ export function Leads() {
                 type="button"
                 className={`rounded-[8px] px-2 py-1 text-[11px] font-semibold ${
                   sourceMode === 'campaign'
-                    ? 'bg-[#EFF6FF] text-[var(--blue-mid)]'
+                    ? 'bg-[var(--orange-light)] text-[var(--orange)]'
                     : 'border border-[var(--border)] text-[var(--text-mid)]'
                 }`}
                 onClick={() => {
@@ -779,7 +779,7 @@ export function Leads() {
                 type="button"
                 className={`rounded-[8px] px-2 py-1 text-[11px] font-semibold ${
                   sourceMode === 'active_client'
-                    ? 'bg-[#EFF6FF] text-[var(--blue-mid)]'
+                    ? 'bg-[var(--orange-light)] text-[var(--orange)]'
                     : 'border border-[var(--border)] text-[var(--text-mid)]'
                 }`}
                 onClick={() => {
@@ -803,7 +803,7 @@ export function Leads() {
                 type="button"
                 className={`rounded-[8px] px-2 py-1 text-[11px] font-semibold ${
                   sourceMode === 'manual'
-                    ? 'bg-[#EFF6FF] text-[var(--blue-mid)]'
+                    ? 'bg-[var(--orange-light)] text-[var(--orange)]'
                     : 'border border-[var(--border)] text-[var(--text-mid)]'
                 }`}
                 onClick={() => {
@@ -860,10 +860,10 @@ export function Leads() {
           </div>
           <input placeholder="צרכי לקוח" value={clientNeeds} onChange={(e) => setClientNeeds(e.target.value)} />
           <div className="md:col-span-2 flex justify-end gap-2">
-            <button type="button" className="hub-btn-secondary text-sm" onClick={() => setFormOpen(false)}>
+            <button type="button" className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-5 py-2 text-sm font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]" onClick={() => setFormOpen(false)}>
               ביטול
             </button>
-            <button type="button" className="hub-btn-primary text-sm" onClick={() => void submitLead()}>
+            <button type="button" className="hub-btn-orange text-sm" onClick={() => void submitLead()}>
               שמירת ליד
             </button>
           </div>
@@ -877,7 +877,7 @@ export function Leads() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button type="button" className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-primary' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`} onClick={() => setStatusFilter('all')}>
+        <button type="button" className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-orange' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`} onClick={() => setStatusFilter('all')}>
           הכל
         </button>
         {LEAD_STATUSES_ORDERED.map((s) => (
@@ -926,7 +926,7 @@ export function Leads() {
                     ) : (
                       <button
                         type="button"
-                        className="rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1 text-[10px] font-semibold text-[var(--blue-mid)]"
+                        className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
                         onClick={() =>
                           void promptAndUpdateField(l.id, 'company', 'חברה', l.company)
                         }
@@ -950,7 +950,7 @@ export function Leads() {
                     ) : (
                       <button
                         type="button"
-                        className="rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1 text-[10px] font-semibold text-[var(--blue-mid)]"
+                        className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
                         onClick={() =>
                           void promptAndUpdateField(l.id, 'phone', 'טלפון', l.phone)
                         }
@@ -965,7 +965,7 @@ export function Leads() {
                     ) : (
                       <button
                         type="button"
-                        className="rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1 text-[10px] font-semibold text-[var(--blue-mid)]"
+                        className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
                         onClick={() =>
                           void promptAndUpdateField(l.id, 'email', 'אימייל', l.email)
                         }
@@ -991,7 +991,7 @@ export function Leads() {
                     ) : (
                       <button
                         type="button"
-                        className="rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1 text-[10px] font-semibold text-[var(--blue-mid)]"
+                        className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
                         onClick={() => openSourcePicker(l.id, l.source)}
                       >
                         + הוסף
@@ -1018,7 +1018,7 @@ export function Leads() {
                             href={l.quotePdfUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block font-medium text-[var(--blue-mid)] hover:underline"
+                            className="block font-medium text-[var(--orange)] hover:underline"
                             dir="ltr"
                           >
                             {l.quotePdfFileName || 'פתיחת PDF'}
@@ -1029,7 +1029,7 @@ export function Leads() {
                             href={l.quoteVisualUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block truncate font-medium text-[var(--blue-mid)] hover:underline"
+                            className="block truncate font-medium text-[var(--orange)] hover:underline"
                             dir="ltr"
                           >
                             קישור להצעה
@@ -1051,7 +1051,7 @@ export function Leads() {
                     ) : (
                       <button
                         type="button"
-                        className="rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1 text-[10px] font-semibold text-[var(--blue-mid)]"
+                        className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
                         onClick={() =>
                           void promptAndUpdateField(
                             l.id,
@@ -1076,19 +1076,32 @@ export function Leads() {
                     ) : null}
                   </td>
                   <td className="px-3 py-3">
-                    {urgencyForLead(l.nextFollowUpDate) ? (
-                      <div className="space-y-1">
-                        <Badge
-                          label={urgencyForLead(l.nextFollowUpDate)!.label}
-                          color={urgencyForLead(l.nextFollowUpDate)!.color}
-                        />
-                        <p className="text-[10px] text-[var(--text-light)]">
-                          חזרה: {formatDateIL(l.nextFollowUpDate ?? '')}
-                        </p>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-[var(--text-light)]">ללא תזמון</span>
-                    )}
+                    {(() => {
+                      const fu = l.nextFollowUpDate?.slice(0, 10)
+                      const qr = l.quoteReturnByDate?.slice(0, 10)
+                      const fuV =
+                        fu && /^\d{4}-\d{2}-\d{2}$/.test(fu) ? fu : undefined
+                      const qrV =
+                        qr && /^\d{4}-\d{2}-\d{2}$/.test(qr) ? qr : undefined
+                      const scheduleDate = fuV ?? qrV
+                      const urgency = scheduleDate
+                        ? urgencyForLead(scheduleDate)
+                        : null
+                      if (!scheduleDate || !urgency) {
+                        return (
+                          <span className="text-[11px] text-[var(--text-light)]">ללא תזמון</span>
+                        )
+                      }
+                      const caption = fuV ? 'חזרה' : 'תאריך חזרה ללקוח'
+                      return (
+                        <div className="space-y-1">
+                          <Badge label={urgency.label} color={urgency.color} />
+                          <p className="text-[10px] text-[var(--text-light)]">
+                            {caption}: {formatDateIL(scheduleDate)}
+                          </p>
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td className="px-3 py-3 text-[var(--text-mid)] text-xs">
                     {formatDateIL(l.createdAt)}
@@ -1108,7 +1121,7 @@ export function Leads() {
                           setOpenActionLeadId(null)
                           setLeadDetailsLeadId(l.id)
                         }}
-                        className="w-full rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-[11px] font-semibold text-[var(--blue-mid)]"
+                        className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-3 py-1.5 text-[11px] font-semibold text-[var(--orange)]"
                       >
                         פרטים
                       </button>
@@ -1207,7 +1220,7 @@ export function Leads() {
             <button
               type="button"
               onClick={() => void saveFollowUp(actionMenuLead.id)}
-              className="w-full rounded-[8px] border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1.5 text-[10px] font-semibold text-[var(--blue-mid)]"
+              className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1.5 text-[10px] font-semibold text-[var(--orange)]"
             >
               שמירת מעקב
             </button>
@@ -1224,7 +1237,7 @@ export function Leads() {
             <div className="flex justify-end border-t border-[var(--border)] pt-3">
               <button
                 type="button"
-                className="hub-btn-secondary text-sm"
+                className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-5 py-2 text-sm font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]"
                 onClick={() => setOpenActionLeadId(null)}
               >
                 סגירה
@@ -1305,7 +1318,7 @@ export function Leads() {
                 <input
                   type="file"
                   accept="application/pdf,.pdf"
-                  className="mt-2 box-border block w-full max-w-full min-w-0 text-[12px] text-[var(--text-mid)] file:me-2 file:max-w-[12rem] file:truncate file:rounded-[6px] file:border-0 file:bg-[#EFF6FF] file:px-2 file:py-1.5 file:text-[11px] file:font-semibold file:text-[var(--blue-mid)] disabled:opacity-45"
+                  className="mt-2 box-border block w-full max-w-full min-w-0 text-[12px] text-[var(--text-mid)] file:me-2 file:max-w-[12rem] file:truncate file:rounded-[6px] file:border-0 file:bg-[var(--orange-light)] file:px-2 file:py-1.5 file:text-[11px] file:font-semibold file:text-[var(--orange)] disabled:opacity-45"
                   disabled={quoteChannelDraft !== 'pdf_file' || quoteSubmitting}
                   onChange={(e) => {
                     setQuotePdfFile(e.target.files?.[0] ?? null)
@@ -1357,7 +1370,7 @@ export function Leads() {
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
-              className="hub-btn-secondary text-sm"
+              className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-5 py-2 text-sm font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]"
               disabled={quoteSubmitting}
               onClick={() => setQuoteModalLeadId(null)}
             >
@@ -1365,7 +1378,7 @@ export function Leads() {
             </button>
             <button
               type="button"
-              className="hub-btn-primary text-sm"
+              className="hub-btn-orange text-sm"
               disabled={quoteSubmitting}
               onClick={() => void confirmQuoteSent()}
             >
@@ -1394,7 +1407,7 @@ export function Leads() {
               type="button"
               className={`rounded-[8px] px-2 py-1 text-[11px] font-semibold ${
                 sourcePickerMode === 'campaign'
-                  ? 'bg-[#EFF6FF] text-[var(--blue-mid)]'
+                  ? 'bg-[var(--orange-light)] text-[var(--orange)]'
                   : 'border border-[var(--border)] text-[var(--text-mid)]'
               }`}
               onClick={() => setSourcePickerMode('campaign')}
@@ -1405,7 +1418,7 @@ export function Leads() {
               type="button"
               className={`rounded-[8px] px-2 py-1 text-[11px] font-semibold ${
                 sourcePickerMode === 'active_client'
-                  ? 'bg-[#EFF6FF] text-[var(--blue-mid)]'
+                  ? 'bg-[var(--orange-light)] text-[var(--orange)]'
                   : 'border border-[var(--border)] text-[var(--text-mid)]'
               }`}
               onClick={() => setSourcePickerMode('active_client')}
@@ -1416,7 +1429,7 @@ export function Leads() {
               type="button"
               className={`rounded-[8px] px-2 py-1 text-[11px] font-semibold ${
                 sourcePickerMode === 'manual'
-                  ? 'bg-[#EFF6FF] text-[var(--blue-mid)]'
+                  ? 'bg-[var(--orange-light)] text-[var(--orange)]'
                   : 'border border-[var(--border)] text-[var(--text-mid)]'
               }`}
               onClick={() => setSourcePickerMode('manual')}
@@ -1458,12 +1471,12 @@ export function Leads() {
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              className="hub-btn-secondary text-sm"
+              className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-5 py-2 text-sm font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]"
               onClick={() => setSourcePickerLeadId(null)}
             >
               ביטול
             </button>
-            <button type="button" className="hub-btn-primary text-sm" onClick={() => void saveSourcePicker()}>
+            <button type="button" className="hub-btn-orange text-sm" onClick={() => void saveSourcePicker()}>
               שמירה
             </button>
           </div>
@@ -1488,14 +1501,14 @@ export function Leads() {
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"
-              className="hub-btn-secondary text-sm"
+              className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-5 py-2 text-sm font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]"
               onClick={() => setClientNeedsViewerLeadId(null)}
             >
               סגירה
             </button>
             <button
               type="button"
-              className="hub-btn-primary text-sm"
+              className="hub-btn-orange text-sm"
               onClick={() => {
                 if (!clientNeedsViewerLeadId) return
                 void updateLead(clientNeedsViewerLeadId, {
@@ -1617,7 +1630,7 @@ export function Leads() {
                           href={leadDetailsLead.quotePdfUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex rounded-[8px] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-[var(--blue-mid)] hover:underline"
+                          className="inline-flex rounded-[8px] bg-[var(--orange-light)] px-2.5 py-1 text-[11px] font-semibold text-[var(--orange)] hover:underline"
                         >
                           פתיחה בדפדפן
                         </a>
@@ -1637,7 +1650,7 @@ export function Leads() {
                         href={leadDetailsLead.quoteVisualUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="break-all text-[13px] font-semibold text-[var(--blue-mid)] hover:underline"
+                        className="break-all text-[13px] font-semibold text-[var(--orange)] hover:underline"
                         dir="ltr"
                       >
                         {leadDetailsLead.quoteVisualUrl}
@@ -1759,7 +1772,7 @@ export function Leads() {
         <div className="mt-6 flex justify-end border-t border-[var(--border)] pt-4">
           <button
             type="button"
-            className="hub-btn-primary text-sm"
+            className="hub-btn-orange text-sm"
             onClick={() => setLeadDetailsLeadId(null)}
           >
             סגירה
@@ -1806,7 +1819,7 @@ export function Leads() {
           <div className="flex justify-end pt-1">
             <button
               type="button"
-              className="hub-btn-primary text-sm"
+              className="hub-btn-orange text-sm"
               onClick={() => setActivityHistoryLeadId(null)}
             >
               סגירה

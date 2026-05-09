@@ -49,13 +49,21 @@ import type {
   TaskRecurrence,
   TaskStatus,
 } from '../types'
+import {
+  NEW_TASK_DRAWER_ID,
+  type NewTaskDraftSeed,
+} from '../lib/taskDrawerIds'
 
 type TasksContextValue = {
   tasks: Task[]
   loading: boolean
   error: Error | null
   drawerTaskId: string | null
+  /** Seed למגירת משימה חדשה — רלוונטי כש־drawerTaskId === NEW_TASK_DRAWER_ID */
+  newTaskDraftSeed: NewTaskDraftSeed | null
   setDrawerTaskId: (id: string | null) => void
+  /** פותח את מגירת המשימה במצב טיוטה (ללא שמירה ב-Firestore עד «שמור משימה») */
+  openNewTaskDraft: (seed: NewTaskDraftSeed) => void
   quickSliderOpen: boolean
   setQuickSliderOpen: (open: boolean) => void
   addTask: (
@@ -411,9 +419,23 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   >({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-  const [drawerTaskId, setDrawerTaskId] = useState<string | null>(null)
+  const [drawerTaskId, setDrawerTaskIdInner] = useState<string | null>(null)
+  const [newTaskDraftSeed, setNewTaskDraftSeed] =
+    useState<NewTaskDraftSeed | null>(null)
   const [quickSliderOpen, setQuickSliderOpen] = useState(false)
   const tasksRef = useRef<Task[]>([])
+
+  const setDrawerTaskId = useCallback((id: string | null) => {
+    setDrawerTaskIdInner(id)
+    if (id === null || id !== NEW_TASK_DRAWER_ID) {
+      setNewTaskDraftSeed(null)
+    }
+  }, [])
+
+  const openNewTaskDraft = useCallback((seed: NewTaskDraftSeed) => {
+    setNewTaskDraftSeed(seed)
+    setDrawerTaskIdInner(NEW_TASK_DRAWER_ID)
+  }, [])
 
   const tasks = useMemo(() => {
     return rawTasks.map((t) => ({
@@ -947,7 +969,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       drawerTaskId,
+      newTaskDraftSeed,
       setDrawerTaskId,
+      openNewTaskDraft,
       quickSliderOpen,
       setQuickSliderOpen,
       addTask,
@@ -963,7 +987,10 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       loading,
       error,
       drawerTaskId,
+      newTaskDraftSeed,
       quickSliderOpen,
+      setDrawerTaskId,
+      openNewTaskDraft,
       addTask,
       addTaskNote,
       updateTask,

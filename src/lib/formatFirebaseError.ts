@@ -12,6 +12,10 @@ const FIRESTORE_HINT_HE: Record<string, string> = {
   unauthenticated: 'ההתחברות פגה — התחברו מחדש.',
   'invalid-argument': 'נתונים לא חוקיים ל-Firestore.',
   'not-found': 'המסמך או האוסף לא נמצאו.',
+  'functions/not-found':
+    'הפונקציה בערוץ ה-Cloud Functions לא נמצאה — בדקו אזור (region) או שם פונקציה.',
+  'functions/internal':
+    'שגיאה פנימית בפונקציה — לעיתים תליית SMTP (פורט חסום), timeout בשרת, או שהפונקציה לא עודכנה. העדף RESEND_API_KEY ב־HTTPS; בדוק לוגים.',
 }
 
 function messageSuggestsPrematureSend(msg: string): boolean {
