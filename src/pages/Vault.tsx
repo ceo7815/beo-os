@@ -200,20 +200,22 @@ export function Vault() {
         : 'נסה לשנות את החיפוש או הסינון.'
 
   return (
-    <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 md:px-8 md:py-8">
+    <div className="mx-auto max-w-[1100px] space-y-4 px-4 py-5 md:space-y-6 md:px-8 md:py-8">
       <header className="space-y-1">
-        <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">כספת סיסמאות</h1>
-        <p className="max-w-2xl text-[13px] leading-relaxed text-[var(--text-mid)]">
+        <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
+          כספת סיסמאות
+        </h1>
+        <p className="max-w-2xl text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
           {vaultAdmin
             ? 'ניהול מרכזי של סיסמאות ופרטי גישה — בחר מי ברשימת המשתמשים חשוף לכל רשומה. הסיסמה מוסתרת עד לחיצה על «הצג».'
             : 'פריטים שמנהל המערכת שיתף איתך בלבד. הסיסמה מוסתרת עד לחיצה על «הצג».'}
         </p>
       </header>
 
-      <div className={`space-y-4 rounded-2xl ${hubSectionClass(0)} p-4 md:p-6`}>
-        <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-end md:justify-between">
+      <div className={`space-y-3 rounded-2xl ${hubSectionClass(0)} p-3 md:space-y-4 md:p-6`}>
+        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end md:justify-between md:gap-4">
           <div className="flex min-w-0 flex-1 flex-col gap-2 md:max-w-md">
-            <label className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-light)]">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)] md:text-[11px]">
               חיפוש
             </label>
             <input
@@ -224,8 +226,8 @@ export function Vault() {
               className="w-full"
             />
           </div>
-          <div className="flex w-full flex-col gap-2 md:w-auto md:min-w-[220px]">
-            <label className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-light)]">
+          <div className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:min-w-[220px]">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)] md:text-[11px]">
               קטגוריה
             </label>
             <select
@@ -248,19 +250,19 @@ export function Vault() {
           ) : null}
         </div>
 
-        <div className="border-t border-[var(--border)] pt-4">
+        <div className="border-t border-[var(--border)] pt-3 md:pt-4">
           <label
-            className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-light)]"
+            className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)] md:text-[11px]"
             htmlFor="vault-filter-client"
           >
             חיפוש לפי לקוח
           </label>
-          <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-mid)]">
+          <p className="mt-1 text-[10px] leading-relaxed text-[var(--text-mid)] md:text-[11px]">
             הקלד שם (או אימייל / טלפון) — בחר לקוח מהרשימה. יוצגו{' '}
             <span className="font-semibold text-[var(--text-dark)]">כל</span> הסיסמאות המשויכות ללקוח (ניתן לשלב עם
             החיפוש והקטגוריה למעלה).
           </p>
-          <div className="mt-2 max-w-2xl">
+          <div className="mt-2 min-w-0 max-w-2xl">
             <ClientQuickSelect
               id="vault-filter-client"
               clients={clients}
@@ -276,39 +278,39 @@ export function Vault() {
       ) : filtered.length === 0 ? (
         <EmptyState title={emptyTitle} description={emptyDescription} />
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
           {filtered.map((row, idx) => (
             <li
               key={row.id}
-              className={`rounded-2xl ${hubSectionClass((idx % 4) + 1)} flex flex-col gap-4 p-5`}
+              className={`flex flex-col gap-3 rounded-xl p-3 sm:rounded-2xl sm:gap-4 sm:p-5 ${hubSectionClass((idx % 4) + 1)}`}
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--orange)]">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--orange)] md:text-[11px]">
                     {row.category || 'ללא קטגוריה'}
                   </p>
-                  <h2 className="mt-1 text-[17px] font-extrabold leading-snug text-[var(--text-dark)]">
+                  <h2 className="mt-1 break-words text-[15px] font-extrabold leading-snug text-[var(--text-dark)] md:text-[17px]">
                     {row.title || 'ללא כותרת'}
                   </h2>
                   {row.clientId ? (
-                    <p className="mt-1 text-[12px] font-semibold text-[var(--text-mid)]">
+                    <p className="mt-1 break-words text-[11px] font-semibold text-[var(--text-mid)] md:text-[12px]">
                       לקוח: {clientNameById.get(row.clientId) ?? row.clientId}
                     </p>
                   ) : null}
                 </div>
                 {vaultAdmin ? (
-                  <div className="flex shrink-0 gap-2">
+                  <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:shrink-0 sm:flex-row sm:gap-2">
                     <button
                       type="button"
                       onClick={() => openEdit(row.id)}
-                      className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--bg-input)]"
+                      className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--bg-input)] sm:w-auto sm:py-1.5"
                     >
                       עריכה
                     </button>
                     <button
                       type="button"
                       onClick={() => setDeleteId(row.id)}
-                      className="rounded-lg border border-[var(--danger)]/40 px-3 py-1.5 text-[12px] font-semibold text-[var(--danger)] transition hover:bg-red-50"
+                      className="w-full rounded-lg border border-[var(--danger)]/40 px-3 py-2 text-[12px] font-semibold text-[var(--danger)] transition hover:bg-red-50 sm:w-auto sm:py-1.5"
                     >
                       מחק
                     </button>
@@ -317,7 +319,7 @@ export function Vault() {
               </div>
 
               {vaultAdmin ? (
-                <p className="text-[11px] leading-snug text-[var(--text-light)]">
+                <p className="break-words text-[10px] leading-snug text-[var(--text-light)] md:text-[11px]">
                   חשיפה לפרטי גישה:{' '}
                   {row.visibleUserIds.length === 0 ? (
                     <span className="font-semibold text-[var(--text-mid)]">רק מנהלי מערכת</span>
@@ -329,36 +331,41 @@ export function Vault() {
                 </p>
               ) : null}
 
-              <dl className="space-y-2 text-[13px]">
-                <div>
-                  <dt className="text-[11px] font-semibold text-[var(--text-light)]">שם משתמש</dt>
-                  <dd className="mt-0.5 font-medium text-[var(--text-dark)]">{row.username || '—'}</dd>
+              <dl className="space-y-1.5 text-[12px] md:space-y-2 md:text-[13px]">
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-semibold text-[var(--text-light)] md:text-[11px]">
+                    שם משתמש
+                  </dt>
+                  <dd className="mt-0.5 break-all font-medium text-[var(--text-dark)]">
+                    {row.username || '—'}
+                  </dd>
                 </div>
-                <div>
-                  <dt className="text-[11px] font-semibold text-[var(--text-light)]">
+                <div className="min-w-0">
+                  <dt className="text-[10px] font-semibold text-[var(--text-light)] md:text-[11px]">
                     {row.loginType === 'google' || !row.password.trim()
                       ? 'כניסה'
                       : 'סיסמה'}
                   </dt>
-                  <dd className="mt-1 flex flex-wrap items-center gap-2">
+                  <dd className="mt-1 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                     {row.loginType === 'google' || !row.password.trim() ? (
                       <p
-                        className={`w-full text-[14px] font-extrabold leading-snug text-[var(--text-dark)] ${
+                        className={`w-full text-[13px] font-extrabold leading-snug text-[var(--text-dark)] md:text-[14px] ${
                           row.loginType === 'google'
-                            ? 'rounded-lg border border-[var(--border)] bg-[var(--bg-input)]/60 px-3 py-2.5'
-                            : 'rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-input)]/40 px-3 py-2.5'
+                            ? 'rounded-lg border border-[var(--border)] bg-[var(--bg-input)]/60 px-3 py-2 md:py-2.5'
+                            : 'rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-input)]/40 px-3 py-2 md:py-2.5'
                         }`}
                       >
                         כניסה מהירה עם חשבון Google
                       </p>
                     ) : (
                       <>
-                        <span className="rounded-lg bg-[var(--bg-input)] px-3 py-2 font-mono text-[13px] text-[var(--text-dark)]">
+                        <span className="w-full min-w-0 break-all rounded-lg bg-[var(--bg-input)] px-3 py-2 font-mono text-[12px] text-[var(--text-dark)] sm:w-auto md:text-[13px]">
                           {revealed[row.id] ? row.password || '—' : maskPass()}
                         </span>
+                        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                         <button
                           type="button"
-                          className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--orange-light)]"
+                          className="min-h-[2.25rem] flex-1 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--orange-light)] sm:flex-initial sm:min-h-0"
                           onClick={() => toggleReveal(row.id)}
                           aria-pressed={revealed[row.id]}
                         >
@@ -366,24 +373,27 @@ export function Vault() {
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg border border-[var(--blue-mid)]/40 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--blue-mid)] hover:bg-[var(--blue-light)]"
+                          className="min-h-[2.25rem] flex-1 rounded-lg border border-[var(--blue-mid)]/40 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--blue-mid)] hover:bg-[var(--blue-light)] sm:flex-initial sm:min-h-0"
                           onClick={() => void copyText(row.password)}
                         >
                           העתק
                         </button>
+                        </div>
                       </>
                     )}
                   </dd>
                 </div>
                 {row.url ? (
-                  <div>
-                    <dt className="text-[11px] font-semibold text-[var(--text-light)]">קישור לדף כניסה</dt>
-                    <dd className="mt-0.5 truncate">
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-semibold text-[var(--text-light)] md:text-[11px]">
+                      קישור לדף כניסה
+                    </dt>
+                    <dd className="mt-0.5 min-w-0">
                       <a
                         href={row.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-medium text-[var(--blue-mid)] underline-offset-2 hover:underline"
+                        className="break-all font-medium text-[var(--blue-mid)] underline-offset-2 hover:underline md:block md:truncate md:break-normal"
                       >
                         {row.url}
                       </a>
@@ -391,14 +401,16 @@ export function Vault() {
                   </div>
                 ) : null}
                 {row.notes ? (
-                  <div>
-                    <dt className="text-[11px] font-semibold text-[var(--text-light)]">הערות</dt>
-                    <dd className="mt-0.5 whitespace-pre-wrap text-[var(--text-mid)]">{row.notes}</dd>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-semibold text-[var(--text-light)] md:text-[11px]">הערות</dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
+                      {row.notes}
+                    </dd>
                   </div>
                 ) : null}
               </dl>
 
-              <p className="border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-light)]">
+              <p className="border-t border-[var(--border)] pt-2 text-[10px] text-[var(--text-light)] md:pt-3 md:text-[11px]">
                 עודכן {formatDateTimeIL(row.updatedAt) || '—'} ·{' '}
                 {nameByUid.get(row.updatedBy) ?? (row.updatedBy ? row.updatedBy.slice(0, 8) : '—')}
               </p>

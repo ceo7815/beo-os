@@ -1,5 +1,5 @@
-import { useMemo, type ReactNode } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useInvoices } from '../hooks/useInvoices'
 import { useUsers } from '../hooks/useUsers'
@@ -47,11 +47,37 @@ function NavGlyph({ children }: { children: ReactNode }) {
 }
 
 export function Layout() {
+  const location = useLocation()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const setSelectedClient = useHubStore((s) => s.setSelectedClient)
   const { users: teamMembers } = useUsers()
   const { invoices } = useInvoices()
   const overdueInvoiceCount = invoices.filter((i) => i.status === 'overdue').length
   const { user, signOutUser } = useAuth()
+
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileNavOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [mobileNavOpen])
+
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [mobileNavOpen])
+
+  const closeMobileNav = () => setMobileNavOpen(false)
 
   const mainUser: TeamMember = useMemo(() => {
     if (!user) {
@@ -87,13 +113,83 @@ export function Layout() {
         dir="rtl"
         className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-[100dvh] md:flex-row md:overflow-hidden"
       >
-        <aside className="flex w-full shrink-0 flex-col border-b border-[rgba(255,255,255,0.08)] bg-[#454545] md:h-full md:w-[220px] md:overflow-y-auto md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.08)]">
+        <header
+          className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-[rgba(255,255,255,0.12)] bg-[#454545] px-3 py-2.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)] md:hidden"
+          style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
+        >
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white transition hover:bg-white/10 active:scale-[0.98]"
+            aria-label="פתח תפריט ניווט"
+            aria-expanded={mobileNavOpen}
+            aria-controls="app-sidebar"
+          >
+            <span className="sr-only">פתח תפריט</span>
+            <svg
+              viewBox="0 0 24 24"
+              className="h-6 w-6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              aria-hidden
+            >
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          <img
+            src={LAYOUT_LOGO_SRC}
+            alt=""
+            className="h-9 w-auto max-w-[140px] select-none object-contain opacity-95"
+            width={140}
+            height={36}
+            decoding="async"
+          />
+          <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-white/50">
+            האב מערכות מתקדמות
+          </span>
+        </header>
+
+        {mobileNavOpen ? (
+          <button
+            type="button"
+            className="fixed inset-0 z-[57] cursor-default border-0 bg-black/50 p-0 md:hidden"
+            aria-label="סגור תפריט ניווט"
+            onClick={closeMobileNav}
+          />
+        ) : null}
+
+        <aside
+          id="app-sidebar"
+          role="navigation"
+          aria-label="ניווט ראשי"
+          className={`flex flex-col bg-[#454545] transition-transform duration-200 ease-out max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto max-md:border-l max-md:border-[rgba(255,255,255,0.08)] max-md:shadow-[-10px_0_40px_rgba(0,0,0,0.35)] md:static md:z-auto md:h-full md:w-[220px] md:shrink-0 md:translate-x-0 md:overflow-y-auto md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.08)] md:shadow-none ${
+            mobileNavOpen ? 'max-md:translate-x-0' : 'max-md:pointer-events-none max-md:translate-x-full'
+          }`}
+          style={{
+            paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
+            paddingTop: 'max(0px, env(safe-area-inset-top, 0px))',
+          }}
+          onClick={(e) => {
+            const t = e.target as HTMLElement
+            if (t.closest('a[href], button')) closeMobileNav()
+          }}
+        >
           <div className="flex flex-1 flex-col gap-5 p-4">
-            <div className="border-b border-white/10 pb-4">
+            <div className="relative border-b border-white/10 pb-4">
+              <button
+                type="button"
+                onClick={closeMobileNav}
+                className="absolute left-0 top-0 flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 text-lg font-light leading-none text-white/80 transition hover:bg-white/10 md:hidden"
+                aria-label="סגור תפריט"
+              >
+                ×
+              </button>
               <img
                 src={LAYOUT_LOGO_SRC}
                 alt="Hub-Pos"
-                className="mx-auto h-auto w-full max-w-[196px] select-none object-contain"
+                className="mx-auto h-auto w-full max-w-[196px] select-none object-contain max-md:pt-1"
                 width={196}
                 height={72}
                 decoding="async"
@@ -378,7 +474,7 @@ export function Layout() {
           </div>
         </aside>
 
-        <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <main className="relative min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           <QuickActionsFloat />
           <QuickTasksSlider />
           <TaskDrawer />

@@ -152,9 +152,9 @@ function SiteBlock({
 
   return (
     <div
-      className={`rounded-[12px] border border-[var(--border)] border-s-4 p-4 shadow-sm ${st.bar} ${st.borderS}`}
+      className={`rounded-[12px] border border-[var(--border)] border-s-4 p-3 shadow-sm sm:p-4 ${st.bar} ${st.borderS}`}
     >
-      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+      <div className="mb-2 flex flex-col gap-3 sm:mb-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
             className={`h-2.5 w-2.5 shrink-0 rounded-full ${st.dot}`}
@@ -167,24 +167,24 @@ function SiteBlock({
             </p>
             <p
               dir="ltr"
-              className="truncate text-[15px] font-extrabold text-[var(--blue-dark)]"
+              className="min-w-0 max-md:break-all text-[14px] font-extrabold text-[var(--blue-dark)] sm:text-[15px] md:truncate"
             >
               {record.domain.trim() || '—'}
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 gap-1">
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:shrink-0 sm:flex-row sm:gap-1">
           <button
             type="button"
             onClick={onEdit}
-            className="rounded-lg border border-[var(--border)] bg-white px-2 py-1 text-[11px] font-bold text-[var(--blue-mid)] hover:bg-[var(--blue-light)]"
+            className="w-full rounded-lg border border-[var(--border)] bg-white px-2 py-2 text-[11px] font-bold text-[var(--blue-mid)] hover:bg-[var(--blue-light)] sm:w-auto sm:py-1"
           >
             עריכה
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-bold text-red-700 hover:bg-red-100"
+            className="w-full rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-[11px] font-bold text-red-700 hover:bg-red-100 sm:w-auto sm:py-1"
           >
             מחק
           </button>
@@ -193,20 +193,20 @@ function SiteBlock({
       <p className={`mb-2 text-[11px] font-semibold ${st.label}`}>
         {urgencyLabelHe(u)}
       </p>
-      <ul className="space-y-1.5 text-[12px] text-[var(--text-dark)]">
-        <li>
+      <ul className="space-y-1.5 text-[11px] text-[var(--text-dark)] sm:text-[12px]">
+        <li className="min-w-0 break-words">
           <span className="text-[var(--text-mid)]">🖥️ שרת · מיקום: </span>
           <span className="font-medium">
             {record.server || '—'} · {record.serverLocation || '—'}
           </span>
         </li>
-        <li>
+        <li className="min-w-0 break-words">
           <span className="text-[var(--text-mid)]">🔑 משתמש: </span>
-          <span dir="ltr" className="font-mono text-[13px]">
+          <span dir="ltr" className="inline-block max-w-full break-all font-mono text-[12px] sm:text-[13px]">
             {record.username || '—'}
           </span>
         </li>
-        <li>
+        <li className="min-w-0 break-words">
           <span className="text-[var(--text-mid)]">📅 חידוש דומיין: </span>
           <span className="font-medium">
             {record.domainExpiry
@@ -219,7 +219,7 @@ function SiteBlock({
             ) : null}
           </span>
         </li>
-        <li>
+        <li className="min-w-0 break-words">
           <span className="text-[var(--text-mid)]">🔒 תפוגת SSL: </span>
           <span className="font-medium">
             {record.sslExpiry ? formatDateIL(record.sslExpiry) : '—'}
@@ -230,14 +230,14 @@ function SiteBlock({
             ) : null}
           </span>
         </li>
-        <li>
+        <li className="min-w-0 break-words">
           <span className="text-[var(--text-mid)]">⚙️ פלטפורמה · PHP: </span>
           <span className="font-medium">
             {record.platform || '—'} · {record.phpVersion || '—'}
           </span>
         </li>
         {record.ipAddress.trim() ? (
-          <li dir="ltr" className="text-end">
+          <li dir="ltr" className="min-w-0 text-end break-all">
             <span className="text-[var(--text-mid)]" dir="rtl">
               IP:{' '}
             </span>
@@ -245,15 +245,15 @@ function SiteBlock({
           </li>
         ) : null}
         {record.controlPanel.trim() ? (
-          <li>
+          <li className="min-w-0 break-words">
             <span className="text-[var(--text-mid)]">לוח בקרה: </span>
             {record.controlPanel}
           </li>
         ) : null}
         {record.notes.trim() ? (
-          <li className="border-t border-[var(--border)] pt-2">
+          <li className="min-w-0 break-words border-t border-[var(--border)] pt-2">
             <span className="text-[var(--text-mid)]">📝 הערות: </span>
-            <p className="mt-1 whitespace-pre-wrap text-[12px] leading-relaxed">
+            <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed sm:text-[12px]">
               {record.notes}
             </p>
           </li>
@@ -393,35 +393,35 @@ export function Hosting() {
 
   return (
     <div
-      className="mx-auto max-w-[1200px] space-y-6 px-6 py-8 md:px-8"
+      className="mx-auto max-w-[1200px] space-y-4 px-4 py-5 md:space-y-6 md:px-6 md:py-8 lg:px-8"
       style={{ fontFamily: "'Rubik', sans-serif" }}
     >
-      <header className="flex flex-col gap-4 border-b border-[var(--border)] pb-6 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-[28px] font-extrabold text-[var(--blue-dark)]">
+      <header className="flex flex-col gap-3 border-b border-[var(--border)] pb-4 md:gap-4 md:pb-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-[22px] font-extrabold leading-tight text-[var(--blue-dark)] md:text-[28px]">
             מאגר אחסון 🖥️
           </h1>
-          <p className="mt-1 text-[13px] text-[var(--text-mid)]">
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
             מאגר אחסון — מידע בלבד (ללא תשלומים) · צבע לפי קרבת חידוש דומיין ו־SSL
           </p>
         </div>
         <button
           type="button"
           onClick={openNew}
-          className="rounded-[12px] bg-[var(--orange)] px-5 py-2.5 text-[14px] font-bold text-white shadow-md transition hover:brightness-110"
+          className="w-full justify-center rounded-[12px] bg-[var(--orange)] px-5 py-2.5 text-[14px] font-bold text-white shadow-md transition hover:brightness-110 sm:w-auto"
         >
           + הוסף אתר
         </button>
       </header>
 
-      <div className="rounded-[14px] border-2 border-red-300 bg-red-50 px-5 py-4 text-center shadow-sm">
-        <p className="text-[24px] font-extrabold leading-tight text-red-700 md:text-[30px]">
+      <div className="rounded-[14px] border-2 border-red-300 bg-red-50 px-3 py-3 text-center shadow-sm md:px-5 md:py-4">
+        <p className="text-[15px] font-extrabold leading-snug text-red-700 sm:text-[20px] md:text-[24px] lg:text-[30px]">
           לאחר הדרכה HUB-POS אשר ואור נכנסים יחד לסדר את הנושא
         </p>
       </div>
 
-      <div className={`flex flex-col gap-3 rounded-2xl ${hubSectionClass(0)} p-4 shadow-sm md:flex-row md:flex-wrap md:items-end`}>
-        <div className="min-w-[200px] flex-1">
+      <div className={`flex flex-col gap-3 rounded-2xl ${hubSectionClass(0)} p-3 shadow-sm md:flex-row md:flex-wrap md:items-end md:p-4`}>
+        <div className="min-w-0 flex-1 md:min-w-[200px]">
           <label
             htmlFor="hosting-search"
             className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]"
@@ -436,7 +436,7 @@ export function Hosting() {
             className="w-full rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-dark)]"
           />
         </div>
-        <div className="min-w-[160px]">
+        <div className="min-w-0 w-full md:min-w-[160px] md:w-auto">
           <label
             htmlFor="hosting-server-filter"
             className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]"
@@ -459,17 +459,17 @@ export function Hosting() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 text-[12px] text-[var(--text-mid)]">
+      <div className="flex flex-col gap-2 text-[11px] text-[var(--text-mid)] sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-2 sm:text-[12px]">
         <span className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#EF4444]" /> פחות מ־30
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#EF4444]" /> פחות מ־30
           יום או פג תוקף
         </span>
         <span className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> פחות מ־60
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-500" /> פחות מ־60
           יום
         </span>
         <span className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> תקין
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" /> תקין
         </span>
       </div>
 
@@ -482,26 +482,26 @@ export function Hosting() {
       {loading ? (
         <p className="text-[var(--text-mid)]">טוען מאגר…</p>
       ) : groups.length === 0 ? (
-        <div className="hub-empty-dashed rounded-[14px] p-10 text-center text-[var(--text-mid)]">
+        <div className="hub-empty-dashed rounded-[14px] p-6 text-center text-[var(--text-mid)] md:p-10">
           אין רשומות להצגה. הוסיפו אתר עם הכפתור למעלה.
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
           {groups.map((g) => (
             <article
               key={g.clientId}
               className={`overflow-hidden rounded-2xl ${hubSectionClass(1)} shadow-none`}
             >
-              <div className="border-b border-[var(--border)] bg-gradient-to-l from-[var(--blue-light)] to-white px-5 py-3">
-                <h2 className="text-[17px] font-extrabold text-[var(--blue-dark)]">
+              <div className="border-b border-[var(--border)] bg-gradient-to-l from-[var(--blue-light)] to-white px-3 py-2.5 md:px-5 md:py-3">
+                <h2 className="text-[15px] font-extrabold leading-snug text-[var(--blue-dark)] md:text-[17px]">
                   {g.name}
                 </h2>
-                <p className="text-[12px] text-[var(--text-mid)]">
+                <p className="text-[11px] text-[var(--text-mid)] md:text-[12px]">
                   {g.items.length}{' '}
                   {g.items.length === 1 ? 'אתר' : 'אתרים'}
                 </p>
               </div>
-              <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:gap-4 sm:p-4 xl:grid-cols-3">
                 {g.items.map((r) => (
                   <SiteBlock
                     key={r.id}

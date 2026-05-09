@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { Modal } from '../components/shared/Modal'
@@ -69,6 +69,68 @@ function lastRequestDisplay(row: CollectionTracking): string {
     return formatDateTimeIL(row.lastDemandRecordedAt)
   }
   return formatDateIL(row.lastRequestDate) || '—'
+}
+
+/** תוכן תא «הערות / דרישה» — משותף לטבלת דסקטופ ולכרטיס מובייל */
+function CollectionTrackingNotesContent({
+  row,
+  compact,
+}: {
+  row: CollectionTracking
+  /** בטבלה: קיצור גובה; בכרטיס: תוכן מלא */
+  compact?: boolean
+}) {
+  const hasDemand =
+    !!row.lastDemandMethod?.trim() || !!row.lastDemandClientReply?.trim()
+  const hasNote = !!row.note?.trim()
+  if (!hasDemand && !hasNote) {
+    return <span className="text-[var(--text-light)]">—</span>
+  }
+  return (
+    <div className="space-y-2">
+      {hasDemand ? (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-main)] p-2.5">
+          <div className="text-[11px] font-bold text-[var(--blue-dark)]">
+            דרישת תשלום אחרונה
+          </div>
+          {row.lastDemandRecordedAt?.trim() ? (
+            <div className="mt-1 tabular-nums text-[11px] text-[var(--text-mid)]">
+              <span className="font-semibold text-[var(--text-dark)]">עדכון: </span>
+              {formatDateTimeIL(row.lastDemandRecordedAt)}
+            </div>
+          ) : null}
+          {row.lastDemandMethod?.trim() ? (
+            <div className="mt-1.5 whitespace-pre-wrap break-words">
+              <span className="font-semibold text-[var(--text-dark)]">אופן: </span>
+              {row.lastDemandMethod.trim()}
+            </div>
+          ) : null}
+          {row.lastDemandClientReply?.trim() ? (
+            <div className="mt-1 whitespace-pre-wrap break-words">
+              <span className="font-semibold text-[var(--text-dark)]">מענה לקוח: </span>
+              {row.lastDemandClientReply.trim()}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {hasNote ? (
+        <div
+          className={
+            compact
+              ? 'line-clamp-4 whitespace-pre-wrap break-words'
+              : 'whitespace-pre-wrap break-words text-[var(--text-mid)]'
+          }
+        >
+          {hasDemand ? (
+            <span className="text-[10px] font-bold text-[var(--text-light)]">
+              הערה כללית:{' '}
+            </span>
+          ) : null}
+          {row.note!.trim()}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function sortEntries(a: CollectionTracking, b: CollectionTracking, today: string): number {
@@ -297,37 +359,169 @@ export function Collections() {
     setEditing(row)
   }
 
+  function CollectionRowMobile({ row }: { row: CollectionTracking }) {
+    const client = clientsById.get(row.clientId)
+    const st = getCollectionTrackingStatus(row, today)
+    const badge = statusBadge(st)
+    const rowBg = st === 'overdue' ? '#FEF2F2' : 'transparent'
+
+    const mobField = (label: string, node: ReactNode) => (
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold text-[var(--text-light)]">{label}</p>
+        <div className="mt-1 min-w-0 text-[13px]">{node}</div>
+      </div>
+    )
+
+    return (
+      <article
+        className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)]"
+        style={{ backgroundColor: rowBg }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--border)] pb-3">
+          <h3 className="min-w-0 flex-1 text-base font-extrabold leading-snug text-[var(--text-dark)]">
+            {client?.name ?? 'לקוח לא נמצא'}
+          </h3>
+          <div className="shrink-0 text-left">
+            <span
+              className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold sm:text-[11px]"
+              style={{ backgroundColor: badge.bg, color: badge.color }}
+            >
+              {badge.label}
+            </span>
+            {st === 'overdue' ? (
+              <p className="mt-1 text-[11px] font-semibold text-[#EF4444]">
+                איחור {daysLate(ymd(row.dueDate), today)} ימים
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-3 text-[var(--text-mid)]">
+          {mobField(
+            'מחלקה',
+            <span className="font-semibold text-[var(--blue-dark)]">
+              {clientDepartmentLabel(client)}
+            </span>,
+          )}
+          {mobField(
+            'איש קשר',
+            <span className="text-[var(--text-dark)]">{client?.contact || '—'}</span>,
+          )}
+          {mobField(
+            'טלפון',
+            client?.phone ? (
+              <a
+                className="break-all font-mono font-medium text-[var(--blue-mid)] hover:underline"
+                dir="ltr"
+                href={`tel:${client.phone.replace(/\s/g, '')}`}
+              >
+                {client.phone}
+              </a>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          {mobField(
+            'מייל',
+            client?.email ? (
+              <a
+                className="break-all font-medium text-[var(--blue-mid)] hover:underline"
+                dir="ltr"
+                href={`mailto:${client.email}`}
+              >
+                {client.email}
+              </a>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          {mobField('בקשת תשלום אחרונה', lastRequestDisplay(row))}
+          {mobField('יעד תשלום', formatDateIL(row.dueDate))}
+          {mobField(
+            'תאריך תשלום',
+            row.paidDate ? formatDateIL(row.paidDate) : '—',
+          )}
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold text-[var(--text-light)]">הערות / דרישה</p>
+            <div
+              className="mt-1 min-w-0 text-[var(--text-mid)]"
+              title={collectionTrackingNotesTitle(row)}
+            >
+              <CollectionTrackingNotesContent row={row} />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 border-t border-[var(--border)] pt-3">
+          <button
+            type="button"
+            onClick={() => openEdit(row)}
+            className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--text-dark)] transition hover:bg-[var(--blue-light)]"
+          >
+            עריכה
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDemandMethod('')
+              setDemandClientReply('')
+              setDemandRow(row)
+            }}
+            className="w-full rounded-lg border border-[#2563EB] bg-[#EFF6FF] px-3 py-2 text-xs font-semibold text-[#1D4ED8] transition hover:bg-[#DBEAFE]"
+          >
+            דרישת תשלום
+          </button>
+          <button
+            type="button"
+            onClick={() => void markPaid(row.clientId)}
+            className="w-full rounded-lg bg-[#10B981] px-3 py-2 text-xs font-semibold text-white transition hover:brightness-110"
+          >
+            סמן שולם
+          </button>
+          <button
+            type="button"
+            onClick={() => setRemoveId(row.clientId)}
+            className="flex h-10 w-full items-center justify-center rounded-lg border border-[var(--border)] text-lg text-[var(--text-mid)] transition hover:border-[#EF4444] hover:bg-[#FEF2F2] hover:text-[#EF4444]"
+            aria-label="הסר ממעקב"
+          >
+            ✕
+          </button>
+        </div>
+      </article>
+    )
+  }
+
   return (
     <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-2">
+      <header className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center md:justify-between">
+        <div className="min-w-0 text-right md:order-2 md:min-w-0 md:flex-1">
+          <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
+            מעקב גבייה
+          </h1>
+          <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-mid)] md:mt-1 md:text-[13px]">
+            מעקב עצמאי ללקוחות — חשבוניות ותשלומים מנוהלים בחשבונית ירוקה
+          </p>
+        </div>
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap md:order-1 md:w-auto md:shrink-0">
           <button
             type="button"
             onClick={openAdd}
             disabled={availableForAdd.length === 0}
-            className="hub-btn-orange text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            className="hub-btn-orange w-full text-sm disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[12rem]"
           >
             + הוסף לקוח למעקב
           </button>
           <button
             type="button"
             onClick={openGreenInvoice}
-            className="rounded-[10px] border border-[#16A34A] bg-[#ECFDF5] px-4 py-2 text-sm font-bold text-[#15803D] transition hover:bg-[#D1FAE5]"
+            className="w-full rounded-[10px] border border-[#16A34A] bg-[#ECFDF5] px-4 py-2.5 text-sm font-bold text-[#15803D] transition hover:bg-[#D1FAE5] sm:w-auto"
           >
             חשבונית ירוקה ↗
           </button>
         </div>
-        <div className="min-w-0 flex-1 sm:flex-none sm:text-right">
-          <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">
-            מעקב גבייה
-          </h1>
-          <p className="mt-1 text-[13px] text-[var(--text-mid)]">
-            מעקב עצמאי ללקוחות — חשבוניות ותשלומים מנוהלים בחשבונית ירוקה
-          </p>
-        </div>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4">
         <KpiMini
           seq={0}
           label="במעקב (לא סומן שולם)"
@@ -350,8 +544,50 @@ export function Collections() {
             המחלקה מוגדרת בכרטיס הלקוח. לקוח בלי מחלקה נספר תחת «ללא מחלקה». חודש
             נוכחי: {currentYm}.
           </p>
-          <div className={`overflow-x-hidden rounded-2xl ${hubSectionClass(2)} shadow-[0_2px_8px_rgba(0,0,0,0.04)]`}>
-            <table className="w-full table-fixed border-collapse text-right text-sm">
+          <div
+            className={`overflow-hidden rounded-2xl ${hubSectionClass(2)} shadow-[0_2px_8px_rgba(0,0,0,0.04)]`}
+          >
+            <div className="space-y-2 p-3 md:hidden">
+              {collectionByDepartment.map((r) => (
+                <div
+                  key={r.department}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-3 py-2.5"
+                >
+                  <span className="min-w-0 font-semibold text-[var(--text-dark)]">
+                    {r.department}
+                  </span>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-x-3 gap-y-1 text-[11px] tabular-nums">
+                    <span className="text-[var(--text-mid)]">
+                      במעקב{' '}
+                      <span className="font-bold text-[var(--text-dark)]">{r.open}</span>
+                    </span>
+                    <span className="font-semibold text-[#EF4444]">איחור {r.overdue}</span>
+                    <span className="text-[var(--text-mid)]">
+                      סה״כ{' '}
+                      <span className="font-bold text-[var(--text-dark)]">{r.total}</span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-[var(--border)] pt-2 text-[12px] font-bold text-[var(--text-dark)]">
+                <span>סה״כ</span>
+                <div className="flex flex-wrap justify-end gap-x-3 tabular-nums">
+                  <span className="text-[var(--text-mid)]">
+                    במעקב{' '}
+                    <span className="text-[var(--text-dark)]">{collectionDeptTotals.open}</span>
+                  </span>
+                  <span className="text-[#EF4444]">
+                    איחור {collectionDeptTotals.overdue}
+                  </span>
+                  <span className="text-[var(--text-mid)]">
+                    סה״כ{' '}
+                    <span className="text-[var(--text-dark)]">{collectionDeptTotals.total}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="hidden overflow-x-hidden md:block">
+              <table className="w-full table-fixed border-collapse text-right text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-main)] text-[11px] font-bold text-[var(--text-mid)]">
                   <th className="px-2 py-2.5 sm:px-4">מחלקה</th>
@@ -396,12 +632,46 @@ export function Collections() {
                 </tr>
               </tfoot>
             </table>
+            </div>
           </div>
         </div>
       ) : null}
 
       <div className={`overflow-x-hidden rounded-2xl ${hubSectionClass(activeRows.length > 0 ? 3 : 2)} shadow-[0_2px_12px_rgba(0,0,0,0.06)]`}>
-        <table className="w-full table-fixed border-collapse text-right text-[11px] sm:text-sm">
+        <div className="md:hidden">
+          <div className="space-y-3 p-3 sm:p-5">
+            {loading ? (
+              <p className="py-10 text-center text-sm text-[var(--text-mid)]">טוען…</p>
+            ) : sorted.length === 0 ? (
+              <div className="space-y-2 px-2 py-8 text-center text-[var(--text-mid)]">
+                <p className="mb-2 font-medium text-[var(--text-dark)]">
+                  אין לקוחות פתוחים במעקב
+                </p>
+                <p className="text-[13px] leading-relaxed">
+                  מוצגים כאן רק סבבי גבייה פתוחים. אחרי סימון «שולם» הרשומה
+                  נסגרת — אותו לקוח יכול להיכנס שוב למעקב כשיש חשבונית/תשלום
+                  חדש.
+                </p>
+                <p className="mt-1 text-[13px] leading-relaxed">
+                  כדי להוסיף לקוח למעקב, ודאו שהונפקה לו חשבונית/עסקה בחשבונית ירוקה
+                  ואז הוסיפו אותו. לנפק מסמך השתמשו ב־
+                  <button
+                    type="button"
+                    onClick={openGreenInvoice}
+                    className="mx-1 font-semibold text-[#15803D] underline"
+                  >
+                    חשבונית ירוקה
+                  </button>
+                </p>
+              </div>
+            ) : (
+              sorted.map((row) => <CollectionRowMobile key={row.id} row={row} />)
+            )}
+          </div>
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full table-fixed border-collapse text-right text-[11px] sm:text-sm">
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--bg-main)] text-[10px] font-bold text-[var(--text-mid)] sm:text-[12px]">
               <th className="w-[12%] px-1.5 py-2 sm:px-2 sm:py-3">לקוח</th>
@@ -499,62 +769,7 @@ export function Collections() {
                       className="max-w-0 px-1.5 py-2 align-top break-words text-[var(--text-mid)] sm:px-2 sm:py-3"
                       title={collectionTrackingNotesTitle(row)}
                     >
-                      {(() => {
-                        const hasDemand =
-                          !!row.lastDemandMethod?.trim() ||
-                          !!row.lastDemandClientReply?.trim()
-                        const hasNote = !!row.note?.trim()
-                        if (!hasDemand && !hasNote) {
-                          return (
-                            <span className="text-[var(--text-light)]">—</span>
-                          )
-                        }
-                        return (
-                          <div className="space-y-2">
-                            {hasDemand ? (
-                              <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-main)] p-2.5">
-                                <div className="text-[11px] font-bold text-[var(--blue-dark)]">
-                                  דרישת תשלום אחרונה
-                                </div>
-                                {row.lastDemandRecordedAt?.trim() ? (
-                                  <div className="mt-1 tabular-nums text-[11px] text-[var(--text-mid)]">
-                                    <span className="font-semibold text-[var(--text-dark)]">
-                                      עדכון:{' '}
-                                    </span>
-                                    {formatDateTimeIL(row.lastDemandRecordedAt)}
-                                  </div>
-                                ) : null}
-                                {row.lastDemandMethod?.trim() ? (
-                                  <div className="mt-1.5 whitespace-pre-wrap break-words">
-                                    <span className="font-semibold text-[var(--text-dark)]">
-                                      אופן:{' '}
-                                    </span>
-                                    {row.lastDemandMethod.trim()}
-                                  </div>
-                                ) : null}
-                                {row.lastDemandClientReply?.trim() ? (
-                                  <div className="mt-1 whitespace-pre-wrap break-words">
-                                    <span className="font-semibold text-[var(--text-dark)]">
-                                      מענה לקוח:{' '}
-                                    </span>
-                                    {row.lastDemandClientReply.trim()}
-                                  </div>
-                                ) : null}
-                              </div>
-                            ) : null}
-                            {hasNote ? (
-                              <div className="line-clamp-4 whitespace-pre-wrap break-words">
-                                {hasDemand ? (
-                                  <span className="text-[10px] font-bold text-[var(--text-light)]">
-                                    הערה כללית:{' '}
-                                  </span>
-                                ) : null}
-                                {row.note!.trim()}
-                              </div>
-                            ) : null}
-                          </div>
-                        )
-                      })()}
+                      <CollectionTrackingNotesContent row={row} compact />
                     </td>
                     <td className="max-w-0 px-1.5 py-2 align-top sm:px-2 sm:py-3">
                       <span
@@ -612,6 +827,7 @@ export function Collections() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal

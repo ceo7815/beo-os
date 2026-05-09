@@ -9,7 +9,7 @@ import { useLeads } from '../hooks/useLeads'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useClients } from '../hooks/useClients'
 import { useUsers } from '../hooks/useUsers'
-import type { LeadQuoteChannel, LeadStatus } from '../types'
+import type { Lead, LeadQuoteChannel, LeadStatus } from '../types'
 import { Badge } from '../components/shared/Badge'
 import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
@@ -633,8 +633,219 @@ export function Leads() {
     }
   }
 
+  function LeadMobileCard({ l }: { l: Lead }) {
+    const fu = l.nextFollowUpDate?.slice(0, 10)
+    const qr = l.quoteReturnByDate?.slice(0, 10)
+    const fuV = fu && /^\d{4}-\d{2}-\d{2}$/.test(fu) ? fu : undefined
+    const qrV = qr && /^\d{4}-\d{2}-\d{2}$/.test(qr) ? qr : undefined
+    const scheduleDate = fuV ?? qrV
+    const urgency = scheduleDate ? urgencyForLead(scheduleDate) : null
+    const caption = fuV ? 'חזרה' : 'תאריך חזרה ללקוח'
+
+    const mobField = (label: string, node: ReactNode) => (
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold text-[var(--text-light)]">{label}</p>
+        <div className="mt-1 min-w-0 text-[13px] text-[var(--text-dark)]">{node}</div>
+      </div>
+    )
+
+    return (
+      <article className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--border)] pb-3">
+          <h3 className="min-w-0 flex-1 text-base font-extrabold leading-snug text-[var(--text-dark)]">
+            {l.name}
+          </h3>
+          <Badge label={statusLabels[l.status]} color={statusColors[l.status]} />
+        </div>
+
+        {l.status === 'quote_sent' &&
+        (l.quoteChannel || l.quotePdfUrl || l.quoteVisualUrl) ? (
+          <div className="mt-2 space-y-1 border-b border-[var(--border)] pb-3 text-[10px] text-[var(--text-mid)]">
+            {l.quoteChannel === 'green_invoice' ? (
+              <span className="block text-[var(--text-dark)]">חשבונית ירוקה</span>
+            ) : null}
+            {l.quotePdfUrl ? (
+              <a
+                href={l.quotePdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block font-medium text-[var(--orange)] hover:underline"
+                dir="ltr"
+              >
+                {l.quotePdfFileName || 'פתיחת PDF'}
+              </a>
+            ) : null}
+            {l.quoteVisualUrl ? (
+              <a
+                href={l.quoteVisualUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block break-all font-medium text-[var(--orange)] hover:underline"
+                dir="ltr"
+              >
+                קישור להצעה
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-3 space-y-3">
+          {mobField(
+            'חברה',
+            l.company ? (
+              <span className="text-[var(--text-mid)]">{l.company}</span>
+            ) : (
+              <button
+                type="button"
+                className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
+                onClick={() => void promptAndUpdateField(l.id, 'company', 'חברה', l.company)}
+              >
+                + הוסף
+              </button>
+            ),
+          )}
+          {mobField(
+            'לקוח במערכת',
+            l.clientId ? (
+              <span className="font-medium">
+                {clientNameById.get(l.clientId) ?? l.clientId}
+              </span>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          {mobField(
+            'טלפון',
+            l.phone ? (
+              <span className="break-all font-mono text-[13px] leading-relaxed" dir="ltr">
+                {l.phone}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
+                onClick={() => void promptAndUpdateField(l.id, 'phone', 'טלפון', l.phone)}
+              >
+                + הוסף
+              </button>
+            ),
+          )}
+          {mobField(
+            'אימייל',
+            l.email ? (
+              <span className="break-all text-[13px] leading-relaxed" dir="ltr">
+                {l.email}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
+                onClick={() => void promptAndUpdateField(l.id, 'email', 'אימייל', l.email)}
+              >
+                + הוסף
+              </button>
+            ),
+          )}
+          {mobField(
+            'מקור',
+            l.source ? (
+              <button
+                type="button"
+                className="text-right hover:underline"
+                onClick={() => openSourcePicker(l.id, l.source)}
+              >
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold text-[var(--text-light)]">
+                    {sourceKindCaption(l.source)}
+                  </span>
+                  <span className="break-words text-[var(--text-mid)]">{sourceLabel(l.source)}</span>
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
+                onClick={() => openSourcePicker(l.id, l.source)}
+              >
+                + הוסף
+              </button>
+            ),
+          )}
+          {mobField('מנהל תיק לקוח', ownerNameById.get(l.ownerId) ?? 'לא משויך')}
+          {mobField(
+            'צרכי לקוח',
+            l.clientNeeds ? (
+              <button
+                type="button"
+                className="text-right text-[var(--text-mid)] hover:underline"
+                onClick={() => setClientNeedsViewerLeadId(l.id)}
+              >
+                {l.clientNeeds}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
+                onClick={() =>
+                  void promptAndUpdateField(l.id, 'clientNeeds', 'צרכי לקוח', l.clientNeeds)
+                }
+              >
+                + הוסף
+              </button>
+            ),
+          )}
+          {l.lastActivityText ? (
+            <button
+              type="button"
+              onClick={() => setActivityHistoryLeadId(l.id)}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-right text-[11px] text-[var(--text-mid)] transition hover:bg-white"
+            >
+              <span className="font-bold text-[var(--text-light)]">עדכון אחרון: </span>
+              {l.lastActivityText}
+              {l.lastActivityAt ? ` · ${new Date(l.lastActivityAt).toLocaleString('he-IL')}` : ''}
+            </button>
+          ) : null}
+          {mobField(
+            'דחיפות',
+            !scheduleDate || !urgency ? (
+              <span className="text-[12px] text-[var(--text-light)]">ללא תזמון</span>
+            ) : (
+              <div className="space-y-1">
+                <Badge label={urgency.label} color={urgency.color} />
+                <p className="text-[11px] text-[var(--text-light)]">
+                  {caption}: {formatDateIL(scheduleDate)}
+                </p>
+              </div>
+            ),
+          )}
+          {mobField('תאריך כניסה', formatDateIL(l.createdAt))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 border-t border-[var(--border)] pt-3">
+          <button
+            type="button"
+            onClick={() => setOpenActionLeadId(l.id)}
+            className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-[12px] font-semibold text-[var(--text-mid)]"
+          >
+            פעולות ▾
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpenActionLeadId(null)
+              setLeadDetailsLeadId(l.id)
+            }}
+            className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-3 py-2 text-[12px] font-semibold text-[var(--orange)]"
+          >
+            פרטים
+          </button>
+        </div>
+      </article>
+    )
+  }
+
   return (
-    <div className="mx-auto max-w-[1400px] space-y-5 px-8 py-8">
+    <div className="mx-auto max-w-[1400px] space-y-5 px-4 py-5 md:px-8 md:py-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">לידים</h1>
@@ -872,7 +1083,7 @@ export function Leads() {
 
       <section className="flex flex-wrap items-center gap-2">
         <input
-          className="w-full max-w-[320px]"
+          className="w-full max-w-full md:max-w-[320px]"
           placeholder="חיפוש ליד..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -898,7 +1109,15 @@ export function Leads() {
       </section>
 
       <section className={`rounded-2xl ${hubSectionClass(formOpen ? 1 : 0)} shadow-[0_2px_8px_rgba(0,0,0,0.06)]`}>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="md:hidden">
+          <div className="space-y-3 p-3 sm:p-5">
+            {filtered.map((l) => (
+              <LeadMobileCard key={l.id} l={l} />
+            ))}
+          </div>
+        </div>
+
+        <div className="hidden min-w-0 overflow-x-auto md:block">
           <table className="w-full min-w-[1024px] table-fixed text-sm">
             <thead className="bg-[var(--surface-muted)]">
               <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">

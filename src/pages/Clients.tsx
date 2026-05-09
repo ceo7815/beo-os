@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
@@ -157,8 +157,104 @@ export function Clients() {
   const projectCount = (clientId: string) =>
     projects.filter((p) => p.clientId === clientId).length
 
+  function ClientMobileCard({ c }: { c: Client }) {
+    const statusLabel = c.status === 'active' ? 'פעיל' : 'לא פעיל'
+    const statusColor = c.status === 'active' ? '#16A34A' : '#64748B'
+    const count = projectCount(c.id)
+
+    const mobField = (label: string, node: ReactNode) => (
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold text-[var(--text-light)]">{label}</p>
+        <div className="mt-1 min-w-0 text-[13px] text-[var(--text-dark)]">{node}</div>
+      </div>
+    )
+
+    return (
+      <article className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--border)] pb-3">
+          <button
+            type="button"
+            onClick={() => setActivityClient(c)}
+            className="min-w-0 flex-1 text-right text-base font-extrabold leading-snug text-[var(--orange)] underline-offset-2 hover:underline"
+          >
+            {c.name}
+          </button>
+          <Badge label={statusLabel} color={statusColor} />
+        </div>
+
+        <div className="mt-3 space-y-3">
+          {mobField('איש קשר', c.contact || <span className="text-[var(--text-light)]">—</span>)}
+          {mobField(
+            'טלפון',
+            c.phone ? (
+              <a
+                className="break-all font-mono font-medium text-[var(--blue-mid)] hover:underline"
+                dir="ltr"
+                href={`tel:${c.phone.replace(/\s/g, '')}`}
+              >
+                {c.phone}
+              </a>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          {mobField(
+            'אימייל',
+            c.email ? (
+              <a
+                className="break-all font-medium text-[var(--blue-mid)] hover:underline"
+                dir="ltr"
+                href={`mailto:${c.email}`}
+              >
+                {c.email}
+              </a>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          {mobField(
+            'מחלקה',
+            c.department ? (
+              <span className="text-[var(--text-mid)]">{c.department}</span>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          {mobField('תאריך כניסה', formatDateIL(c.createdAt))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 border-t border-[var(--border)] pt-3 sm:flex-row sm:flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedClient(c.id)
+              navigate('/projects')
+            }}
+            className="w-full rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-2 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE] sm:w-auto sm:flex-1"
+          >
+            {count} פרויקטים
+          </button>
+          <button
+            type="button"
+            onClick={() => openEdit(c)}
+            className="w-full rounded-[10px] border border-[#BFDBFE] bg-[var(--blue-light)] px-3 py-2 text-xs font-semibold text-[var(--blue-mid)] transition hover:bg-[#DBEAFE] sm:w-auto sm:flex-1"
+          >
+            עריכה
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeleteId(c.id)}
+            className="hub-btn-danger w-full px-3 py-2 text-xs sm:w-auto"
+          >
+            מחיקה
+          </button>
+        </div>
+      </article>
+    )
+  }
+
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
+    <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-5 md:px-8 md:py-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">
@@ -173,7 +269,7 @@ export function Clients() {
         </button>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
         <ClientKpiCard
           seq={0}
           label="לקוחות פעילים"
@@ -186,12 +282,14 @@ export function Clients() {
           value={String(clientKpis.inactive)}
           sub="סטטוס «לא פעיל»"
         />
-        <ClientKpiCard
-          seq={2}
-          label="לקוחות חדשים"
-          value={String(clientKpis.newInWindow)}
-          sub={`נוספו למערכת ב־${NEW_CLIENT_DAYS} הימים האחרונים (תאריך כניסה)`}
-        />
+        <div className="col-span-2 min-w-0 sm:col-span-1">
+          <ClientKpiCard
+            seq={2}
+            label="לקוחות חדשים"
+            value={String(clientKpis.newInWindow)}
+            sub={`נוספו למערכת ב־${NEW_CLIENT_DAYS} הימים האחרונים (תאריך כניסה)`}
+          />
+        </div>
       </section>
 
       <input
@@ -199,12 +297,21 @@ export function Clients() {
         placeholder="חיפוש לפי שם לקוח..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="max-w-md"
+        className="w-full max-w-full md:max-w-md"
       />
 
       <section className={`rounded-2xl ${hubSectionClass(3)} shadow-none`}>
-        <div>
-          <table className="w-full table-fixed text-sm">
+        <div className="md:hidden">
+          <div className="space-y-3 p-3 sm:p-5">
+            {filtered.map((c) => (
+              <ClientMobileCard key={c.id} c={c} />
+            ))}
+          </div>
+        </div>
+
+        <div className="hidden md:block">
+          <div>
+            <table className="w-full table-fixed text-sm">
             <thead className="bg-[#F8FAFC]">
               <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
                 <th className="px-3 py-3">חברה</th>
@@ -305,6 +412,7 @@ export function Clients() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 

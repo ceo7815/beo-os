@@ -48,32 +48,38 @@ function KpiCard(props: {
 }) {
   return (
     <div
-      className={`${hubSectionClass(props.seq)} rounded-2xl p-5 transition hover:-translate-y-0.5 hover:shadow-md`}
+      className={`min-w-0 ${hubSectionClass(props.seq)} rounded-2xl p-3 transition hover:-translate-y-0.5 hover:shadow-md sm:p-5`}
     >
       {props.split ? (
-        <div className="flex flex-wrap items-end justify-between gap-4 gap-y-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">
+        <div className="grid grid-cols-2 gap-2 gap-y-2">
+          <div className="min-w-0">
+            <div className="text-[22px] font-black tabular-nums leading-none text-[var(--text-dark)] sm:text-[28px] md:text-[30px]">
               {props.value}
             </div>
-            <div className="mt-0.5 text-[11px] font-semibold leading-snug text-[var(--text-mid)]">
+            <div className="mt-0.5 text-[10px] font-semibold leading-snug text-[var(--text-mid)] sm:text-[11px]">
               {props.split.primaryCaption}
             </div>
           </div>
-          <div className="min-w-0 flex-1 border-s border-[var(--border)] ps-4">
-            <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">
+          <div className="min-w-0 border-s border-[var(--border)] ps-2 sm:ps-4">
+            <div className="text-[22px] font-black tabular-nums leading-none text-[var(--text-dark)] sm:text-[28px] md:text-[30px]">
               {props.split.secondaryValue}
             </div>
-            <div className="mt-0.5 text-[11px] font-semibold leading-snug text-[var(--text-mid)]">
+            <div className="mt-0.5 text-[10px] font-semibold leading-snug text-[var(--text-mid)] sm:text-[11px]">
               {props.split.secondaryCaption}
             </div>
           </div>
         </div>
       ) : (
-        <div className="text-[30px] font-black tabular-nums text-[var(--text-dark)]">{props.value}</div>
+        <div className="text-[22px] font-black tabular-nums text-[var(--text-dark)] sm:text-[28px] md:text-[30px]">
+          {props.value}
+        </div>
       )}
-      <div className="mt-2 text-[13px] font-semibold text-[var(--text-mid)]">{props.label}</div>
-      <div className="mt-1 text-[11px] leading-relaxed text-[var(--text-light)]">{props.hint}</div>
+      <div className="mt-2 text-[12px] font-semibold leading-snug text-[var(--text-mid)] sm:text-[13px]">
+        {props.label}
+      </div>
+      <div className="mt-1 break-words text-[10px] leading-relaxed text-[var(--text-light)] sm:text-[11px]">
+        {props.hint}
+      </div>
     </div>
   )
 }
@@ -502,7 +508,7 @@ export function Dashboard() {
         ) : null}
       </header>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4 [&>*]:min-w-0">
         <KpiCard
           seq={0}
           value={kpis.overdue}
@@ -544,8 +550,8 @@ export function Dashboard() {
         </div>
       ) : null}
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <article className={`flex flex-col rounded-2xl p-4 ${hubSectionClass(4)}`}>
+      <section className="grid min-w-0 grid-cols-2 gap-3 [&>*]:min-w-0">
+        <article className={`flex min-h-0 min-w-0 flex-col rounded-2xl p-3 sm:p-4 ${hubSectionClass(4)}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-base font-extrabold text-[var(--text-dark)]">לידים</h2>
@@ -641,7 +647,7 @@ export function Dashboard() {
           </div>
         </article>
 
-        <article className={`flex flex-col rounded-2xl p-4 ${hubSectionClass(5)}`}>
+        <article className={`flex min-h-0 min-w-0 flex-col rounded-2xl p-3 sm:p-4 ${hubSectionClass(5)}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-base font-extrabold text-[var(--text-dark)]">קמפיינים</h2>
@@ -730,8 +736,8 @@ export function Dashboard() {
         </article>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <article className={`rounded-2xl p-4 ${hubSectionClass(6)}`}>
+      <section className="grid min-w-0 grid-cols-2 gap-3 [&>*]:min-w-0">
+        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(6)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-base font-extrabold text-[var(--text-dark)]">גבייה באיחור</h2>
             <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-bold text-rose-700">
@@ -763,7 +769,7 @@ export function Dashboard() {
           )}
         </article>
 
-        <article className={`rounded-2xl p-4 ${hubSectionClass(7)}`}>
+        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(7)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-base font-extrabold text-[var(--text-dark)]">
               יעד תשלום קרוב (10 ימים)
@@ -798,8 +804,8 @@ export function Dashboard() {
         </article>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <article className={`rounded-2xl p-4 ${hubSectionClass(8)}`}>
+      <section className="grid min-w-0 grid-cols-2 gap-3 [&>*]:min-w-0">
+        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(8)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-base font-extrabold text-[var(--text-dark)]">פרויקטים חד-פעמיים</h2>
             <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs font-bold text-[var(--text-mid)]">
@@ -861,7 +867,7 @@ export function Dashboard() {
           </div>
         </article>
 
-        <article className={`rounded-2xl p-4 ${hubSectionClass(9)}`}>
+        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(9)}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-base font-extrabold text-[var(--text-dark)]">פרויקטים שוטפים</h2>
             <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-700">
@@ -944,7 +950,7 @@ export function Dashboard() {
             />
           </div>
         ) : (
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-3 [&>*]:min-w-0">
             {myOverdueTasks.map((t) => {
               const proj = t.projectId ? projectById.get(t.projectId) : undefined
               const pc = priorityColor(t.priority)

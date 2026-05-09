@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { Modal } from '../components/shared/Modal'
@@ -24,6 +24,44 @@ function isValidEmailOptional(email: string): boolean {
 
 function isSupplierListedActive(s: Supplier): boolean {
   return s.active !== false
+}
+
+function SupplierTypesBlock({ s }: { s: Supplier }) {
+  const isHub = s.id === HUB_SUPPLIER_ID
+  if (isHub) {
+    return (
+      <div className="space-y-1.5">
+        <Badge label="ספק ברירת מחדל" color="#F97316" />
+        {(s.supplierTypes?.length ?? 0) > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {(s.supplierTypes ?? []).map((t) => (
+              <span
+                key={t}
+                className="inline-block rounded-md bg-[var(--orange-light)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--orange)]"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+  if ((s.supplierTypes?.length ?? 0) > 0) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        {(s.supplierTypes ?? []).map((t) => (
+          <span
+            key={t}
+            className="inline-block rounded-md bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-dark)]"
+          >
+            {t}
+          </span>
+        ))}
+      </div>
+    )
+  }
+  return <span className="text-[var(--text-light)]">—</span>
 }
 
 const uiButtonBase =
@@ -148,23 +186,122 @@ export function Suppliers() {
     setModalOpen(false)
   }
 
+  function SupplierMobileCard({ s }: { s: Supplier }) {
+    const isHub = s.id === HUB_SUPPLIER_ID
+    const listedActive = isSupplierListedActive(s)
+
+    const mobField = (label: string, node: ReactNode) => (
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold text-[var(--text-light)]">{label}</p>
+        <div className="mt-1 min-w-0 text-[13px]">{node}</div>
+      </div>
+    )
+
+    return (
+      <article className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--border)] pb-3">
+          <button
+            type="button"
+            onClick={() => setDetailSupplier(s)}
+            className="min-w-0 flex-1 text-right text-base font-extrabold leading-snug text-[var(--orange)] underline-offset-2 hover:underline"
+          >
+            {s.name}
+          </button>
+          <Badge
+            label={listedActive ? 'פעיל' : 'לא פעיל'}
+            color={listedActive ? '#16A34A' : '#64748B'}
+          />
+        </div>
+
+        <div className="mt-3 space-y-3 text-[var(--text-mid)]">
+          {mobField(
+            'טלפון',
+            s.phone ? (
+              <a
+                className="break-all font-mono font-medium text-[var(--orange)] hover:underline"
+                dir="ltr"
+                href={`tel:${s.phone.replace(/\s/g, '')}`}
+              >
+                {s.phone}
+              </a>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          {mobField(
+            'אימייל',
+            s.email ? (
+              <a
+                className="break-all font-medium text-[var(--orange)] hover:underline"
+                dir="ltr"
+                href={`mailto:${s.email}`}
+              >
+                {s.email}
+              </a>
+            ) : (
+              <span className="text-[var(--text-light)]">—</span>
+            ),
+          )}
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold text-[var(--text-light)]">סוגי ספק</p>
+            <div className="mt-1 min-w-0 text-[13px] text-[var(--text-mid)]">
+              <SupplierTypesBlock s={s} />
+            </div>
+          </div>
+          {mobField('תאריך יצירה', formatDateIL(s.createdAt))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 border-t border-[var(--border)] pt-3 sm:flex-row sm:flex-wrap">
+          <button
+            type="button"
+            onClick={() => openEdit(s)}
+            className={`${uiBtnSmOutline} w-full justify-center sm:w-auto sm:min-w-[7rem]`}
+          >
+            עריכה
+          </button>
+          <button
+            type="button"
+            disabled={isHub}
+            title={
+              isHub ? 'לא ניתן למחוק את ספק ברירת המחדל של המערכת' : undefined
+            }
+            onClick={() => {
+              if (isHub) {
+                pushToast('לא ניתן למחוק את ספק ברירת המחדל', 'error')
+                return
+              }
+              setDeleteId(s.id)
+            }}
+            className="hub-btn-danger w-full justify-center px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+          >
+            מחיקה
+          </button>
+        </div>
+      </article>
+    )
+  }
+
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
+    <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-5 md:px-8 md:py-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">
+          <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
             ספקים
           </h1>
-          <p className="mt-1 text-[13px] text-[var(--text-mid)]">
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
             רשימת ספקי ביצוע — הוספה ועריכה במקום אחד
           </p>
         </div>
-        <button type="button" onClick={openNew} className={uiButtonBrand}>
+        <button
+          type="button"
+          onClick={openNew}
+          className={`${uiButtonBrand} w-full justify-center sm:w-auto`}
+        >
           + הוסף ספק
         </button>
       </header>
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4">
         <button
           type="button"
           onClick={() =>
@@ -207,7 +344,7 @@ export function Suppliers() {
           placeholder="חיפוש לפי שם, טלפון או אימייל…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="max-w-md"
+          className="w-full max-w-full md:max-w-md"
         />
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -228,7 +365,15 @@ export function Suppliers() {
       </div>
 
       <section className={`rounded-2xl ${hubSectionClass(2)} shadow-none`}>
-        <div className="min-w-0 overflow-x-auto">
+        <div className="md:hidden">
+          <div className="space-y-3 p-3 sm:p-5">
+            {filtered.map((s) => (
+              <SupplierMobileCard key={s.id} s={s} />
+            ))}
+          </div>
+        </div>
+
+        <div className="hidden min-w-0 overflow-x-auto md:block">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-[var(--surface-muted)]">
               <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
@@ -287,36 +432,7 @@ export function Suppliers() {
                       )}
                     </td>
                     <td className="px-3 py-3 text-[13px] text-[var(--text-mid)]">
-                      {isHub ? (
-                        <div className="space-y-1.5">
-                          <Badge label="ספק ברירת מחדל" color="#F97316" />
-                          {(s.supplierTypes?.length ?? 0) > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {(s.supplierTypes ?? []).map((t) => (
-                                <span
-                                  key={t}
-                                  className="inline-block rounded-md bg-[var(--orange-light)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--orange)]"
-                                >
-                                  {t}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : (s.supplierTypes?.length ?? 0) > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {(s.supplierTypes ?? []).map((t) => (
-                            <span
-                              key={t}
-                              className="inline-block rounded-md bg-[var(--surface-muted)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-dark)]"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        '—'
-                      )}
+                      <SupplierTypesBlock s={s} />
                     </td>
                     <td className="px-3 py-3 text-xs text-[var(--text-mid)]">
                       {formatDateIL(s.createdAt)}
