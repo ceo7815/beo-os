@@ -1,7 +1,7 @@
 import './loadEnv.js'
 import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore'
 import { HttpsError, onCall } from 'firebase-functions/v2/https'
 import { defineSecret } from 'firebase-functions/params'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
@@ -17,11 +17,16 @@ initializeApp()
 
 const db = getFirestore()
 const adminAuth = getAuth()
-const ENFORCE_IDLE_MINUTES = 10
-const ENFORCE_HEARTBEAT_MINUTES = 3
-const CHECKIN_MIN_MINUTES = 50
-const CHECKIN_MAX_MINUTES = 70
-const CHECKIN_GRACE_MINUTES = 5
+/**
+ * ספי אכיפה בשרת — לא לקחץ מדי: טאב ברקע / שינה / רשת חלשה עלולים לדלג על heartbeat.
+ * ניתוק אוטומטי + סגירת לוג רק אחרי תקופה ארוכה ללא אות חיים.
+ */
+const ENFORCE_IDLE_MINUTES = 50
+const ENFORCE_HEARTBEAT_MINUTES = 50
+const CHECKIN_MIN_MINUTES = 40
+const CHECKIN_MAX_MINUTES = 75
+/** דקות אחרי מועד צ'ק־אין לפני שמסמנים «הוחמץ» (לא סוגרים משמרת — רק מצטבר זמן לא מאומת) */
+const CHECKIN_GRACE_MINUTES = 15
 
 /** חובה לקשר ל־onCall — בלי זה אין הרשאת Secret Manager והפונקציה עלולה להיכשל ב־internal */
 const resendApiKeySecret = defineSecret('RESEND_API_KEY')

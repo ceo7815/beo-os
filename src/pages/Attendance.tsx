@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/shared/Modal'
 import { useAttendance } from '../hooks/useAttendance'
@@ -6,6 +6,16 @@ import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { useTasks } from '../hooks/useTasks'
 import { useUsers } from '../hooks/useUsers'
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore'
 import {
   addDaysYmd,
   formatDateIL,
@@ -24,14 +34,42 @@ import {
 } from '../lib/workSchedule'
 import type { AttendanceCheckIn, AttendanceLog } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { db } from '../lib/firebase'
+import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 
-const HEARTBEAT_MS = 60 * 1000
-const CHECKIN_RESPONSE_WINDOW_MS = 5 * 60 * 1000
+const HEARTBEAT_MS = 45 * 1000
+/** חלון לענות על צ'ק־אין לפני סגירת המודאל — לא לנתק את העובדת אם נעדרה רגע */
+const CHECKIN_RESPONSE_WINDOW_MS = 15 * 60 * 1000
 
 function endReasonHe(reason?: string): string {
   if (reason === 'idle_auto') return 'עצירה אוטומטית'
   if (reason === 'manual') return 'יציאה ידנית'
   return reason ? reason : '—'
+}
+
+/** לוח שנה + שעה מקומית (כמו בדוח) → מילישניות */
+function localYmdAndHmToMs(ymd: string, hm: string): number {
+  const [y, mo, d] = ymd.split('-').map(Number)
+  const [hh, mm] = hm.split(':').map((x) => parseInt(x, 10))
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return NaN
+  const dt = new Date(y, mo - 1, d, hh || 0, mm || 0, 0, 0)
+  return dt.getTime()
+}
+
+function toDateTimeLocalValue(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${y}-${mo}-${day}T${h}:${mi}`
+}
+
+function dateTimeLocalToIso(v: string): string {
+  const d = new Date(v)
+  return d.toISOString()
 }
 
 /** צ'ק-אינים הקשורים לסשן — לפי sessionId, או לפי חלון זמן (תאימות לאחור) */
@@ -100,6 +138,20 @@ export function Attendance() {
   const [workNote, setWorkNote] = useState('')
   const promptOpenedAtRef = useRef<number | null>(null)
 
+  const [manualUserId, setManualUserId] = useState('')
+  const [manualStartHm, setManualStartHm] = useState('09:00')
+  const [manualEndHm, setManualEndHm] = useState('17:00')
+  const [manualProjectId, setManualProjectId] = useState('')
+  const [manualNote, setManualNote] = useState('')
+  const [manualSaving, setManualSaving] = useState(false)
+
+  const [editLog, setEditLog] = useState<AttendanceLog | null>(null)
+  const [editStartLocal, setEditStartLocal] = useState('')
+  const [editEndLocal, setEditEndLocal] = useState('')
+  const [editProjectId, setEditProjectId] = useState('')
+  const [editNote, setEditNote] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+
   const myRole = users.find((u) => u.id === user?.uid)?.role ?? 'employee'
   const isManager = myRole === 'admin' || myRole === 'superadmin'
 
@@ -131,6 +183,111 @@ export function Attendance() {
     return m
   }, [clients])
 
+  const openEditAttendanceLog = useCallback((l: AttendanceLog) => {
+    setEditLog(l)
+    setEditStartLocal(toDateTimeLocalValue(l.startAt))
+    setEditEndLocal(l.endAt ? toDateTimeLocalValue(l.endAt) : toDateTimeLocalValue(new Date().toISOString()))
+    setEditProjectId(l.projectId ?? '')
+    setEditNote(l.note ?? '')
+  }, [])
+
+  const saveManualShift = useCallback(async () => {
+    if (!user || !isManager) return
+    if (!manualUserId.trim()) {
+      toastFsError('יש לבחור עובד', new Error('validation'))
+      return
+    }
+    const startMs = localYmdAndHmToMs(reportDayYmd, manualStartHm)
+    const endMs = localYmdAndHmToMs(reportDayYmd, manualEndHm)
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      toastFsError('שעת סיום חייבת להיות אחרי שעת ההתחלה', new Error('validation'))
+      return
+    }
+    setManualSaving(true)
+    try {
+      await addDoc(collection(db, 'attendanceLogs'), {
+        userId: manualUserId.trim(),
+        startAt: Timestamp.fromMillis(startMs),
+        endAt: Timestamp.fromMillis(endMs),
+        endReason: 'manual',
+        ...(manualProjectId.trim() ? { projectId: manualProjectId.trim() } : {}),
+        ...(manualNote.trim() ? { note: manualNote.trim() } : {}),
+        adminAdjustedAt: serverTimestamp(),
+        adminAdjustedBy: user.uid,
+      })
+      toastFsSuccess('המשמרת נשמרה בדוח')
+      setManualNote('')
+    } catch (e) {
+      toastFsError('שמירת משמרת נכשלה', e, 'saveManualShift')
+    } finally {
+      setManualSaving(false)
+    }
+  }, [
+    user,
+    isManager,
+    reportDayYmd,
+    manualUserId,
+    manualStartHm,
+    manualEndHm,
+    manualProjectId,
+    manualNote,
+  ])
+
+  const saveEditedLog = useCallback(async () => {
+    if (!user || !isManager || !editLog) return
+    if (!editStartLocal.trim() || !editEndLocal.trim()) {
+      toastFsError('יש למלא תאריך ושעת התחלה וסיום', new Error('validation'))
+      return
+    }
+    const startMs = new Date(dateTimeLocalToIso(editStartLocal)).getTime()
+    const endMs = new Date(dateTimeLocalToIso(editEndLocal)).getTime()
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      toastFsError('שעת סיום חייבת להיות אחרי התחלה', new Error('validation'))
+      return
+    }
+    setEditSaving(true)
+    try {
+      await updateDoc(doc(db, 'attendanceLogs', editLog.id), {
+        startAt: Timestamp.fromMillis(startMs),
+        endAt: Timestamp.fromMillis(endMs),
+        endReason: 'manual',
+        ...(editProjectId.trim() ? { projectId: editProjectId.trim() } : { projectId: deleteField() }),
+        ...(editNote.trim() ? { note: editNote.trim() } : { note: deleteField() }),
+        adminAdjustedAt: serverTimestamp(),
+        adminAdjustedBy: user.uid,
+      })
+      toastFsSuccess('המשמרת עודכנה')
+      setEditLog(null)
+    } catch (e) {
+      toastFsError('עדכון נכשל', e, 'saveEditedLog')
+    } finally {
+      setEditSaving(false)
+    }
+  }, [user, isManager, editLog, editStartLocal, editEndLocal, editProjectId, editNote])
+
+  const deleteEditedLog = useCallback(async () => {
+    if (!isManager || !editLog) return
+    if (!window.confirm('למחוק את רשומת המשמרת מהדוח?')) return
+    setEditSaving(true)
+    try {
+      await deleteDoc(doc(db, 'attendanceLogs', editLog.id))
+      toastFsSuccess('הרשומה נמחקה')
+      setEditLog(null)
+    } catch (e) {
+      toastFsError('מחיקה נכשלה', e, 'deleteEditedLog')
+    } finally {
+      setEditSaving(false)
+    }
+  }, [isManager, editLog])
+
+  const linkHoursForEmployee = useCallback((uid: string) => {
+    setAdminFilterUserId(uid)
+    setManualUserId(uid)
+    window.setTimeout(() => {
+      document.getElementById('attendance-manual-shift')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }, [])
+
   useEffect(() => {
     if (!myPresence || myPresence.status !== 'active') return
     const timer = window.setInterval(() => {
@@ -138,6 +295,27 @@ export function Attendance() {
     }, HEARTBEAT_MS)
     return () => window.clearInterval(timer)
   }, [myPresence, heartbeat])
+
+  /** כשחוזרים לטאב / למסך — heartbeat מיידי (הטיימר מתעכב ברקע) */
+  useEffect(() => {
+    const ping = () => {
+      if (document.visibilityState === 'visible') void heartbeat()
+    }
+    const onFocus = () => {
+      void heartbeat()
+    }
+    const onOnline = () => {
+      void heartbeat()
+    }
+    document.addEventListener('visibilitychange', ping)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('online', onOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', ping)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [myPresence?.status, heartbeat])
 
   useEffect(() => {
     if (!myPresence || myPresence.status !== 'active' || !myPresence.nextCheckInDueAt) {
@@ -350,8 +528,8 @@ export function Attendance() {
         const hbLag = p.lastHeartbeatAt ? Math.round((now - new Date(p.lastHeartbeatAt).getTime()) / 60000) : 999
         const checkinLag = p.lastCheckInAt ? Math.round((now - new Date(p.lastCheckInAt).getTime()) / 60000) : 999
         const anomaly =
-          p.status === 'active' && (hbLag > 3 || checkinLag > 90)
-            ? hbLag > 3
+          p.status === 'active' && (hbLag > 40 || checkinLag > 120)
+            ? hbLag > 40
               ? 'אין heartbeat'
               : 'נדרש check-in'
             : null
@@ -622,6 +800,9 @@ export function Attendance() {
                 </span>
               </p>
               <p className="text-xs text-[var(--text-mid)]">סה״כ היום (לוח שנה מקומי): {myTodayLiveMinutes} דקות</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-light)]">
+                כניסה בבוקר + פרויקט, יציאה בסוף היום. במהלך היום יופיע צ׳ק־אין קצר — ענו בזמן כדי לעדכן על מה עובדים. ניתוק אוטומטי מהמערכת קורה רק אחרי כ־50 דק׳ בלי אות מהדפדפן (טאב סגור / מחשב במצב שינה).
+              </p>
               {myTodayPunchSummary ? (
                 <div className="mt-2 space-y-1 rounded-lg border border-[var(--border)] bg-[#F8FAFC] px-3 py-2 text-[12px]">
                   <p className="text-[var(--text-dark)]">
@@ -934,7 +1115,8 @@ export function Attendance() {
             סיכום עובדים ליום {formatDateIL(reportDayYmd)}
           </h2>
           <p className="mb-3 text-xs text-[var(--text-mid)]">
-            דקות מחושבות לפי חפיפה עם היום הנבחר (סשן שמתחיל אתמול ונמשך היום נספר חלקית).
+            דקות מחושבות לפי חפיפה עם היום הנבחר (סשן שמתחיל אתמול ונמשך היום נספר חלקית). בעמודה «שיוך /
+            עריכה» — מסננים את העובד וגוללים לטופס הזנה ידנית; מתחתיו טבלת סשנים לעריכת שעות קיימות.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
@@ -948,6 +1130,7 @@ export function Attendance() {
                   <th className="px-3 py-2">סטטוס כניסה</th>
                   <th className="px-3 py-2">יצא/ה</th>
                   <th className="px-3 py-2">סטטוס יציאה</th>
+                  <th className="px-3 py-2 w-[1%] whitespace-nowrap">שעות</th>
                 </tr>
               </thead>
               <tbody>
@@ -1019,6 +1202,15 @@ export function Attendance() {
                           '—'
                         )}
                       </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          className="rounded-md border border-[var(--border)] bg-white px-2 py-1 text-[11px] font-semibold text-[var(--blue-dark)] hover:bg-[#EEF2FF]"
+                          onClick={() => linkHoursForEmployee(r.uid)}
+                        >
+                          שיוך / עריכה
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
@@ -1029,7 +1221,89 @@ export function Attendance() {
       ) : null}
 
       {isManager ? (
-        <section className={`rounded-2xl ${hubSectionClass(5)} p-4`}>
+        <section id="attendance-manual-shift" className={`rounded-2xl ${hubSectionClass(11)} p-4`}>
+          <h2 className="mb-1 text-lg font-bold text-[var(--text-dark)]">הזנת משמרת ידנית ליום הדוח</h2>
+          <p className="mb-3 text-xs text-[var(--text-mid)]">
+            יום {formatDateIL(reportDayYmd)} — השעות נשמרות לפי שעון המחשב שלך (כמו בשאר הדוחות). מתחת
+            מופיעה טבלת סשנים — שם אפשר לערוך משמרות קיימות.
+          </p>
+          <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">עובד</span>
+              <select
+                value={manualUserId}
+                onChange={(e) => setManualUserId(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              >
+                <option value="">בחר עובד…</option>
+                {users
+                  .filter((u) => u.active !== false)
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">התחלה</span>
+              <input
+                type="time"
+                value={manualStartHm}
+                onChange={(e) => setManualStartHm(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">סיום</span>
+              <input
+                type="time"
+                value={manualEndHm}
+                onChange={(e) => setManualEndHm(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">פרויקט (אופציונלי)</span>
+              <select
+                value={manualProjectId}
+                onChange={(e) => setManualProjectId(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              >
+                <option value="">ללא</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">הערה (אופציונלי)</span>
+              <input
+                type="text"
+                value={manualNote}
+                onChange={(e) => setManualNote(e.target.value)}
+                placeholder="למשל: תיקון שעות ידני"
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              />
+            </label>
+            <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+              <button
+                type="button"
+                disabled={manualSaving}
+                className="hub-btn-primary text-sm disabled:opacity-50"
+                onClick={() => void saveManualShift()}
+              >
+                {manualSaving ? 'שומר…' : 'שמור משמרת ליום זה'}
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {isManager ? (
+        <section id="attendance-manager-sessions" className={`rounded-2xl ${hubSectionClass(5)} p-4`}>
           <h2 className="mb-1 text-lg font-bold text-[var(--text-dark)]">סשנים ביום הנבחר</h2>
           <p className="mb-3 text-xs text-[var(--text-mid)]">
             עד 80 רשומות אחרונות לפי זמן התחלה. לכל סשן: כניסה, צ׳ק־אינים במשמרת, יציאה.
@@ -1046,12 +1320,13 @@ export function Attendance() {
                   <th className="px-3 py-2">פרויקט</th>
                   <th className="px-3 py-2">סיבת יציאה</th>
                   <th className="px-3 py-2">הערה</th>
+                  <th className="px-3 py-2 w-[1%] whitespace-nowrap">עריכה</th>
                 </tr>
               </thead>
               <tbody>
                 {managerSessionsOnReportDay.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-6 text-center text-[var(--text-mid)]">
+                    <td colSpan={9} className="px-3 py-6 text-center text-[var(--text-mid)]">
                       אין סשנים ביום זה (או לפי הסינון)
                     </td>
                   </tr>
@@ -1082,6 +1357,15 @@ export function Attendance() {
                         <td className="px-3 py-2 text-[var(--text-mid)]">{pName ?? '—'}</td>
                         <td className="px-3 py-2 text-[var(--text-mid)]">{endReasonHe(l.endReason)}</td>
                         <td className="px-3 py-2 text-[var(--text-mid)]">{l.note?.trim() ? l.note : '—'}</td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            className="rounded-md border border-[var(--border)] bg-white px-2 py-1 text-[11px] font-semibold text-[var(--text-dark)] hover:bg-[#F8FAFC]"
+                            onClick={() => openEditAttendanceLog(l)}
+                          >
+                            ערוך
+                          </button>
+                        </td>
                       </tr>
                     )
                   })
@@ -1227,6 +1511,95 @@ export function Attendance() {
           </div>
         </section>
       ) : null}
+
+      <Modal
+        isOpen={isManager && editLog != null}
+        onClose={() => {
+          if (!editSaving) setEditLog(null)
+        }}
+        title={
+          editLog
+            ? `עריכת משמרת · ${userNameById.get(editLog.userId) ?? editLog.userId}`
+            : 'עריכת משמרת'
+        }
+        size="lg"
+      >
+        {editLog ? (
+          <div className="space-y-3">
+            <p className="text-xs text-[var(--text-mid)]">
+              שינוי שעות נשמר ב־Firestore. לפסקה באמצע היום אפשר ליצור שתי משמרות נפרדות (למשל עד 15:30 ואז מ־16:00).
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">התחלה</span>
+              <input
+                type="datetime-local"
+                value={editStartLocal}
+                onChange={(e) => setEditStartLocal(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">סיום</span>
+              <input
+                type="datetime-local"
+                value={editEndLocal}
+                onChange={(e) => setEditEndLocal(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">פרויקט</span>
+              <select
+                value={editProjectId}
+                onChange={(e) => setEditProjectId(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              >
+                <option value="">ללא</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">הערה</span>
+              <input
+                type="text"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                className="w-full rounded-[10px] border border-[var(--border)] bg-white px-3 py-2 text-[13px]"
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--border)] pt-3">
+              <button
+                type="button"
+                className="hub-btn-secondary text-sm"
+                disabled={editSaving}
+                onClick={() => setEditLog(null)}
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-[var(--danger)] bg-white px-3 py-2 text-sm font-semibold text-[var(--danger)] hover:bg-red-50 disabled:opacity-50"
+                disabled={editSaving}
+                onClick={() => void deleteEditedLog()}
+              >
+                מחיקה
+              </button>
+              <button
+                type="button"
+                className="hub-btn-primary text-sm disabled:opacity-50"
+                disabled={editSaving}
+                onClick={() => void saveEditedLog()}
+              >
+                {editSaving ? 'שומר…' : 'שמירה'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         isOpen={!isManager && checkInOpen}

@@ -9,7 +9,7 @@ import { useLeads } from '../hooks/useLeads'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useClients } from '../hooks/useClients'
 import { useUsers } from '../hooks/useUsers'
-import type { Lead, LeadQuoteChannel, LeadStatus } from '../types'
+import type { Client, Lead, LeadQuoteChannel, LeadStatus } from '../types'
 import { Badge } from '../components/shared/Badge'
 import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
@@ -63,6 +63,46 @@ function isValidHttpUrl(s: string): boolean {
   }
 }
 
+function normalizePhoneDigits(p?: string): string {
+  if (!p?.trim()) return ''
+  return p.replace(/\D/g, '')
+}
+
+/**
+ * מזהה כרטיס לקוח לליד: clientId, מקור כמזהה/שם לקוח (לא קמפיין), שם חברה בליד, או טלפון (ייחודי).
+ * עוזר כשב־Firestore נשמרו מזהים ישנים או שם טקסט במקום id של מסמך clients.
+ */
+function leadResolvedClient(
+  l: Lead,
+  clientsList: Client[],
+  campaignNameById: Map<string, string>,
+): Client | undefined {
+  const src = l.source?.trim() ?? ''
+  const cid = l.clientId?.trim() ?? ''
+
+  if (cid) {
+    const byCid = clientsList.find((x) => x.id === cid)
+    if (byCid) return byCid
+  }
+  if (src && !campaignNameById.has(src)) {
+    const bySrcId = clientsList.find((x) => x.id === src)
+    if (bySrcId) return bySrcId
+    const bySrcName = clientsList.filter((x) => x.name.trim() === src)
+    if (bySrcName.length === 1) return bySrcName[0]
+  }
+  const comp = l.company?.trim()
+  if (comp) {
+    const byComp = clientsList.filter((x) => x.name.trim() === comp)
+    if (byComp.length === 1) return byComp[0]
+  }
+  const pIn = normalizePhoneDigits(l.phone)
+  if (pIn.length >= 7) {
+    const byPhone = clientsList.filter((x) => normalizePhoneDigits(x.phone) === pIn)
+    if (byPhone.length === 1) return byPhone[0]
+  }
+  return undefined
+}
+
 const statusLabels: Record<LeadStatus, string> = {
   new: 'חדש',
   specification: 'בתהליך אפיון',
@@ -111,7 +151,7 @@ export function Leads() {
   const { user } = useAuth()
   const { users } = useUsers()
   const { campaigns } = useCampaigns()
-  const { clients } = useClients()
+  const { clients, loading: clientsLoading, error: clientsError } = useClients()
   const { leads, addLead, updateLead, deleteLead } = useLeads()
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -278,6 +318,17 @@ export function Leads() {
     return undefined
   }
 
+  /** שם לתצוגה — לפי מפת id או לפי התאמה חכמה לכרטיס לקוח (שם/טלפון/חברה). */
+  const leadLinkedClientName = (l: Lead): string | null =>
+    leadResolvedClient(l, clients, campaignNameById)?.name ?? null
+
+  const leadLinkedClientRawRef = (l: Lead): string | null =>
+    l.clientId?.trim() || l.source?.trim() || null
+
+  /** לטולטיפ כשאין שם — כל המזהים השמורים (לעומת רק הראשון) */
+  const leadLinkedClientRefsTitle = (l: Lead): string =>
+    [...new Set([l.clientId?.trim(), l.source?.trim()].filter(Boolean) as string[])].join(' · ')
+
   const statusCounts = useMemo(() => {
     const counts: Record<LeadStatus, number> = {
       new: 0,
@@ -303,13 +354,11 @@ export function Leads() {
           (l.company ?? '').toLowerCase().includes(text) ||
           (l.email ?? '').toLowerCase().includes(text) ||
           (l.phone ?? '').toLowerCase().includes(text) ||
-          (l.clientId
-            ? (clientNameById.get(l.clientId) ?? '').toLowerCase().includes(text)
-            : false)
+          (leadLinkedClientName(l)?.toLowerCase().includes(text) ?? false)
         )
       })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }, [leads, statusFilter, q, clientNameById])
+  }, [leads, statusFilter, q, clientNameById, clients, campaignNameById])
   const clientNeedsViewerLead = useMemo(
     () => leads.find((l) => l.id === clientNeedsViewerLeadId) ?? null,
     [leads, clientNeedsViewerLeadId],
@@ -330,12 +379,22 @@ export function Leads() {
 
   const submitLead = async () => {
     if (!name.trim() || !ownerId) return
+    const srcT = source.trim()
+    /** מזהה לקוח שנשמר ב־source במצב «לקוח פעיל» — id או שם לקוח יחיד */
+    let clientIdFromSource: string | undefined
+    if (srcT && !campaignNameById.has(srcT)) {
+      if (clientNameById.has(srcT)) clientIdFromSource = srcT
+      else {
+        const exact = clientsSorted.filter((c) => c.name.trim() === srcT)
+        if (exact.length === 1) clientIdFromSource = exact[0].id
+      }
+    }
     await addLead({
       name: name.trim(),
       company: company.trim() || undefined,
       phone: phone.trim() || undefined,
       email: email.trim() || undefined,
-      clientId: resolveSubmitClientId(),
+      clientId: resolveSubmitClientId() ?? clientIdFromSource,
       source: source.trim() || undefined,
       status: 'new',
       ownerId,
@@ -579,16 +638,27 @@ export function Leads() {
     }
   }
 
-  const sourceLabel = (raw?: string) =>
-    raw ? campaignNameById.get(raw) ?? clientNameById.get(raw) ?? raw : ''
+  const sourceLabelForLead = (l: Lead) => {
+    const raw = l.source?.trim() ?? ''
+    if (raw && campaignNameById.has(raw)) {
+      return campaignNameById.get(raw) ?? raw
+    }
+    const resolved = leadResolvedClient(l, clients, campaignNameById)
+    if (resolved) return resolved.name
+    return raw ? clientNameById.get(raw) ?? raw : ''
+  }
 
   /** שורת קטגוריה מעל שם המקור (מקמפיין / לקוח קיים / Beo systems / מקור חופשי) */
-  const sourceKindCaption = (raw?: string) => {
-    if (!raw) return ''
-    if (campaignNameById.has(raw)) return 'מקמפיין'
-    if (clientNameById.has(raw)) return 'לקוח קיים'
+  const sourceKindCaptionForLead = (l: Lead) => {
+    const raw = l.source?.trim() ?? ''
+    if (!raw && !leadResolvedClient(l, clients, campaignNameById)) return ''
+    if (raw && campaignNameById.has(raw)) return 'מקמפיין'
+    if (leadResolvedClient(l, clients, campaignNameById) || (raw && clientNameById.has(raw))) {
+      return 'לקוח קיים'
+    }
     if (raw === LEAD_SOURCE_BEO_SYSTEMS) return 'Beo systems'
-    return 'מקור חופשי'
+    if (raw) return 'מקור חופשי'
+    return ''
   }
 
   const openSourcePicker = (leadId: string, current?: string) => {
@@ -607,6 +677,16 @@ export function Leads() {
       setSourcePickerManual('')
       return
     }
+    if (current) {
+      const exactName = clientsSorted.filter((c) => c.name.trim() === current.trim())
+      if (exactName.length === 1) {
+        setSourcePickerMode('active_client')
+        setSourcePickerClientId(exactName[0].id)
+        setSourcePickerCampaignId('')
+        setSourcePickerManual('')
+        return
+      }
+    }
     setSourcePickerMode('manual')
     setSourcePickerManual(current ?? '')
     setSourcePickerCampaignId('')
@@ -622,7 +702,14 @@ export function Leads() {
           ? sourcePickerClientId
           : sourcePickerManual.trim()
     try {
-      await updateLead(sourcePickerLeadId, { source: next || undefined })
+      const cid =
+        sourcePickerMode === 'active_client' && sourcePickerClientId.trim()
+          ? sourcePickerClientId.trim()
+          : undefined
+      await updateLead(sourcePickerLeadId, {
+        source: next || undefined,
+        ...(cid ? { clientId: cid } : {}),
+      })
       setSourcePickerLeadId(null)
       setSourcePickerCampaignId('')
       setSourcePickerClientId('')
@@ -706,13 +793,18 @@ export function Leads() {
           )}
           {mobField(
             'לקוח במערכת',
-            l.clientId ? (
-              <span className="font-medium">
-                {clientNameById.get(l.clientId) ?? l.clientId}
-              </span>
-            ) : (
-              <span className="text-[var(--text-light)]">—</span>
-            ),
+            (() => {
+              const nm = leadLinkedClientName(l)
+              const raw = leadLinkedClientRawRef(l)
+              if (nm) return <span className="font-medium text-[var(--text-dark)]">{nm}</span>
+              if (raw)
+                return (
+                  <span className="text-[var(--text-mid)]" title={leadLinkedClientRefsTitle(l)}>
+                    מזהה לא מקושר לכרטיס לקוח
+                  </span>
+                )
+              return <span className="text-[var(--text-light)]">—</span>
+            })(),
           )}
           {mobField(
             'טלפון',
@@ -756,9 +848,9 @@ export function Leads() {
               >
                 <span className="flex flex-col gap-0.5">
                   <span className="text-[10px] font-bold text-[var(--text-light)]">
-                    {sourceKindCaption(l.source)}
+                    {sourceKindCaptionForLead(l)}
                   </span>
-                  <span className="break-words text-[var(--text-mid)]">{sourceLabel(l.source)}</span>
+                  <span className="break-words text-[var(--text-mid)]">{sourceLabelForLead(l)}</span>
                 </span>
               </button>
             ) : (
@@ -855,6 +947,19 @@ export function Leads() {
           {formOpen ? 'סגירה' : '+ ליד חדש'}
         </button>
       </header>
+
+      {!clientsLoading && clients.length === 0 ? (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-950"
+        >
+          <p className="font-semibold">לא נטענו לקוחות מהמערכת.</p>
+          <p className="mt-1 text-[11px] text-amber-900/90">
+            בלי רשימת לקוחות לא ניתן להציג שמות בעמודות «לקוח במערכת» ו«מקור». ודאו שיש מסמכים באוסף clients ב־Firestore ושחוקי האבטחה מאפשרים קריאה.
+            {clientsError ? ` (${clientsError.message})` : ''}
+          </p>
+        </div>
+      ) : null}
 
       <section
         className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
@@ -1155,13 +1260,23 @@ export function Leads() {
                     )}
                   </td>
                   <td className="px-3 py-3 text-[var(--text-mid)]">
-                    {l.clientId ? (
-                      <span className="font-medium text-[var(--text-dark)]">
-                        {clientNameById.get(l.clientId) ?? l.clientId}
-                      </span>
-                    ) : (
-                      <span className="text-[var(--text-light)]">—</span>
-                    )}
+                    {(() => {
+                      const nm = leadLinkedClientName(l)
+                      const raw = leadLinkedClientRawRef(l)
+                      if (nm) {
+                        return (
+                          <span className="font-medium text-[var(--text-dark)]">{nm}</span>
+                        )
+                      }
+                      if (raw) {
+                        return (
+                          <span className="text-[var(--text-mid)]" title={leadLinkedClientRefsTitle(l)}>
+                            מזהה לא מקושר לכרטיס לקוח
+                          </span>
+                        )
+                      }
+                      return <span className="text-[var(--text-light)]">—</span>
+                    })()}
                   </td>
                   <td className="px-3 py-3 text-[var(--text-mid)] break-all" dir="ltr">
                     {l.phone ? (
@@ -1202,9 +1317,9 @@ export function Leads() {
                       >
                         <span className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold text-[var(--text-light)]">
-                            {sourceKindCaption(l.source)}
+                            {sourceKindCaptionForLead(l)}
                           </span>
-                          <span className="break-words">{sourceLabel(l.source)}</span>
+                          <span className="break-words">{sourceLabelForLead(l)}</span>
                         </span>
                       </button>
                     ) : (
@@ -1758,13 +1873,18 @@ export function Leads() {
                   {leadDetailsLead.company ?? '—'}
                 </LeadDetailRow>
                 <LeadDetailRow label="לקוח במערכת">
-                  {leadDetailsLead.clientId ? (
-                    <span className="font-medium">
-                      {clientNameById.get(leadDetailsLead.clientId) ?? leadDetailsLead.clientId}
-                    </span>
-                  ) : (
-                    '—'
-                  )}
+                  {(() => {
+                    const nm = leadLinkedClientName(leadDetailsLead)
+                    const raw = leadLinkedClientRawRef(leadDetailsLead)
+                    if (nm) return <span className="font-medium">{nm}</span>
+                    if (raw)
+                      return (
+                        <span className="text-[var(--text-mid)]" title={leadLinkedClientRefsTitle(leadDetailsLead)}>
+                          מזהה לא מקושר לכרטיס לקוח
+                        </span>
+                      )
+                    return '—'
+                  })()}
                 </LeadDetailRow>
                 <LeadDetailRow label="טלפון">
                   {leadDetailsLead.phone ? (
@@ -1788,9 +1908,9 @@ export function Leads() {
                   {leadDetailsLead.source ? (
                     <span className="flex flex-col gap-0.5">
                       <span className="text-[10px] font-bold text-[var(--text-light)]">
-                        {sourceKindCaption(leadDetailsLead.source)}
+                        {sourceKindCaptionForLead(leadDetailsLead)}
                       </span>
-                      <span className="break-words">{sourceLabel(leadDetailsLead.source)}</span>
+                      <span className="break-words">{sourceLabelForLead(leadDetailsLead)}</span>
                     </span>
                   ) : (
                     '—'

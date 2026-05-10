@@ -12,11 +12,16 @@ const taskAssignmentMail_js_1 = require("./taskAssignmentMail.js");
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
 const adminAuth = (0, auth_1.getAuth)();
-const ENFORCE_IDLE_MINUTES = 10;
-const ENFORCE_HEARTBEAT_MINUTES = 3;
-const CHECKIN_MIN_MINUTES = 50;
-const CHECKIN_MAX_MINUTES = 70;
-const CHECKIN_GRACE_MINUTES = 5;
+/**
+ * ספי אכיפה בשרת — לא לקחץ מדי: טאב ברקע / שינה / רשת חלשה עלולים לדלג על heartbeat.
+ * ניתוק אוטומטי + סגירת לוג רק אחרי תקופה ארוכה ללא אות חיים.
+ */
+const ENFORCE_IDLE_MINUTES = 50;
+const ENFORCE_HEARTBEAT_MINUTES = 50;
+const CHECKIN_MIN_MINUTES = 40;
+const CHECKIN_MAX_MINUTES = 75;
+/** דקות אחרי מועד צ'ק־אין לפני שמסמנים «הוחמץ» (לא סוגרים משמרת — רק מצטבר זמן לא מאומת) */
+const CHECKIN_GRACE_MINUTES = 15;
 /** חובה לקשר ל־onCall — בלי זה אין הרשאת Secret Manager והפונקציה עלולה להיכשל ב־internal */
 const resendApiKeySecret = (0, params_1.defineSecret)('RESEND_API_KEY');
 const mailFromSecret = (0, params_1.defineSecret)('MAIL_FROM');

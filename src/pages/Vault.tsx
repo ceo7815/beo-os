@@ -183,9 +183,7 @@ export function Vault() {
 
   const emptyTitle =
     entries.length === 0
-      ? vaultAdmin
-        ? 'אין עדיין פריטים בכספת'
-        : 'אין פריטים ששותפו איתך'
+      ? 'אין עדיין פריטים להצגה'
       : filtered.length === 0 && clientFilterId
         ? 'אין פריטים משויכים ללקוח הזה'
         : 'לא נמצאו תוצאות'
@@ -194,7 +192,7 @@ export function Vault() {
     entries.length === 0
       ? vaultAdmin
         ? 'לחץ על «פריט חדש» כדי להוסיף את הרשומה הראשונה.'
-        : 'מנהל המערכת יכול לשתף איתך פריטים ספציפיים מכאן.'
+        : 'לחץ על «פריט חדש» כדי להוסיף רשומה, או המתן שמנהל ישתף איתך פריטים ספציפיים (רק מי שמסומן ברשימת החשיפה רואה אותם).'
       : filtered.length === 0 && clientFilterId
         ? `לא נמצאו רשומות עם שיוך ל«${clientNameById.get(clientFilterId) ?? 'לקוח'}» — נסה לנקות את חיפוש הטקסט או את סינון הקטגוריה.`
         : 'נסה לשנות את החיפוש או הסינון.'
@@ -208,7 +206,7 @@ export function Vault() {
         <p className="max-w-2xl text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
           {vaultAdmin
             ? 'ניהול מרכזי של סיסמאות ופרטי גישה — בחר מי ברשימת המשתמשים חשוף לכל רשומה. הסיסמה מוסתרת עד לחיצה על «הצג».'
-            : 'פריטים שמנהל המערכת שיתף איתך בלבד. הסיסמה מוסתרת עד לחיצה על «הצג».'}
+            : 'אפשר להוסיף פריט חדש ולבחור מי יראה אותו. תראה כאן גם פריטים שמנהל שיתף איתך או ששיתפת עם עצמך/עם הצוות. פריט שמנהל הגביל לרשימת משתמשים — לא יופיע למי שלא ברשימה. הסיסמה מוסתרת עד לחיצה על «הצג».'}
         </p>
       </header>
 
@@ -243,11 +241,9 @@ export function Vault() {
               ))}
             </select>
           </div>
-          {vaultAdmin ? (
-            <button type="button" onClick={openCreate} className="hub-btn-orange w-full shrink-0 md:w-auto">
-              + פריט חדש
-            </button>
-          ) : null}
+          <button type="button" onClick={openCreate} className="hub-btn-orange w-full shrink-0 md:w-auto">
+            + פריט חדש
+          </button>
         </div>
 
         <div className="border-t border-[var(--border)] pt-3 md:pt-4">
@@ -419,7 +415,7 @@ export function Vault() {
         </ul>
       )}
 
-      {vaultAdmin ? (
+      {modalOpen && (vaultAdmin || !editingId) ? (
         <VaultEntryModal
           key={editingId ?? 'create'}
           isOpen={modalOpen}
@@ -427,6 +423,7 @@ export function Vault() {
           initial={editing}
           teamUsers={users}
           clients={clients}
+          isVaultAdmin={vaultAdmin}
           onSave={async (payload) => {
             if (editingId) await updateEntry(editingId, payload)
             else await addEntry(payload)
@@ -455,6 +452,7 @@ function VaultEntryModal({
   initial,
   teamUsers,
   clients,
+  isVaultAdmin,
   onSave,
 }: {
   isOpen: boolean
@@ -462,6 +460,7 @@ function VaultEntryModal({
   initial?: PasswordVaultEntry
   teamUsers: TeamMember[]
   clients: Client[]
+  isVaultAdmin: boolean
   onSave: (p: PasswordVaultWrite) => Promise<void>
 }) {
   const sortedTeam = useMemo(
@@ -576,8 +575,17 @@ function VaultEntryModal({
             חשיפת הסיסמה לעובדים
           </label>
           <p className="mb-2 text-[11px] leading-relaxed text-[var(--text-light)]">
-            סמן מי יראה את הרשומה ואת פרטי הגישה (סיסמה או Google). עובד שלא ברשימה לא יראה פריט זה כלל. ריק = רק
-            מנהלי מערכת.
+            {isVaultAdmin ? (
+              <>
+                סמן מי יראה את הרשומה ואת פרטי הגישה (סיסמה או Google). עובד שלא ברשימה לא יראה פריט זה כלל. ריק =
+                רק מנהלי מערכת.
+              </>
+            ) : (
+              <>
+                סמן מי יראה את הרשומה ואת פרטי הגישה. עובד שלא ברשימה לא יראה פריט זה. אם לא תסמן אף אחד — הפריט
+                יישמר כאישי (רק אתה ומנהלי המערכת).
+              </>
+            )}
           </p>
           <div className="mb-2 flex flex-wrap gap-2">
             <button type="button" className="hub-btn-secondary text-[12px] py-1 px-2" onClick={selectAllTeam}>

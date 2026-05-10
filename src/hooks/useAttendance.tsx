@@ -41,9 +41,9 @@ const ATTENDANCE_LOG_RANGE_DAYS = 730
 const DEFAULT_POLICY: AttendancePolicy = {
   id: 'default',
   autoDeductUnverified: false,
-  checkInMinMinutes: 50,
-  checkInMaxMinutes: 70,
-  checkInGraceMinutes: 5,
+  checkInMinMinutes: 40,
+  checkInMaxMinutes: 75,
+  checkInGraceMinutes: 15,
 }
 
 function docToPresence(id: string, x: Record<string, unknown>): AttendancePresence {
@@ -153,8 +153,8 @@ function docToAttendanceAnomaly(id: string, x: Record<string, unknown>): Attenda
 }
 
 function docToAttendancePolicy(id: string, x: Record<string, unknown>): AttendancePolicy {
-  const min = typeof x.checkInMinMinutes === 'number' && Number.isFinite(x.checkInMinMinutes) ? x.checkInMinMinutes : 50
-  const max = typeof x.checkInMaxMinutes === 'number' && Number.isFinite(x.checkInMaxMinutes) ? x.checkInMaxMinutes : 70
+  const min = typeof x.checkInMinMinutes === 'number' && Number.isFinite(x.checkInMinMinutes) ? x.checkInMinMinutes : 40
+  const max = typeof x.checkInMaxMinutes === 'number' && Number.isFinite(x.checkInMaxMinutes) ? x.checkInMaxMinutes : 75
   return {
     id,
     autoDeductUnverified: x.autoDeductUnverified !== false,
@@ -162,8 +162,8 @@ function docToAttendancePolicy(id: string, x: Record<string, unknown>): Attendan
     checkInMaxMinutes: Math.max(min, Math.min(max, 180)),
     checkInGraceMinutes:
       typeof x.checkInGraceMinutes === 'number' && Number.isFinite(x.checkInGraceMinutes)
-        ? Math.max(1, Math.min(x.checkInGraceMinutes, 15))
-        : 5,
+        ? Math.max(1, Math.min(x.checkInGraceMinutes, 30))
+        : 15,
   }
 }
 
@@ -297,7 +297,7 @@ export function AttendanceProvider({ children }: { children: ReactNode }) {
         lastCheckInAt: new Date().toISOString(),
         lastVerifiedAt: new Date().toISOString(),
         nextCheckInDueAt: new Date(
-          Date.now() + (Math.floor(Math.random() * 21) + 50) * 60_000,
+          Date.now() + (Math.floor(Math.random() * 36) + 40) * 60_000,
         ).toISOString(),
         unverifiedMinutes: 0,
         missedCheckIns: 0,

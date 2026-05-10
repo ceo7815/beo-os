@@ -54,6 +54,13 @@ service cloud.firestore {
         resource.data.assigneeId == me() ||
         resource.data.createdBy == me()
       );
+
+      match /activity/{activityId} {
+        allow read, write: if signedIn();
+      }
+      match /taskNotes/{noteId} {
+        allow read, write: if signedIn();
+      }
     }
 
     match /attendancePresence/{userId} {
@@ -94,9 +101,43 @@ service cloud.firestore {
       allow read, write: if signedIn();
     }
 
+    /** מודולי Hub — כל משתמש מחובר (כמו ה-catch-all בעבר). מפורש כדי שלא יישברו אם יש בעיה ב-glob של ה-catch-all. */
+    match /clients/{id} {
+      allow read, write: if signedIn();
+    }
+    match /projects/{id} {
+      allow read, write: if signedIn();
+    }
+    match /suppliers/{id} {
+      allow read, write: if signedIn();
+    }
+    match /campaigns/{id} {
+      allow read, write: if signedIn();
+    }
+    match /invoices/{id} {
+      allow read, write: if signedIn();
+    }
+    match /collectionTracking/{id} {
+      allow read, write: if signedIn();
+    }
+    match /hostingRecords/{id} {
+      allow read, write: if signedIn();
+    }
+    match /domainRecords/{id} {
+      allow read, write: if signedIn();
+    }
+    match /docs/{id} {
+      allow read, write: if signedIn();
+    }
+    match /recurringTaskTemplates/{id} {
+      allow read, write: if signedIn();
+    }
+
     /**
-     * כספת סיסמאות: אדמינים — מלא; עובד — קריאה רק אם ה-uid שלו ב-visibleUserIds.
-     * מסמכים ישנים בלי visibleUserIds — נגישים רק לאדמין.
+     * כספת סיסמאות: אדמינים — קריאה/עריכה מלאה.
+     * עובד — קריאה רק אם ה-uid שלו ב-visibleUserIds (ריק = רק אדמין).
+     * יצירת פריט: משתמש מחובר + עצמו ב-visibleUserIds (או אדמין).
+     * עדכון/מחיקה: אדמין בלבד.
      */
     match /passwords_vault/{entryId} {
       allow read: if isAdmin() || (
@@ -104,12 +145,23 @@ service cloud.firestore {
         resource.data.visibleUserIds is list &&
         me() in resource.data.visibleUserIds
       );
-      allow create, update, delete: if isAdmin();
+      allow create: if signedIn() && (
+        isAdmin() ||
+        (
+          request.resource.data.updatedBy == me() &&
+          request.resource.data.visibleUserIds is list &&
+          me() in request.resource.data.visibleUserIds
+        )
+      );
+      allow update, delete: if isAdmin();
     }
 
-    // שאר המודולים: דורשים משתמש מחובר (ללא כספת הסיסמאות).
-    match /{document=**} {
-      allow read, write: if signedIn() && !document.matches('passwords_vault/.*');
+    /**
+     * שאר נתיבים: משתמש מחובר, למעט עץ כספת הסיסמאות (שם רק החוקים למעלה חלים).
+     * לא לקרוא למשתנה ה-wildcard `document` — מתנגש עם הקשר מובנה ושובר קומפילציה.
+     */
+    match /{anyPath=**} {
+      allow read, write: if signedIn() && !anyPath.matches('passwords_vault/.*');
     }
   }
 }

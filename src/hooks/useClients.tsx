@@ -51,6 +51,12 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
   }, [user])
 
   useEffect(() => {
+    if (!user?.uid) {
+      setClients([])
+      setLoading(false)
+      setError(null)
+      return
+    }
     setLoading(true)
     const q = query(collection(db, 'clients'))
     const unsub = onSnapshot(
@@ -68,7 +74,7 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       },
     )
     return () => unsub()
-  }, [])
+  }, [user?.uid])
 
   const addClient = useCallback(
     async (data: Omit<Client, 'id' | 'createdAt'>) => {

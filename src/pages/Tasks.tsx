@@ -84,6 +84,7 @@ function TaskCard({
   supplierName,
   projectName,
   assigneeLabel,
+  delegatorLabel,
   onOpenDrawer,
   onMarkComplete,
   onReopen,
@@ -99,6 +100,8 @@ function TaskCard({
   supplierName: string | null
   projectName: string | null
   assigneeLabel: string | null
+  /** אם המשימה נוצרה על ידי עובד אחד והוקצתה לאחר — מוצגת מסגרת כחולה + כותרת */
+  delegatorLabel: string | null
   onOpenDrawer: () => void
   onMarkComplete: () => void
   onReopen: () => void
@@ -209,6 +212,11 @@ function TaskCard({
               <span className="font-medium">{assigneeLabel}</span>
             </p>
           ) : null}
+          {delegatorLabel ? (
+            <p className="rounded-md bg-[#EEF2FF] px-2 py-1.5 text-[12px] font-semibold text-[var(--blue-dark)]">
+              הופנה על ידי: {delegatorLabel}
+            </p>
+          ) : null}
           <div className="border-t border-[var(--border)] pt-3">
             <p className="mb-1 text-[11px] font-bold text-[var(--text-mid)]">תיאור</p>
             {desc ? (
@@ -244,8 +252,11 @@ function TaskCard({
       </Modal>
 
       <div
-        className="rounded-2xl border border-black bg-[var(--dash-panel-bg)] p-3 text-start shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition hover:brightness-[1.02]"
-        style={{ borderRight: `3px solid ${priorityColor}` }}
+        className={`text-start shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition hover:brightness-[1.02] ${
+          delegatorLabel
+            ? 'overflow-hidden rounded-2xl border-2 border-[#2563EB] ring-1 ring-[#BFDBFE]'
+            : 'rounded-2xl border border-black'
+        }`}
         role="button"
         tabIndex={0}
         draggable
@@ -260,6 +271,15 @@ function TaskCard({
         }}
         aria-label={`פתח תצוגה מלאה: ${task.title}`}
       >
+        {delegatorLabel ? (
+          <div className="bg-[#2563EB] px-2 py-2 text-center text-[10px] font-bold leading-snug text-white sm:text-[11px]">
+            משימה שהופנה על ידי {delegatorLabel}
+          </div>
+        ) : null}
+        <div
+          className={`bg-[var(--dash-panel-bg)] p-3 ${delegatorLabel ? 'rounded-b-[14px]' : 'rounded-2xl'}`}
+          style={{ borderRight: `3px solid ${priorityColor}` }}
+        >
         <div className="w-full min-w-0 space-y-1.5 text-start">
           <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
             <span className="min-w-0 text-[14px] font-bold leading-snug text-[var(--text-dark)]">
@@ -439,6 +459,7 @@ function TaskCard({
         </button>
       </div>
     </div>
+    </div>
     </>
   )
 }
@@ -591,14 +612,20 @@ export function Tasks() {
     return visibleTasks.filter((t) => t.assigneeId === filterUid)
   }, [visibleTasks, canViewAsOthers, adminTeamScope, user?.uid])
 
-  /** משימות שיצרת לאחרים — מוצגות רק ב«משימות ששלחתי», לא בלוח הקנבן */
+  /**
+   * משימות שיצרת לאחרים — בלוח «שלי» / עובד רגיל: לא בקנבן (רק ב«משימות ששלחתי»).
+   * כשמנהל בוחר עובד ספציפי — חייבים להציג גם משימות שהמנהל הקצה לו, אחרת הלוח נראה ריק.
+   */
   const kanbanTaskSource = useMemo(() => {
     const uid = user?.uid
     if (!uid) return perspectiveFiltered
+    const viewingOneTeammate =
+      canViewAsOthers && adminTeamScope !== 'mine' && adminTeamScope !== 'all'
+    if (viewingOneTeammate) return perspectiveFiltered
     return perspectiveFiltered.filter(
       (t) => !(t.createdBy === uid && t.assigneeId !== uid),
     )
-  }, [perspectiveFiltered, user?.uid])
+  }, [perspectiveFiltered, user?.uid, canViewAsOthers, adminTeamScope])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -960,6 +987,12 @@ export function Tasks() {
                   const assigneeLabel = task.assigneeId
                     ? memberById.get(task.assigneeId) ?? null
                     : null
+                  const delegatorLabel =
+                    task.assigneeId &&
+                    task.createdBy &&
+                    task.assigneeId !== task.createdBy
+                      ? memberById.get(task.createdBy) ?? 'עובד'
+                      : null
                   return (
                     <div key={task.id} className="w-full">
                       <TaskCard
@@ -968,6 +1001,7 @@ export function Tasks() {
                         supplierName={supplierName}
                         projectName={projectName}
                         assigneeLabel={assigneeLabel}
+                        delegatorLabel={delegatorLabel}
                         onOpenDrawer={() => setDrawerTaskId(task.id)}
                         onMarkComplete={() =>
                           void updateTask(

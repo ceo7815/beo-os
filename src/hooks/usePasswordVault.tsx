@@ -103,12 +103,16 @@ export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordV
     async (payload: PasswordVaultWrite) => {
       if (!uid) return
       try {
-        const visibleUserIds = [...new Set(payload.visibleUserIds.filter(Boolean))]
+        let visibleUserIds = [...new Set(payload.visibleUserIds.filter(Boolean))]
+        if (!isVaultAdmin && !visibleUserIds.includes(uid)) {
+          visibleUserIds = [...visibleUserIds, uid]
+        }
         await addDoc(collection(db, COLL), {
           title: payload.title.trim(),
           category: payload.category.trim(),
           username: payload.username.trim(),
-          password: payload.password,
+          password: payload.loginType === 'google' ? '' : payload.password,
+          loginType: payload.loginType,
           url: payload.url.trim(),
           notes: payload.notes.trim(),
           visibleUserIds,
@@ -121,7 +125,7 @@ export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordV
         toastFsError('לא ניתן לשמור', e, 'vault add')
       }
     },
-    [uid],
+    [uid, isVaultAdmin],
   )
 
   const updateEntry = useCallback(
