@@ -9,19 +9,22 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
-    /** תפקיד מ-users/{uid} — get אחד; אם אין role תקין מחזירים '' (לא זורקים string על null) */
+    /** תפקיד מ-users/{request.auth.uid} — get אחד; אם אין role תקין מחזירים '' */
     function myRole() {
-      return signedIn() && exists(/databases/$(database)/documents/users/$(me()))
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         ? userRoleFromDoc()
         : '';
     }
 
     function userRoleFromDoc() {
-      let u = get(/databases/$(database)/documents/users/$(me()));
+      let u = get(/databases/$(database)/documents/users/$(request.auth.uid));
       return u.data.keys().hasAny(['role']) && u.data.role is string ? u.data.role : '';
     }
 
-    /** תפקידי מנהל — כולל וריאנטים נפוצים אם נשמרו עם רישיות שונה */
+    /**
+     * מנהל: מסמך users/{request.auth.uid} עם שדה role — 'admin' או 'superadmin' (כולל וריאנטי רישיות).
+     * ה-UID הוא מזהה Firebase Auth בלבד, לא כתובת אימייל.
+     */
     function isAdmin() {
       let r = myRole();
       return r == 'admin' || r == 'superadmin' ||
@@ -42,13 +45,6 @@ service cloud.firestore {
         : '';
     }
 
-    function vaultVisibleToReader() {
-      return resource.data.visibleUserIds is list && (
-        me() in resource.data.visibleUserIds ||
-        (authEmail() != '' && authEmail() in resource.data.visibleUserIds)
-      );
-    }
-
     match /users/{userId} {
       allow read: if signedIn();
       allow create: if isAdmin() || (
@@ -57,11 +53,16 @@ service cloud.firestore {
       );
       allow update: if isAdmin() || (
         isSelf(userId) &&
-        request.resource.data.diff(resource.data).changedKeys().hasOnly([
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'name',
           'avatar',
           'color',
-          'email'
+          'email',
+          'monthlyWorkHours',
+          'scheduleDayStart',
+          'scheduleDayEnd',
+          'scheduleBreakMinutes'
         ])
       );
       allow delete: if isAdmin();
@@ -86,6 +87,14 @@ service cloud.firestore {
       match /taskNotes/{noteId} {
         allow read, write: if signedIn();
       }
+    }
+
+    /**
+     * שאילתות collectionGroup על taskNotes (ראו useTasks.tsx) — חייב כלל recursive;
+     * ה-match המקונן tasks/.../taskNotes לא מספיק ל-collectionGroup.
+     */
+    match /{path=**}/taskNotes/{noteId} {
+      allow read, write: if signedIn();
     }
 
     match /attendancePresence/{userId} {
@@ -126,53 +135,67 @@ service cloud.firestore {
       allow read, write: if signedIn();
     }
 
-    /** מודולי Hub — כל משתמש מחובר (כמו ה-catch-all בעבר). מפורש כדי שלא יישברו אם יש בעיה ב-glob של ה-catch-all. */
-    match /clients/{id} {
+    /** Hub collections: signed-in read/write (wildcard name docId avoids id/path typing issues in the rules compiler). */
+    match /clients/{docId} {
       allow read, write: if signedIn();
     }
-    match /projects/{id} {
+    match /projects/{docId} {
       allow read, write: if signedIn();
     }
-    match /suppliers/{id} {
+    match /suppliers/{docId} {
       allow read, write: if signedIn();
     }
-    match /campaigns/{id} {
+    match /campaigns/{docId} {
       allow read, write: if signedIn();
     }
-    match /invoices/{id} {
+    match /invoices/{docId} {
       allow read, write: if signedIn();
     }
-    match /collectionTracking/{id} {
+    match /collectionTracking/{docId} {
       allow read, write: if signedIn();
     }
-    match /hostingRecords/{id} {
+    match /hostingRecords/{docId} {
       allow read, write: if signedIn();
     }
-    match /domainRecords/{id} {
+    match /domainRecords/{docId} {
       allow read, write: if signedIn();
     }
-    match /docs/{id} {
+    match /docs/{docId} {
       allow read, write: if signedIn();
     }
-    match /recurringTaskTemplates/{id} {
+    match /recurringTaskTemplates/{docId} {
       allow read, write: if signedIn();
     }
 
     /**
-     * כספת סיסמאות: אדמינים — קריאה/עריכה מלאה.
-     * עובד — קריאה רק אם ה-uid שלו ב-visibleUserIds (ריק = רק אדמין).
-     * יצירת פריט: משתמש מחובר + עצמו ב-visibleUserIds (או אדמין).
-     * עדכון/מחיקה: אדמין בלבד.
+     * כספת סיסמאות:
+     * - אדמין: שאילתה ללא where — isAdmin() בתוך תנאי ה-OR.
+     * - עובד: where('visibleUserIds','array-contains', uid) — hasAny([request.auth.uid]) (תואם ל-array-contains).
+     * - נתונים ישנים עם אימייל במערך: שאילתה שנייה + hasAny([authEmail()]).
      */
     match /passwords_vault/{entryId} {
-      /** אדמין: הכל. עובד: uid או אימייל (כמו בשאילתות array-contains בלקוח) בתוך visibleUserIds */
-      allow read: if signedIn() && (isAdmin() || vaultVisibleToReader());
+      /**
+       * קריאה: OR אחד — עוזר למנתח השאילתות לקשר array-contains על visibleUserIds
+       * ל-hasAny (במקום `in` על רשימה).
+       */
+      allow read: if signedIn() && (
+        isAdmin() ||
+        (
+          resource.data.visibleUserIds is list &&
+          resource.data.visibleUserIds.hasAny([request.auth.uid])
+        ) ||
+        (
+          resource.data.visibleUserIds is list &&
+          authEmail() != '' &&
+          resource.data.visibleUserIds.hasAny([authEmail()])
+        )
+      );
       allow create: if signedIn() && (
         isAdmin() ||
         (
           request.resource.data.updatedBy == me() &&
           request.resource.data.visibleUserIds is list &&
-          me() in request.resource.data.visibleUserIds
+          request.resource.data.visibleUserIds.hasAny([request.auth.uid])
         )
       );
       allow update, delete: if isAdmin();

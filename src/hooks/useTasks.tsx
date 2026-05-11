@@ -465,7 +465,8 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       currentUser?.uid === uid &&
       (role === 'admin' ||
         role === 'superadmin' ||
-        role === 'employee')
+        role === 'employee' ||
+        role === 'office')
 
     const tasksQuery =
       !profileReady || !uid

@@ -1,3 +1,4 @@
+import { onAuthStateChanged } from 'firebase/auth'
 import {
   addDoc,
   collection,
@@ -12,11 +13,13 @@ import {
   type Timestamp,
 } from 'firebase/firestore'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { db } from '../lib/firebase'
+import { auth, db } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { PasswordVaultEntry, PasswordVaultWrite } from '../types'
 
 const COLL = 'passwords_vault'
+
+/** מזהה המשתמש ב-Firebase Auth הוא תמיד UID (מחרוזת ייחודית), לא כתובת האימייל להתחברות */
 
 function tsToIso(t: Timestamp | { toDate?: () => Date } | null | undefined): string {
   if (!t) return ''
@@ -69,20 +72,13 @@ function mergeVaultSnaps(uidSnap: QuerySnapshot | null, emailSnap: QuerySnapshot
 }
 
 export type UsePasswordVaultOpts = {
+  /** uid מההקשר (חייב להתאים ל-auth.currentUser.uid כשמחוברים) */
   uid: string | undefined
-  /** לאימייל ב-visibleUserIds (נתונים ישנים) — שאילתה נוספת ומיזוג */
-  userEmail?: string | null
-  /** לאחר סנכרון רשימת המשתמשים — נדרש כדי לדעת אם המשתמש אדמין */
   usersReady: boolean
   isVaultAdmin: boolean
 }
 
-export function usePasswordVault({
-  uid,
-  userEmail,
-  usersReady,
-  isVaultAdmin,
-}: UsePasswordVaultOpts) {
+export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordVaultOpts) {
   const [entries, setEntries] = useState<PasswordVaultEntry[]>([])
   const [loading, setLoading] = useState(true)
   const snapsRef = useRef<{ uid: QuerySnapshot | null; email: QuerySnapshot | null }>({
@@ -101,71 +97,96 @@ export function usePasswordVault({
       return
     }
 
-    setLoading(true)
-    snapsRef.current = { uid: null, email: null }
+    let cancelled = false
+    let fsUnsubs: Array<() => void> = []
+    let errReported = false
 
-    if (isVaultAdmin) {
-      const unsub = onSnapshot(
-        query(collection(db, COLL)),
-        (snap) => {
-          const list = snap.docs.map((d) =>
-            docToEntry(d.id, d.data() as Record<string, unknown>),
-          )
-          list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-          setEntries(list)
-          setLoading(false)
-        },
-        (err) => {
-          toastFsError('שגיאה בטעינת כספת הסיסמאות', err, 'passwordVault')
-          setLoading(false)
-        },
-      )
-      return () => unsub()
-    }
-
-    const emailLc = userEmail?.trim().toLowerCase() ?? ''
-    const useEmailQuery = emailLc.length > 0
-
-    const emit = () => {
-      const { uid: uSnap, email: eSnap } = snapsRef.current
-      if (!uSnap && !(useEmailQuery && eSnap)) return
-      setEntries(mergeVaultSnaps(uSnap, useEmailQuery ? eSnap : null))
-      setLoading(false)
-    }
-
-    const onErr = (err: unknown) => {
+    const reportErr = (err: unknown) => {
+      if (errReported) return
+      errReported = true
       toastFsError('שגיאה בטעינת כספת הסיסמאות', err, 'passwordVault')
       setLoading(false)
     }
 
-    const qUid = query(collection(db, COLL), where('visibleUserIds', 'array-contains', uid))
-    const unsubUid = onSnapshot(
-      qUid,
-      (snap) => {
-        snapsRef.current.uid = snap
-        emit()
-      },
-      onErr,
-    )
+    const authUnsub = onAuthStateChanged(auth, (firebaseUser) => {
+      fsUnsubs.forEach((u) => u())
+      fsUnsubs = []
+      snapsRef.current = { uid: null, email: null }
+      errReported = false
 
-    let unsubEmail: (() => void) | undefined
-    if (useEmailQuery) {
-      const qEmail = query(collection(db, COLL), where('visibleUserIds', 'array-contains', emailLc))
-      unsubEmail = onSnapshot(
-        qEmail,
-        (snap) => {
-          snapsRef.current.email = snap
-          emit()
-        },
-        onErr,
+      if (cancelled) return
+
+      if (!firebaseUser?.uid || firebaseUser.uid !== uid) {
+        setEntries([])
+        setLoading(false)
+        return
+      }
+
+      setLoading(true)
+
+      if (isVaultAdmin) {
+        const unsub = onSnapshot(
+          query(collection(db, COLL)),
+          (snap) => {
+            if (cancelled) return
+            const list = snap.docs.map((d) =>
+              docToEntry(d.id, d.data() as Record<string, unknown>),
+            )
+            list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+            setEntries(list)
+            setLoading(false)
+          },
+          reportErr,
+        )
+        fsUnsubs.push(unsub)
+        return
+      }
+
+      const vaultUid = firebaseUser.uid
+      const vaultEmail = firebaseUser.email?.trim() ?? ''
+      const useEmailQuery = vaultEmail.length > 0
+
+      const emit = () => {
+        if (cancelled) return
+        const { uid: uSnap, email: eSnap } = snapsRef.current
+        if (!uSnap && !(useEmailQuery && eSnap)) return
+        setEntries(mergeVaultSnaps(uSnap, useEmailQuery ? eSnap : null))
+        setLoading(false)
+      }
+
+      const qUid = query(collection(db, COLL), where('visibleUserIds', 'array-contains', vaultUid))
+      fsUnsubs.push(
+        onSnapshot(
+          qUid,
+          (snap) => {
+            snapsRef.current.uid = snap
+            emit()
+          },
+          reportErr,
+        ),
       )
-    }
+
+      if (useEmailQuery) {
+        const qEmail = query(collection(db, COLL), where('visibleUserIds', 'array-contains', vaultEmail))
+        fsUnsubs.push(
+          onSnapshot(
+            qEmail,
+            (snap) => {
+              snapsRef.current.email = snap
+              emit()
+            },
+            reportErr,
+          ),
+        )
+      }
+    })
 
     return () => {
-      unsubUid()
-      unsubEmail?.()
+      cancelled = true
+      authUnsub()
+      fsUnsubs.forEach((u) => u())
     }
-  }, [uid, userEmail, usersReady, isVaultAdmin])
+  }, [uid, usersReady, isVaultAdmin])
 
   const addEntry = useCallback(
     async (payload: PasswordVaultWrite) => {

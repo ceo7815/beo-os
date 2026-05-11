@@ -103,7 +103,6 @@ export function Vault() {
 
   const { entries, loading, addEntry, updateEntry, removeEntry } = usePasswordVault({
     uid: user?.uid,
-    userEmail: user?.email,
     usersReady: !usersLoading,
     isVaultAdmin: vaultAdmin,
   })
