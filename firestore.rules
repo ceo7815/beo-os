@@ -9,11 +9,16 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
+    /** תפקיד מ-users/{uid} — get אחד; אם אין role תקין מחזירים '' (לא זורקים string על null) */
     function myRole() {
-      return signedIn() &&
-        exists(/databases/$(database)/documents/users/$(me()))
-        ? string(get(/databases/$(database)/documents/users/$(me())).data.role)
+      return signedIn() && exists(/databases/$(database)/documents/users/$(me()))
+        ? userRoleFromDoc()
         : '';
+    }
+
+    function userRoleFromDoc() {
+      let u = get(/databases/$(database)/documents/users/$(me()));
+      return u.data.keys().hasAny(['role']) && u.data.role is string ? u.data.role : '';
     }
 
     /** תפקידי מנהל — כולל וריאנטים נפוצים אם נשמרו עם רישיות שונה */
@@ -26,6 +31,22 @@ service cloud.firestore {
 
     function isSelf(userId) {
       return signedIn() && me() == userId;
+    }
+
+    /** אימייל מהטוקן (למשל כש-visibleUserIds הכיל אימייל במקום uid בנתונים ישנים) */
+    function authEmail() {
+      return signedIn() &&
+        request.auth.token.email is string &&
+        request.auth.token.email.size() > 0
+        ? request.auth.token.email
+        : '';
+    }
+
+    function vaultVisibleToReader() {
+      return resource.data.visibleUserIds is list && (
+        me() in resource.data.visibleUserIds ||
+        (authEmail() != '' && authEmail() in resource.data.visibleUserIds)
+      );
     }
 
     match /users/{userId} {
@@ -144,11 +165,8 @@ service cloud.firestore {
      * עדכון/מחיקה: אדמין בלבד.
      */
     match /passwords_vault/{entryId} {
-      allow read: if isAdmin() || (
-        signedIn() &&
-        resource.data.visibleUserIds is list &&
-        me() in resource.data.visibleUserIds
-      );
+      /** אדמין: הכל. עובד: uid או אימייל (כמו בשאילתות array-contains בלקוח) בתוך visibleUserIds */
+      allow read: if signedIn() && (isAdmin() || vaultVisibleToReader());
       allow create: if signedIn() && (
         isAdmin() ||
         (
@@ -161,12 +179,8 @@ service cloud.firestore {
     }
 
     /**
-     * שאר נתיבים: משתמש מחובר, למעט כספת הסיסמאות (שם רק החוקים למעלה).
-     * Path מ-{name=**} הוא טיפוס Path — יש להמיר ל-string לפני matches (אחרת אזהרת קומפילר / permission-denied).
+     * אין catch-all רקורסיבי: הוא התנגש עם כספת (מספר match על אותו מסמך) וגרם ל-permission-denied
+     * למשתמשים שאינם אדמין. כל האוספים בשימוש האפליקציה מפורשים למעלה — אוסף חדש ידרוש כאן match.
      */
-    match /{anyPath=**} {
-      allow read, write: if signedIn() &&
-        !string(anyPath).matches('^(.*/)?passwords_vault(/.*)?$');
-    }
   }
 }

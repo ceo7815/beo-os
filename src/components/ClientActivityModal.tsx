@@ -86,6 +86,7 @@ export function ClientActivityModal(props: Props) {
   const vaultAdmin = isAdminRole(vaultRole)
   const { entries: vaultEntries, loading: vaultLoading } = usePasswordVault({
     uid: user?.uid,
+    userEmail: user?.email,
     usersReady: !usersLoading,
     isVaultAdmin: vaultAdmin,
   })

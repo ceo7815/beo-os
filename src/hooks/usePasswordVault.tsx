@@ -8,9 +8,10 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  type QuerySnapshot,
   type Timestamp,
 } from 'firebase/firestore'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { db } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { PasswordVaultEntry, PasswordVaultWrite } from '../types'
@@ -54,16 +55,40 @@ function docToEntry(id: string, data: Record<string, unknown>): PasswordVaultEnt
   }
 }
 
+function mergeVaultSnaps(uidSnap: QuerySnapshot | null, emailSnap: QuerySnapshot | null): PasswordVaultEntry[] {
+  const merged = new Map<string, Record<string, unknown>>()
+  if (uidSnap) {
+    for (const d of uidSnap.docs) merged.set(d.id, d.data() as Record<string, unknown>)
+  }
+  if (emailSnap) {
+    for (const d of emailSnap.docs) merged.set(d.id, d.data() as Record<string, unknown>)
+  }
+  const list = [...merged.entries()].map(([id, data]) => docToEntry(id, data))
+  list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return list
+}
+
 export type UsePasswordVaultOpts = {
   uid: string | undefined
+  /** לאימייל ב-visibleUserIds (נתונים ישנים) — שאילתה נוספת ומיזוג */
+  userEmail?: string | null
   /** לאחר סנכרון רשימת המשתמשים — נדרש כדי לדעת אם המשתמש אדמין */
   usersReady: boolean
   isVaultAdmin: boolean
 }
 
-export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordVaultOpts) {
+export function usePasswordVault({
+  uid,
+  userEmail,
+  usersReady,
+  isVaultAdmin,
+}: UsePasswordVaultOpts) {
   const [entries, setEntries] = useState<PasswordVaultEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const snapsRef = useRef<{ uid: QuerySnapshot | null; email: QuerySnapshot | null }>({
+    uid: null,
+    email: null,
+  })
 
   useEffect(() => {
     if (!uid) {
@@ -77,27 +102,70 @@ export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordV
     }
 
     setLoading(true)
-    const q = isVaultAdmin
-      ? query(collection(db, COLL))
-      : query(collection(db, COLL), where('visibleUserIds', 'array-contains', uid))
+    snapsRef.current = { uid: null, email: null }
 
-    const unsub = onSnapshot(
-      q,
+    if (isVaultAdmin) {
+      const unsub = onSnapshot(
+        query(collection(db, COLL)),
+        (snap) => {
+          const list = snap.docs.map((d) =>
+            docToEntry(d.id, d.data() as Record<string, unknown>),
+          )
+          list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+          setEntries(list)
+          setLoading(false)
+        },
+        (err) => {
+          toastFsError('שגיאה בטעינת כספת הסיסמאות', err, 'passwordVault')
+          setLoading(false)
+        },
+      )
+      return () => unsub()
+    }
+
+    const emailLc = userEmail?.trim().toLowerCase() ?? ''
+    const useEmailQuery = emailLc.length > 0
+
+    const emit = () => {
+      const { uid: uSnap, email: eSnap } = snapsRef.current
+      if (!uSnap && !(useEmailQuery && eSnap)) return
+      setEntries(mergeVaultSnaps(uSnap, useEmailQuery ? eSnap : null))
+      setLoading(false)
+    }
+
+    const onErr = (err: unknown) => {
+      toastFsError('שגיאה בטעינת כספת הסיסמאות', err, 'passwordVault')
+      setLoading(false)
+    }
+
+    const qUid = query(collection(db, COLL), where('visibleUserIds', 'array-contains', uid))
+    const unsubUid = onSnapshot(
+      qUid,
       (snap) => {
-        const list = snap.docs.map((d) =>
-          docToEntry(d.id, d.data() as Record<string, unknown>),
-        )
-        list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        setEntries(list)
-        setLoading(false)
+        snapsRef.current.uid = snap
+        emit()
       },
-      (err) => {
-        toastFsError('שגיאה בטעינת כספת הסיסמאות', err, 'passwordVault')
-        setLoading(false)
-      },
+      onErr,
     )
-    return () => unsub()
-  }, [uid, usersReady, isVaultAdmin])
+
+    let unsubEmail: (() => void) | undefined
+    if (useEmailQuery) {
+      const qEmail = query(collection(db, COLL), where('visibleUserIds', 'array-contains', emailLc))
+      unsubEmail = onSnapshot(
+        qEmail,
+        (snap) => {
+          snapsRef.current.email = snap
+          emit()
+        },
+        onErr,
+      )
+    }
+
+    return () => {
+      unsubUid()
+      unsubEmail?.()
+    }
+  }, [uid, userEmail, usersReady, isVaultAdmin])
 
   const addEntry = useCallback(
     async (payload: PasswordVaultWrite) => {
