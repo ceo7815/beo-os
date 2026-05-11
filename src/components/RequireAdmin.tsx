@@ -4,7 +4,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { useUsers } from '../hooks/useUsers'
 
 export function isAdminRole(role: string): boolean {
-  return role === 'admin' || role === 'superadmin'
+  const r = String(role ?? '')
+    .trim()
+    .toLowerCase()
+  return r === 'admin' || r === 'superadmin'
 }
 
 /** רק admin / superadmin — אחרת הפניה לדשבורד */

@@ -12,12 +12,16 @@ service cloud.firestore {
     function myRole() {
       return signedIn() &&
         exists(/databases/$(database)/documents/users/$(me()))
-        ? get(/databases/$(database)/documents/users/$(me())).data.role
+        ? string(get(/databases/$(database)/documents/users/$(me())).data.role)
         : '';
     }
 
+    /** תפקידי מנהל — כולל וריאנטים נפוצים אם נשמרו עם רישיות שונה */
     function isAdmin() {
-      return myRole() in ['admin', 'superadmin'];
+      let r = myRole();
+      return r == 'admin' || r == 'superadmin' ||
+        r == 'Admin' || r == 'Superadmin' ||
+        r == 'ADMIN' || r == 'SUPERADMIN';
     }
 
     function isSelf(userId) {
@@ -157,11 +161,12 @@ service cloud.firestore {
     }
 
     /**
-     * שאר נתיבים: משתמש מחובר, למעט עץ כספת הסיסמאות (שם רק החוקים למעלה חלים).
-     * לא לקרוא למשתנה ה-wildcard `document` — מתנגש עם הקשר מובנה ושובר קומפילציה.
+     * שאר נתיבים: משתמש מחובר, למעט כספת הסיסמאות (שם רק החוקים למעלה).
+     * Path מ-{name=**} הוא טיפוס Path — יש להמיר ל-string לפני matches (אחרת אזהרת קומפילר / permission-denied).
      */
     match /{anyPath=**} {
-      allow read, write: if signedIn() && !anyPath.matches('passwords_vault/.*');
+      allow read, write: if signedIn() &&
+        !string(anyPath).matches('^(.*/)?passwords_vault(/.*)?$');
     }
   }
 }
