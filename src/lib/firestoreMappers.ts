@@ -12,6 +12,7 @@ import type {
   Invoice,
   InvoiceStatus,
   Lead,
+  Meeting,
   Priority,
   Project,
   ProjectBillingType,
@@ -26,6 +27,7 @@ import type {
   TaskStatus,
   TeamMember,
 } from '../types'
+import { normalizeDueTimeHm } from './dates'
 import { parseFirestoreSupplierTypes } from './supplierTypes'
 
 export function timestampToIso(value: unknown): string {
@@ -238,6 +240,9 @@ export function docToTask(d: QueryDocumentSnapshot<DocumentData>): Task {
   const cid = x.clientId
   const pid = x.projectId
   const sid = x.supplierId
+  const dueHm = normalizeDueTimeHm(
+    typeof x.dueTime === 'string' ? x.dueTime : undefined,
+  )
   return {
     id: d.id,
     title: String(x.title ?? ''),
@@ -255,6 +260,7 @@ export function docToTask(d: QueryDocumentSnapshot<DocumentData>): Task {
       ? String(sid)
       : undefined,
     dueDate: coerceTaskDueDateYmd(x.dueDate),
+    ...(dueHm ? { dueTime: dueHm } : {}),
     reminderDate:
       typeof x.reminderDate === 'string' ? x.reminderDate : undefined,
     tags: Array.isArray(x.tags) ? x.tags.map((t) => String(t)) : [],
@@ -276,6 +282,64 @@ export function docToTask(d: QueryDocumentSnapshot<DocumentData>): Task {
     ...(x.recurringFrequency === 'daily' || x.recurringFrequency === 'weekly'
       ? { recurringFrequency: x.recurringFrequency }
       : {}),
+  }
+}
+
+function parseUserIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((id) => String(id)).filter(Boolean)
+}
+
+export function docToMeeting(d: QueryDocumentSnapshot<DocumentData>): Meeting {
+  const x = d.data()
+  const cid = x.clientId
+  const pid = x.projectId
+  const sid = x.supplierId
+  const lid = x.leadId
+  const startHm = normalizeDueTimeHm(
+    typeof x.startTime === 'string' ? x.startTime : undefined,
+  )
+  const endHm = normalizeDueTimeHm(
+    typeof x.endTime === 'string' ? x.endTime : undefined,
+  )
+  const participants = parseUserIdList(x.participantUserIds)
+  const organizer = String(x.organizerUserId ?? '').trim()
+  const attendeeFromFs = parseUserIdList(x.attendeeUserIds)
+  const attendeeUserIds =
+    attendeeFromFs.length > 0
+      ? [...new Set(attendeeFromFs)]
+      : [...new Set([organizer, ...participants].filter(Boolean))]
+
+  return {
+    id: d.id,
+    title: String(x.title ?? ''),
+    purpose: String(x.purpose ?? ''),
+    agenda: String(x.agenda ?? ''),
+    startDate: coerceTaskDueDateYmd(x.startDate),
+    ...(startHm ? { startTime: startHm } : {}),
+    ...(endHm ? { endTime: endHm } : {}),
+    location:
+      typeof x.location === 'string' && x.location.trim()
+        ? String(x.location).trim()
+        : undefined,
+    clientId: cid !== undefined && cid !== null && String(cid).trim()
+      ? String(cid)
+      : undefined,
+    projectId: pid !== undefined && pid !== null && String(pid).trim()
+      ? String(pid)
+      : undefined,
+    supplierId: sid !== undefined && sid !== null && String(sid).trim()
+      ? String(sid)
+      : undefined,
+    leadId: lid !== undefined && lid !== null && String(lid).trim()
+      ? String(lid)
+      : undefined,
+    organizerUserId: organizer,
+    participantUserIds: participants,
+    attendeeUserIds,
+    excludeCreatorFromAttendees: x.excludeCreatorFromAttendees === true,
+    createdAt: timestampToIso(x.createdAt),
+    createdBy: String(x.createdBy ?? ''),
   }
 }
 
@@ -332,6 +396,8 @@ export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
     rawStatus === 'specification' ||
     rawStatus === 'quote_sent' ||
     rawStatus === 'follow_up' ||
+    rawStatus === 'no_answer' ||
+    rawStatus === 'not_relevant' ||
     rawStatus === 'closed'
       ? rawStatus
       : rawStatus === 'handling' || rawStatus === 'in_progress'
@@ -415,6 +481,10 @@ export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
     quoteReturnByDate:
       typeof x.quoteReturnByDate === 'string' && x.quoteReturnByDate.trim()
         ? x.quoteReturnByDate.slice(0, 10)
+        : undefined,
+    notRelevantReason:
+      typeof x.notRelevantReason === 'string' && x.notRelevantReason.trim()
+        ? x.notRelevantReason.trim()
         : undefined,
     createdAt: timestampToIso(x.createdAt),
   }

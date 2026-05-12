@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.clockifyProxy = exports.sendAssigneeTaskNotification = exports.updateManagedUserPassword = exports.updateManagedUserEmail = exports.createManagedUser = void 0;
+exports.clockifyProxy = exports.sendMeetingInviteNotifications = exports.sendAssigneeTaskNotification = exports.updateManagedUserPassword = exports.updateManagedUserEmail = exports.createManagedUser = void 0;
 require("./loadEnv.js");
 const app_1 = require("firebase-admin/app");
 const auth_1 = require("firebase-admin/auth");
@@ -63,6 +63,29 @@ async function resolveAssigneeEmailAndGreeting(assigneeId) {
     if (!greeting)
         greeting = email.split('@')[0] || 'שם';
     return { email, greeting };
+}
+async function resolveUserDisplayName(uid) {
+    let fallback = 'משתמש';
+    try {
+        const rec = await adminAuth.getUser(uid);
+        const dn = rec.displayName?.trim();
+        if (dn)
+            return dn;
+        const userDoc = await db.doc(`users/${uid}`).get();
+        const n = userDoc.get('name');
+        if (typeof n === 'string' && n.trim())
+            return n.trim();
+        const em = normalizeHubEmail(rec.email);
+        if (em)
+            return em.split('@')[0] ?? fallback;
+    }
+    catch {
+        const userDoc = await db.doc(`users/${uid}`).get();
+        const n = userDoc.get('name');
+        if (typeof n === 'string' && n.trim())
+            return n.trim();
+    }
+    return fallback;
 }
 function requireAuthUid(authUid) {
     if (!authUid) {
@@ -272,6 +295,209 @@ exports.sendAssigneeTaskNotification = (0, https_1.onCall)({
         if (e instanceof https_1.HttpsError)
             throw e;
         console.error('sendAssigneeTaskNotification unexpected', e);
+        return {
+            ok: true,
+            skipped: true,
+            reason: 'function_error',
+        };
+    }
+});
+/**
+ * שליחת מייל הזמנה לכל משתתפי הפגישה (attendeeUserIds), כולל המזמין אם הוא ברשימה.
+ * דורש שהמזמין יהיה ב-attendeeUserIds או יוצר/מאורגן / אדמין.
+ */
+exports.sendMeetingInviteNotifications = (0, https_1.onCall)({
+    region: 'us-central1',
+    invoker: 'public',
+    secrets: [resendApiKeySecret, mailFromSecret],
+}, async (request) => {
+    try {
+        const callerUid = requireAuthUid(request.auth?.uid);
+        const data = request.data;
+        const meetingId = String(data.meetingId ?? '').trim();
+        if (!meetingId) {
+            throw new https_1.HttpsError('invalid-argument', 'חסר מזהה פגישה');
+        }
+        const snap = await db.doc(`meetings/${meetingId}`).get();
+        if (!snap.exists) {
+            throw new https_1.HttpsError('not-found', 'הפגישה לא נמצאה');
+        }
+        const m = snap.data();
+        const attendeeIdsRaw = m.attendeeUserIds;
+        const attendeeUserIds = Array.isArray(attendeeIdsRaw)
+            ? attendeeIdsRaw.map((id) => String(id)).filter(Boolean)
+            : [];
+        const callerIsAdmin = await (async () => {
+            const u = await db.doc(`users/${callerUid}`).get();
+            const r = u.get('role');
+            return (r === 'admin' ||
+                r === 'superadmin' ||
+                r === 'Admin' ||
+                r === 'Superadmin');
+        })();
+        if (!callerIsAdmin &&
+            !attendeeUserIds.includes(callerUid) &&
+            String(m.createdBy ?? '') !== callerUid &&
+            String(m.organizerUserId ?? '') !== callerUid) {
+            throw new https_1.HttpsError('permission-denied', 'אין הרשאה לשלוח הזמנות לפגישה זו');
+        }
+        const createdByUid = String(m.createdBy ?? '').trim() || callerUid;
+        const creatorName = await resolveUserDisplayName(createdByUid);
+        const meetingTitle = String(m.title ?? '').trim() || 'פגישה';
+        const purpose = String(m.purpose ?? '');
+        const agenda = String(m.agenda ?? '');
+        const startYmdRaw = String(m.startDate ?? '').trim().slice(0, 10);
+        const startDateOk = /^\d{4}-\d{2}-\d{2}$/.test(startYmdRaw)
+            ? startYmdRaw
+            : '';
+        const startDateForCal = startDateOk || new Date().toISOString().slice(0, 10);
+        const startTime = String(m.startTime ?? '').trim();
+        const endTime = String(m.endTime ?? '').trim();
+        let whenLabel = startDateOk || '—';
+        if (startDateOk && startTime) {
+            whenLabel = endTime
+                ? `${startDateOk} · ${startTime}–${endTime}`
+                : `${startDateOk} · ${startTime}`;
+        }
+        const clientId = String(m.clientId ?? '').trim();
+        const projectId = String(m.projectId ?? '').trim();
+        const supplierId = String(m.supplierId ?? '').trim();
+        const leadId = String(m.leadId ?? '').trim();
+        const locationRaw = String(m.location ?? '').trim();
+        let clientName = '';
+        let projectName = '';
+        const extraContextLines = [];
+        if (clientId) {
+            const c = await db.doc(`clients/${clientId}`).get();
+            const nm = c.get('name');
+            clientName =
+                typeof nm === 'string' && nm.trim() ? nm.trim() : clientId;
+        }
+        if (projectId) {
+            const p = await db.doc(`projects/${projectId}`).get();
+            const nm = p.get('name');
+            projectName =
+                typeof nm === 'string' && nm.trim() ? nm.trim() : projectId;
+        }
+        if (supplierId) {
+            const s = await db.doc(`suppliers/${supplierId}`).get();
+            const nm = s.get('name');
+            extraContextLines.push(`ספק: ${typeof nm === 'string' && nm.trim() ? nm.trim() : supplierId}`);
+        }
+        if (leadId) {
+            const l = await db.doc(`leads/${leadId}`).get();
+            const nm = l.get('name');
+            extraContextLines.push(`ליד: ${typeof nm === 'string' && nm.trim() ? nm.trim() : leadId}`);
+        }
+        if (locationRaw) {
+            extraContextLines.push(`מיקום / קישור: ${locationRaw}`);
+        }
+        const appBase = (0, taskAssignmentMail_js_1.defaultPublicAppUrl)().replace(/\/$/, '');
+        const hubCalendarUrl = `${appBase}/calendar?openMeeting=${encodeURIComponent(meetingId)}`;
+        const gCalDetails = [
+            meetingTitle,
+            '',
+            `מועד: ${whenLabel}`,
+            purpose.trim() ? `מטרה:\n${purpose}` : '',
+            agenda.trim() ? `תוכן / סדר יום:\n${agenda}` : '',
+            clientName ? `לקוח: ${clientName}` : '',
+            projectName ? `פרויקט: ${projectName}` : '',
+            ...extraContextLines,
+            '',
+            `פתיחה ביומן הארגון: ${hubCalendarUrl}`,
+        ]
+            .filter((x) => x.length > 0)
+            .join('\n\n');
+        const googleCalendarUrl = (0, taskAssignmentMail_js_1.buildGoogleCalendarEventUrl)({
+            title: meetingTitle,
+            startDateYmd: startDateForCal,
+            startTimeHm: startTime || undefined,
+            endTimeHm: endTime || undefined,
+            details: gCalDetails,
+            location: locationRaw || undefined,
+        });
+        const resendKey = readResendApiKey();
+        const mailFromEnv = readMailFrom();
+        const smtp = (0, taskAssignmentMail_js_1.loadSmtpConfig)();
+        let sentCount = 0;
+        let skipped = 0;
+        for (const uid of attendeeUserIds) {
+            const resolved = await resolveAssigneeEmailAndGreeting(uid);
+            if (!resolved) {
+                skipped++;
+                continue;
+            }
+            const html = (0, taskAssignmentMail_js_1.buildMeetingInviteHtml)({
+                recipientGreeting: resolved.greeting,
+                creatorName,
+                meetingTitle,
+                purpose,
+                agenda,
+                whenLabel,
+                extraContextLines,
+                clientName: clientName || undefined,
+                projectName: projectName || undefined,
+                hubCalendarUrl,
+                googleCalendarUrl,
+                appBaseUrl: appBase,
+            });
+            const subject = meetingTitle.length > 50
+                ? `פגישה ביומן — ${meetingTitle.slice(0, 47)}…`
+                : `פגישה ביומן — ${meetingTitle}`;
+            if (resendKey) {
+                if (!mailFromEnv) {
+                    return {
+                        ok: true,
+                        skipped: true,
+                        reason: 'no_smtp',
+                    };
+                }
+                const sent = await (0, taskAssignmentMail_js_1.sendEmailViaResendHttp)({
+                    apiKey: resendKey,
+                    from: mailFromEnv,
+                    to: resolved.email,
+                    subject,
+                    html,
+                });
+                if (!sent.ok) {
+                    console.error('sendMeetingInviteNotifications Resend', sent.message);
+                    continue;
+                }
+                sentCount++;
+                continue;
+            }
+            if (!smtp) {
+                return {
+                    ok: true,
+                    skipped: true,
+                    reason: 'no_smtp',
+                };
+            }
+            const transport = (0, taskAssignmentMail_js_1.createMailTransport)(smtp);
+            try {
+                await transport.sendMail({
+                    from: smtp.from,
+                    to: resolved.email,
+                    subject,
+                    html,
+                });
+                sentCount++;
+            }
+            catch (sendErr) {
+                console.error('sendMeetingInviteNotifications sendMail', sendErr);
+            }
+        }
+        return {
+            ok: true,
+            sent: sentCount > 0,
+            sentCount,
+            skippedRecipients: skipped,
+        };
+    }
+    catch (e) {
+        if (e instanceof https_1.HttpsError)
+            throw e;
+        console.error('sendMeetingInviteNotifications unexpected', e);
         return {
             ok: true,
             skipped: true,

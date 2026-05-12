@@ -13,7 +13,9 @@ import { Leads } from './pages/Leads'
 import { Login } from './pages/Login'
 import { ProjectDetail } from './pages/ProjectDetail'
 import { Projects } from './pages/Projects'
+import { PromptLibrary } from './pages/PromptLibrary'
 import { Suppliers } from './pages/Suppliers'
+import { Calendar } from './pages/Calendar'
 import { Tasks } from './pages/Tasks'
 import { Users } from './pages/Users'
 import { Attendance } from './pages/Attendance'
@@ -38,6 +40,8 @@ export default function App() {
                 <Route path="projects" element={<Projects />} />
                 <Route path="projects/:id" element={<ProjectDetail />} />
                 <Route path="tasks" element={<Tasks />} />
+                <Route path="calendar" element={<Calendar />} />
+                <Route path="prompts" element={<PromptLibrary />} />
                 <Route
                   path="users"
                   element={

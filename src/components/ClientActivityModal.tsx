@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDateIL, formatDateTimeIL, todayYmd } from '../lib/dates'
+import { formatDateIL, formatDateTimeIL, formatTaskDueDisplay, todayYmd } from '../lib/dates'
 import { getCollectionTrackingStatus } from '../lib/collectionTrackingStatus'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
 import { hubSectionClass } from '../lib/hubSectionBorder'
@@ -29,6 +29,8 @@ const LEAD_STATUS_HE: Record<LeadStatus, string> = {
   specification: 'בתהליך אפיון',
   quote_sent: 'נשלחה הצעת מחיר',
   follow_up: 'יש לבצע פולואפ',
+  no_answer: 'אין מענה',
+  not_relevant: 'לא רלוונטי',
   closed: 'נסגרה',
 }
 
@@ -289,7 +291,7 @@ export function ClientActivityModal(props: Props) {
                 >
                   <p className="text-[13px] font-semibold text-[var(--text-dark)]">{t.title}</p>
                   <p className="mt-1 text-[11px] text-[var(--text-mid)]">
-                    {boardStatusHe(t.status)} · {priorityHe(t.priority)} · יעד {formatDateIL(t.dueDate)}
+                    {boardStatusHe(t.status)} · {priorityHe(t.priority)} · יעד {formatTaskDueDisplay(t.dueDate, t.dueTime)}
                     {t.projectId ? (
                       <>
                         {' '}

@@ -80,6 +80,11 @@ service cloud.firestore {
       }
     }
 
+    /** פגישות — כמו שאר אוספי ה-Hub (צוות פנימי); סינון תצוגה באפליקציה */
+    match /meetings/{meetingId} {
+      allow read, write: if signedIn();
+    }
+
     /**
      * שאילתות collectionGroup על taskNotes (ראו useTasks.tsx) — חייב כלל recursive;
      * ה-match המקונן tasks/.../taskNotes לא מספיק ל-collectionGroup.

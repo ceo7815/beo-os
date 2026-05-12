@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { deleteField } from 'firebase/firestore'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { addDaysYmd, formatDateIL, todayYmd } from '../lib/dates'
 import { isRetainerProject, RETAINER_ACCENT } from '../lib/projectRetainer'
@@ -132,16 +132,10 @@ interface ProjectFormState {
   color: string
 }
 
-interface QuickTaskFormState {
-  title: string
-  priority: Priority
-  assigneeId: string
-  dueDate: string
-}
-
 export function Projects() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const { users: teamMembers } = useUsers()
   const defaultOwnerId = user?.uid ?? teamMembers[0]?.id ?? ''
@@ -165,7 +159,7 @@ export function Projects() {
   )
 
   const { projects, addProject, updateProject, deleteProject } = useProjects()
-  const { addTask } = useTasks()
+  const { openNewTaskDraft } = useTasks()
   const { clients } = useClients()
   const { suppliers, addSupplier } = useSuppliers()
   const selectedClientId = useHubStore((s) => s.selectedClientId)
@@ -183,14 +177,6 @@ export function Projects() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [attentionOnly, setAttentionOnly] = useState(false)
-  const [taskModalOpen, setTaskModalOpen] = useState(false)
-  const [taskProjectId, setTaskProjectId] = useState<string | null>(null)
-  const [taskForm, setTaskForm] = useState<QuickTaskFormState>({
-    title: '',
-    priority: 'medium',
-    assigneeId: defaultOwnerId,
-    dueDate: todayYmd(),
-  })
   const menuRef = useRef<HTMLDivElement | null>(null)
   const supplierHubDefaultedRef = useRef(false)
 
@@ -284,6 +270,20 @@ export function Projects() {
     setModalOpen(true)
     navigate('.', { replace: true, state: null })
   }, [location.state, navigate, emptyForm])
+
+  useEffect(() => {
+    const raw = searchParams.get('status')?.trim().toLowerCase()
+    if (raw !== 'active' && raw !== 'paused' && raw !== 'done') return
+    setStatusFilter(raw as ProjectStatus)
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev)
+        n.delete('status')
+        return n
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
 
   const openEdit = (p: Project) => {
     setEditingId(p.id)
@@ -470,51 +470,16 @@ export function Projects() {
     await updateProject(id, { status: 'active' })
   }
 
-  const openTaskModal = (projectId: string, projectOwnerId?: string) => {
-    setTaskProjectId(projectId)
-    setTaskForm({
-      title: '',
-      priority: 'medium',
-      assigneeId: projectOwnerId || defaultOwnerId,
+  const openTaskDrawerForProject = (p: Project) => {
+    const cid = p.clientId?.trim()
+    const sid = p.supplierId?.trim()
+    openNewTaskDraft({
+      assigneeId: p.ownerId || defaultOwnerId,
       dueDate: todayYmd(),
+      projectId: p.id,
+      ...(cid ? { clientId: cid } : {}),
+      ...(sid ? { supplierId: sid } : {}),
     })
-    setTaskModalOpen(true)
-  }
-
-  const submitQuickTask = async () => {
-    if (!taskProjectId) return
-    const proj = projects.find((x) => x.id === taskProjectId)
-    if (!proj) return
-    const title = taskForm.title.trim()
-    if (!title) {
-      pushToast('כותרת משימה היא שדה חובה', 'error')
-      return
-    }
-    const id = await addTask({
-      projectId: proj.id,
-      clientId: proj.clientId,
-      title,
-      description: '',
-      status: 'todo',
-      priority: taskForm.priority,
-      assigneeId: taskForm.assigneeId || proj.ownerId || defaultOwnerId,
-      dueDate: taskForm.dueDate || todayYmd(),
-      tags: [],
-      reminders: [],
-      sharedWithUserIds: [],
-      supplierId: proj.supplierId,
-      reminderDate: undefined,
-    })
-    if (id) {
-      setTaskModalOpen(false)
-      setTaskProjectId(null)
-      setTaskForm({
-        title: '',
-        priority: 'medium',
-        assigneeId: defaultOwnerId,
-        dueDate: todayYmd(),
-      })
-    }
   }
 
   return (
@@ -816,7 +781,7 @@ export function Projects() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => openTaskModal(p.id, p.ownerId)}
+                    onClick={() => openTaskDrawerForProject(p)}
                     className={`${uiButtonBrandOutline} min-w-[124px]`}
                   >
                     + הוסף משימה
@@ -950,94 +915,6 @@ export function Projects() {
           <p className="text-sm text-[var(--text-mid)]">אין פרויקטים שהושלמו</p>
         ) : null}
       </section>
-
-      <Modal
-        isOpen={taskModalOpen}
-        onClose={() => {
-          setTaskModalOpen(false)
-          setTaskProjectId(null)
-        }}
-        title="משימה חדשה לפרויקט"
-      >
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              כותרת משימה *
-            </label>
-            <input
-              value={taskForm.title}
-              onChange={(e) =>
-                setTaskForm((f) => ({ ...f, title: e.target.value }))
-              }
-              placeholder="מה צריך לבצע?"
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs text-[var(--text-mid)]">עדיפות</label>
-              <select
-                value={taskForm.priority}
-                onChange={(e) =>
-                  setTaskForm((f) => ({
-                    ...f,
-                    priority: e.target.value as Priority,
-                  }))
-                }
-              >
-                <option value="high">גבוהה</option>
-                <option value="medium">בינונית</option>
-                <option value="low">נמוכה</option>
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs text-[var(--text-mid)]">אחראי</label>
-              <select
-                value={taskForm.assigneeId}
-                onChange={(e) =>
-                  setTaskForm((f) => ({ ...f, assigneeId: e.target.value }))
-                }
-              >
-                {teamMembers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              תאריך יעד
-            </label>
-            <input
-              type="date"
-              value={taskForm.dueDate}
-              onChange={(e) =>
-                setTaskForm((f) => ({ ...f, dueDate: e.target.value }))
-              }
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                setTaskModalOpen(false)
-                setTaskProjectId(null)
-              }}
-              className={uiButtonGhost}
-            >
-              ביטול
-            </button>
-            <button
-              type="button"
-              onClick={() => void submitQuickTask()}
-              className={uiButtonBrand}
-            >
-              יצירת משימה
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       <Modal
         isOpen={modalOpen}

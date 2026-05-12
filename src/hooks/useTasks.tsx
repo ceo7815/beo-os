@@ -24,7 +24,7 @@ import {
 } from 'firebase/firestore'
 import {
   addDaysYmd,
-  formatDateIL,
+  formatTaskDueDisplay,
   nextWeeklyYmdAfter,
   todayYmd,
 } from '../lib/dates'
@@ -120,6 +120,9 @@ function taskToFirestoreUpdate(patch: Partial<Task>): Record<string, unknown> {
   if ('supplierId' in o && (o.supplierId === '' || o.supplierId === undefined)) {
     o.supplierId = null
   }
+  if ('dueTime' in o && (o.dueTime === '' || o.dueTime === undefined)) {
+    o.dueTime = null
+  }
   if ('sharedWithUserIds' in patch) {
     o.sharedWithUserIds = patch.sharedWithUserIds ?? []
     o.shared = false
@@ -198,19 +201,18 @@ function collectActivityStrings(
       ).action,
     )
   }
-  if (merged.dueDate !== prev.dueDate) {
-    const ymd =
-      typeof merged.dueDate === 'string' &&
-      /^\d{4}-\d{2}-\d{2}$/.test(merged.dueDate.trim().slice(0, 10))
-        ? merged.dueDate.trim().slice(0, 10)
-        : ''
+  const prevDueLabel =
+    formatTaskDueDisplay(prev.dueDate, prev.dueTime) || 'לא צוין'
+  const mergedDueLabel =
+    formatTaskDueDisplay(merged.dueDate, merged.dueTime) || 'לא צוין'
+  if (mergedDueLabel !== prevDueLabel) {
     out.push(
       logActivity(
         taskId,
         userId,
         userName,
         'due_changed',
-        ymd ? formatDateIL(ymd) : 'לא צוין',
+        mergedDueLabel,
       ).action,
     )
   }
@@ -598,6 +600,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
           projectId: data.projectId ?? null,
           supplierId: data.supplierId ?? null,
           dueDate: data.dueDate,
+          ...(data.dueTime?.trim() ? { dueTime: data.dueTime.trim() } : {}),
           reminderDate: data.reminderDate ?? null,
           tags: data.tags ?? [],
           reminders: data.reminders ?? [],
@@ -635,6 +638,10 @@ export function TasksProvider({ children }: { children: ReactNode }) {
             projectId: (payload.projectId as string | null) ?? undefined,
             supplierId: (payload.supplierId as string | null) ?? undefined,
             dueDate: payload.dueDate,
+            dueTime:
+              payload.dueTime != null && String(payload.dueTime).trim()
+                ? String(payload.dueTime).trim()
+                : undefined,
             reminderDate: (payload.reminderDate as string | null) ?? undefined,
             tags: payload.tags as string[],
             reminders: payload.reminders as Task['reminders'],
@@ -820,6 +827,12 @@ export function TasksProvider({ children }: { children: ReactNode }) {
               ? String(patch.clientId).trim()
               : undefined
             : prev.clientId,
+        dueTime:
+          'dueTime' in patch
+            ? patch.dueTime && String(patch.dueTime).trim()
+              ? String(patch.dueTime).trim()
+              : undefined
+            : prev.dueTime,
       }
       const uid = user.uid
       const uname = displayName()
@@ -878,6 +891,12 @@ export function TasksProvider({ children }: { children: ReactNode }) {
                     patch.supplierId !== undefined
                       ? patch.supplierId || undefined
                       : t.supplierId,
+                  dueTime:
+                    'dueTime' in patch
+                      ? patch.dueTime && String(patch.dueTime).trim()
+                        ? String(patch.dueTime).trim()
+                        : undefined
+                      : t.dueTime,
                 }
               : t,
           ),

@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { addDaysYmd, formatDateIL, todayYmd } from '../lib/dates'
+import { addDaysYmd, formatDateIL, formatTaskDueDisplay, todayYmd } from '../lib/dates'
+import { leadScheduleUrgency, leadScheduleYmd } from '../lib/leadSchedule'
 import { priorityColor } from '../lib/priorityColor'
 import { useClients } from '../hooks/useClients'
 import { useCollectionTracking } from '../hooks/useCollectionTracking'
@@ -30,6 +31,7 @@ import type {
   ProjectStatus,
 } from '../types'
 import { Badge } from '../components/shared/Badge'
+import { LeadScheduleDateEditorModal } from '../components/leads/LeadScheduleDateEditorModal'
 import { EmptyState } from '../components/shared/EmptyState'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { hubSectionClass } from '../lib/hubSectionBorder'
@@ -39,6 +41,10 @@ function KpiCard(props: {
   value: number
   label: string
   hint: string
+  /** נתיב לניווט בלחיצה על הכרטיס */
+  navigateTo?: string
+  /** תיאור לקורא מסך (כשהכרטיס הוא כפתור) */
+  navLabel?: string
   /** שני מספרים בכרטיס — למשל משימות עליך לעומת משימות שיצרת לאחרים */
   split?: {
     secondaryValue: number
@@ -46,10 +52,16 @@ function KpiCard(props: {
     secondaryCaption: string
   }
 }) {
-  return (
-    <div
-      className={`min-w-0 ${hubSectionClass(props.seq)} rounded-2xl p-3 transition hover:-translate-y-0.5 hover:shadow-md sm:p-5`}
-    >
+  const navigate = useNavigate()
+  const clickable = Boolean(props.navigateTo)
+  const surfaceClass = `min-w-0 w-full text-right ${hubSectionClass(props.seq)} rounded-2xl p-3 transition sm:p-5 ${
+    clickable
+      ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-main)]'
+      : 'hover:-translate-y-0.5 hover:shadow-md'
+  }`
+
+  const body = (
+    <>
       {props.split ? (
         <div className="grid grid-cols-2 gap-2 gap-y-2">
           <div className="min-w-0">
@@ -80,8 +92,23 @@ function KpiCard(props: {
       <div className="mt-1 break-words text-[10px] leading-relaxed text-[var(--text-light)] sm:text-[11px]">
         {props.hint}
       </div>
-    </div>
+    </>
   )
+
+  if (clickable && props.navigateTo) {
+    return (
+      <button
+        type="button"
+        className={surfaceClass}
+        aria-label={props.navLabel ?? `${props.label}: ${props.hint}`}
+        onClick={() => navigate(props.navigateTo!)}
+      >
+        {body}
+      </button>
+    )
+  }
+
+  return <div className={surfaceClass}>{body}</div>
 }
 
 function ymdPart(s: string): string {
@@ -136,6 +163,8 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   specification: 'אפיון',
   quote_sent: 'הצעת מחיר',
   follow_up: 'פולואפ',
+  no_answer: 'אין מענה',
+  not_relevant: 'לא רלוונטי',
   closed: 'נסגר',
 }
 
@@ -144,6 +173,8 @@ const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
   specification: '#7C3AED',
   quote_sent: '#D97706',
   follow_up: '#EA580C',
+  no_answer: '#64748B',
+  not_relevant: '#DC2626',
   closed: '#16A34A',
 }
 
@@ -182,12 +213,19 @@ function isPrivilegedRole(role: string): boolean {
 function leadPipelineSort(a: Lead, b: Lead, today: string): number {
   const tier = (l: Lead): number => {
     if (l.status === 'closed') return 90
-    const fu = l.nextFollowUpDate?.slice(0, 10) ?? ''
-    if (fu && /^\d{4}-\d{2}-\d{2}$/.test(fu)) {
-      if (fu < today) return 0
-      if (fu === today) return 1
+    if (l.status === 'not_relevant') return 88
+    const sched = leadScheduleYmd(l) ?? ''
+    if (sched && /^\d{4}-\d{2}-\d{2}$/.test(sched)) {
+      if (sched < today) return 0
+      if (sched === today) return 1
     }
-    const warm: LeadStatus[] = ['follow_up', 'new', 'quote_sent', 'specification']
+    const warm: LeadStatus[] = [
+      'follow_up',
+      'new',
+      'quote_sent',
+      'specification',
+      'no_answer',
+    ]
     return warm.includes(l.status) ? 5 : 8
   }
   const d = tier(a) - tier(b)
@@ -214,6 +252,7 @@ export function Dashboard() {
   const { users: teamMembers } = useUsers()
   const { leads, loading: leadsLoading } = useLeads()
   const { campaigns, loading: campaignsLoading } = useCampaigns()
+  const [scheduleLeadEditId, setScheduleLeadEditId] = useState<string | null>(null)
 
   const myUid = user?.uid ?? ''
   const myRole = teamMembers.find((m) => m.id === myUid)?.role ?? 'employee'
@@ -264,7 +303,9 @@ export function Dashboard() {
   }, [projects, taskScope, todayDash, myUid])
 
   const openLeadsPool = useMemo(() => {
-    const open = leads.filter((l) => l.status !== 'closed')
+    const open = leads.filter(
+      (l) => l.status !== 'closed' && l.status !== 'not_relevant',
+    )
     if (privileged) return open
     return open.filter((l) => l.ownerId === myUid)
   }, [leads, privileged, myUid])
@@ -282,7 +323,9 @@ export function Dashboard() {
     campaignsPipeline.length === 0
 
   const dashboardLeadsSource = useMemo(() => {
-    const open = leads.filter((l) => l.status !== 'closed')
+    const open = leads.filter(
+      (l) => l.status !== 'closed' && l.status !== 'not_relevant',
+    )
     if (privileged) return open
     if (employeeShowOrgWideLeadsCampaigns) return open
     return open.filter((l) => l.ownerId === myUid)
@@ -297,8 +340,8 @@ export function Dashboard() {
 
   const leadsDueUrgent = useMemo(() => {
     return openLeadsPool.filter((l) => {
-      const fu = l.nextFollowUpDate?.slice(0, 10) ?? ''
-      return /^\d{4}-\d{2}-\d{2}$/.test(fu) && fu <= todayDash
+      const ymd = leadScheduleYmd(l) ?? ''
+      return /^\d{4}-\d{2}-\d{2}$/.test(ymd) && ymd <= todayDash
     }).length
   }, [openLeadsPool, todayDash])
 
@@ -307,6 +350,12 @@ export function Dashboard() {
       .sort((a, b) => leadPipelineSort(a, b, todayDash))
       .slice(0, 6)
   }, [dashboardLeadsSource, todayDash])
+
+  const scheduleLeadEdit = useMemo(
+    () =>
+      scheduleLeadEditId ? (leads.find((l) => l.id === scheduleLeadEditId) ?? null) : null,
+    [leads, scheduleLeadEditId],
+  )
 
   const topCampaignsDashboard = useMemo(() => {
     return [...dashboardCampaignsSource].sort(campaignPipelineSort).slice(0, 5)
@@ -483,7 +532,7 @@ export function Dashboard() {
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold text-rose-700">
-              יעד: {formatDateIL(topOverdueTask.dueDate)}
+              יעד: {formatTaskDueDisplay(topOverdueTask.dueDate, topOverdueTask.dueTime)}
             </span>
           </button>
         ) : null}
@@ -514,12 +563,16 @@ export function Dashboard() {
           value={kpis.overdue}
           label="משימות באיחור"
           hint="עדיפות ראשונה"
+          navigateTo="/tasks?focus=overdue"
+          navLabel="מעבר למשימות באיחור"
         />
         <KpiCard
           seq={1}
           value={myUid ? kpis.openTasksMine : kpis.openTasksTotal}
           label="משימות פתוחות"
           hint={openTasksHintFull}
+          navigateTo="/tasks"
+          navLabel="מעבר ללוח המשימות"
           split={
             myUid
               ? {
@@ -535,12 +588,16 @@ export function Dashboard() {
           value={kpis.activeProjects}
           label="פרויקטים פעילים"
           hint="במצב «פעיל» בלבד"
+          navigateTo="/projects?status=active"
+          navLabel="מעבר לפרויקטים פעילים"
         />
         <KpiCard
           seq={3}
           value={openLeadsPool.length}
           label={privileged ? 'לידים בצינור' : 'הלידים שלי'}
           hint="ללא סטטוס «נסגר»"
+          navigateTo="/leads?filter=open"
+          navLabel="מעבר ללידים בצינור"
         />
       </section>
 
@@ -594,41 +651,61 @@ export function Dashboard() {
               <ul className="max-h-[320px] space-y-2 overflow-y-auto pe-1">
                 {topLeadsDashboard.map((l) => {
                   const fuRaw = l.nextFollowUpDate?.slice(0, 10) ?? ''
-                  const qrRaw = l.quoteReturnByDate?.slice(0, 10) ?? ''
                   const fuOk = /^\d{4}-\d{2}-\d{2}$/.test(fuRaw)
-                  const qrOk = /^\d{4}-\d{2}-\d{2}$/.test(qrRaw)
-                  const fuBad = fuOk && fuRaw <= todayDash
-                  const qrBad = !fuOk && qrOk && qrRaw <= todayDash
+                  const sched = leadScheduleYmd(l)
+                  const schedOk = Boolean(sched && /^\d{4}-\d{2}-\d{2}$/.test(sched))
+                  const urgency = schedOk && sched ? leadScheduleUrgency(sched, todayDash) : null
+                  const dateOverdue = schedOk && sched! <= todayDash
                   return (
                     <li key={l.id}>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/leads')}
-                        className="flex w-full flex-col gap-1 rounded-xl hub-dash-inset p-3 text-right transition hover:border-orange-200/45 hover:bg-white"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-semibold text-[var(--text-dark)]">{l.name}</p>
-                            {l.company?.trim() ? (
-                              <p className="truncate text-xs text-[var(--text-light)]">{l.company}</p>
-                            ) : null}
+                      <div className="flex w-full flex-col gap-1 rounded-xl hub-dash-inset p-3 text-right transition hover:border-orange-200/45 hover:bg-white">
+                        <button
+                          type="button"
+                          className="w-full text-right"
+                          onClick={() => navigate('/leads')}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-[var(--text-dark)]">{l.name}</p>
+                              {l.company?.trim() ? (
+                                <p className="truncate text-xs text-[var(--text-light)]">{l.company}</p>
+                              ) : null}
+                            </div>
+                            <Badge
+                              label={LEAD_STATUS_LABELS[l.status]}
+                              color={LEAD_STATUS_COLORS[l.status]}
+                            />
                           </div>
-                          <Badge
-                            label={LEAD_STATUS_LABELS[l.status]}
-                            color={LEAD_STATUS_COLORS[l.status]}
-                          />
-                        </div>
+                        </button>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--text-mid)]">
-                          {fuOk ? (
-                            <span className={fuBad ? 'font-bold text-amber-700' : ''}>
-                              פולואפ: {formatDateIL(fuRaw)}
-                            </span>
-                          ) : qrOk ? (
-                            <span className={qrBad ? 'font-bold text-amber-700' : ''}>
-                              תאריך חזרה ללקוח: {formatDateIL(qrRaw)}
-                            </span>
+                          {!schedOk ? (
+                            <button
+                              type="button"
+                              className="font-semibold text-[var(--orange)] underline"
+                              onClick={() => setScheduleLeadEditId(l.id)}
+                            >
+                              אין תאריך פולואפ — קביעה
+                            </button>
                           ) : (
-                            <span className="text-[var(--text-light)]">אין תאריך פולואפ</span>
+                            <>
+                              {urgency ? (
+                                <Badge label={urgency.label} color={urgency.color} />
+                              ) : null}
+                              <button
+                                type="button"
+                                className={
+                                  dateOverdue
+                                    ? 'font-bold text-amber-700 hover:opacity-90'
+                                    : 'hover:opacity-90'
+                                }
+                                onClick={() => setScheduleLeadEditId(l.id)}
+                              >
+                                {fuOk ? 'פולואפ' : 'תאריך חזרה ללקוח'}:{' '}
+                                <span className="underline decoration-dotted underline-offset-2">
+                                  {formatDateIL(sched!)}
+                                </span>
+                              </button>
+                            </>
                           )}
                           {(privileged || employeeShowOrgWideLeadsCampaigns) &&
                           l.ownerId ? (
@@ -638,7 +715,7 @@ export function Dashboard() {
                             </span>
                           ) : null}
                         </div>
-                      </button>
+                      </div>
                     </li>
                   )
                 })}
@@ -972,7 +1049,7 @@ export function Dashboard() {
                   <div className="mt-2 flex items-center justify-between">
                     <Badge label={priorityLabel(t.priority)} color={pc} />
                     <span className="text-xs text-[var(--text-light)]">
-                      יעד: {formatDateIL(t.dueDate)}
+                      יעד: {formatTaskDueDisplay(t.dueDate, t.dueTime)}
                     </span>
                   </div>
                 </div>
@@ -981,6 +1058,12 @@ export function Dashboard() {
           </div>
         )}
       </section>
+
+      <LeadScheduleDateEditorModal
+        lead={scheduleLeadEdit}
+        isOpen={Boolean(scheduleLeadEditId)}
+        onClose={() => setScheduleLeadEditId(null)}
+      />
     </div>
   )
 }

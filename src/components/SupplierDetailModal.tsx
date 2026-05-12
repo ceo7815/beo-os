@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { formatDateIL } from '../lib/dates'
+import { formatDateIL, formatTaskDueDisplay } from '../lib/dates'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import { Modal } from './shared/Modal'
@@ -205,7 +205,7 @@ export function SupplierDetailModal(props: Props) {
                 >
                   <p className="font-semibold text-[var(--text-dark)]">{t.title}</p>
                   <p className="mt-1 text-[11px] text-[var(--text-mid)]">
-                    {boardStatusHe(t.status)} · {priorityHe(t.priority)} · יעד {formatDateIL(t.dueDate)}
+                    {boardStatusHe(t.status)} · {priorityHe(t.priority)} · יעד {formatTaskDueDisplay(t.dueDate, t.dueTime)}
                   </p>
                 </li>
               ))}

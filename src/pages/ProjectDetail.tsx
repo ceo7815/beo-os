@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDateIL } from '../lib/dates'
+import { formatDateIL, formatTaskDueDisplay } from '../lib/dates'
 import { priorityColor } from '../lib/priorityColor'
 import { INTERNAL_PROJECT_BADGE_COLOR } from '../lib/projectKind'
 import {
@@ -497,7 +497,7 @@ export function ProjectDetail() {
                       {t.title}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-mid)]">
-                      <span>יעד: {formatDateIL(t.dueDate)}</span>
+                      <span>יעד: {formatTaskDueDisplay(t.dueDate, t.dueTime)}</span>
                       {assignee ? <Avatar member={assignee} size={22} /> : null}
                       <Badge
                         label={taskStatusLabels[t.status]}

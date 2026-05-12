@@ -31,6 +31,38 @@ export function toDateInputYmd(due: string | null | undefined): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ''
 }
 
+/** נרמול שעת יעד ל־HH:mm או undefined אם ריק/לא תקין */
+export function normalizeDueTimeHm(
+  v: string | null | undefined,
+): string | undefined {
+  if (v == null || typeof v !== 'string') return undefined
+  const t = v.trim()
+  if (!t) return undefined
+  const m = t.match(/^(\d{1,2}):(\d{2})$/)
+  if (!m) return undefined
+  let hh = parseInt(m[1]!, 10)
+  let mm = parseInt(m[2]!, 10)
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return undefined
+  hh = Math.min(23, Math.max(0, hh))
+  mm = Math.min(59, Math.max(0, mm))
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+
+/** תצוגת יעד משימה: תאריך ישראלי ואופציונלית שעה (HH:mm) */
+export function formatTaskDueDisplay(
+  dueDate: string | null | undefined,
+  dueTime?: string | null,
+): string {
+  const ymd = (dueDate ?? '').trim().slice(0, 10)
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(ymd)
+  const hm = normalizeDueTimeHm(dueTime ?? undefined)
+  const datePart = dateOk ? formatDateIL(ymd) : ''
+  if (datePart && hm) return `${datePart} · ${hm}`
+  if (datePart) return datePart
+  if (hm) return hm
+  return ''
+}
+
 /** תאריך ושעה בעברית (לרישום פעילות) */
 export function formatDateTimeIL(iso: string | null | undefined): string {
   if (iso == null || typeof iso !== 'string') return ''

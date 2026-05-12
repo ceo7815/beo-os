@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { deleteField } from 'firebase/firestore'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateIL, todayYmd } from '../lib/dates'
 import { formatFirebaseErrorDetail } from '../lib/formatFirebaseError'
+import { leadScheduleCaption, leadScheduleUrgency, leadScheduleYmd } from '../lib/leadSchedule'
 import { uploadLeadQuotePdf } from '../lib/leadQuoteStorage'
 import { useLeads } from '../hooks/useLeads'
 import { useCampaigns } from '../hooks/useCampaigns'
@@ -12,6 +13,7 @@ import { useUsers } from '../hooks/useUsers'
 import type { Client, Lead, LeadQuoteChannel, LeadStatus } from '../types'
 import { Badge } from '../components/shared/Badge'
 import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
+import { LeadScheduleDateEditorModal } from '../components/leads/LeadScheduleDateEditorModal'
 import { Modal } from '../components/shared/Modal'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 
@@ -108,6 +110,8 @@ const statusLabels: Record<LeadStatus, string> = {
   specification: 'בתהליך אפיון',
   quote_sent: 'נשלחה הצעת מחיר',
   follow_up: 'יש לבצע פולואפ',
+  no_answer: 'אין מענה',
+  not_relevant: 'לא רלוונטי',
   closed: 'נסגרה',
 }
 
@@ -116,7 +120,28 @@ const statusColors: Record<LeadStatus, string> = {
   specification: '#7C3AED',
   quote_sent: '#D97706',
   follow_up: '#EA580C',
+  no_answer: '#64748B',
+  not_relevant: '#DC2626',
   closed: '#16A34A',
+}
+
+/** מסגרת מלאה לשורה בטבלה / כרטיס — אדום / ירוק / כתום */
+function leadFrameInsetClass(status: LeadStatus): string {
+  if (status === 'not_relevant') return 'shadow-[inset_0_0_0_2px_#DC2626]'
+  if (status === 'closed') return 'shadow-[inset_0_0_0_2px_#16A34A]'
+  return 'shadow-[inset_0_0_0_2px_#F97316]'
+}
+
+/** רקע מאחורי הליד — בולט במיוחד ל־«לא רלוונטי» */
+function leadRowSurfaceClass(status: LeadStatus): string {
+  if (status === 'not_relevant') return 'bg-[#FEF2F2]'
+  return ''
+}
+
+function leadCardSurfaceClass(status: LeadStatus): string {
+  if (status === 'not_relevant') return 'border-2 border-[#DC2626] bg-[#FEF2F2]'
+  if (status === 'closed') return 'border-2 border-[#16A34A]'
+  return 'border-2 border-[#F97316]'
 }
 
 /** סדר תצוגה במסננים ובקוביות הסיכום */
@@ -125,6 +150,8 @@ const LEAD_STATUSES_ORDERED: LeadStatus[] = [
   'specification',
   'quote_sent',
   'follow_up',
+  'no_answer',
+  'not_relevant',
   'closed',
 ]
 
@@ -148,6 +175,7 @@ function LeadDetailRow({ label, children }: { label: string; children: ReactNode
 export function Leads() {
   const location = useLocation()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const { users } = useUsers()
   const { campaigns } = useCampaigns()
@@ -155,6 +183,8 @@ export function Leads() {
   const { leads, addLead, updateLead, deleteLead } = useLeads()
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  /** מסלול דשבורד: ללא נסגר / לא רלוונטי — תואם KPI «לידים בצינור» */
+  const [openPipelineOnly, setOpenPipelineOnly] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
   const [name, setName] = useState('')
   const [company, setCompany] = useState('')
@@ -171,8 +201,20 @@ export function Leads() {
   const [linkSuggestOpen, setLinkSuggestOpen] = useState(false)
   const linkClientWrapRef = useRef<HTMLDivElement | null>(null)
   const [openActionLeadId, setOpenActionLeadId] = useState<string | null>(null)
+  /** טיוטת סטטוס במודל פעולות — נשמרת ל־Firestore רק בלחיצה על «שמירת מעקב» */
+  const [actionStatusDraftById, setActionStatusDraftById] = useState<
+    Record<string, LeadStatus>
+  >({})
+  const prevOpenActionLeadIdRef = useRef<string | null>(null)
+  const [scheduleDateEditLeadId, setScheduleDateEditLeadId] = useState<string | null>(null)
   const [activityDraftById, setActivityDraftById] = useState<Record<string, string>>({})
   const [followUpDraftById, setFollowUpDraftById] = useState<Record<string, string>>({})
+  const [notRelevantReasonDraftById, setNotRelevantReasonDraftById] = useState<
+    Record<string, string>
+  >({})
+  const [notRelevantReasonErrorById, setNotRelevantReasonErrorById] = useState<
+    Record<string, string>
+  >({})
   const [clientNeedsViewerLeadId, setClientNeedsViewerLeadId] = useState<string | null>(null)
   const [clientNeedsEditDraft, setClientNeedsEditDraft] = useState('')
   const [activityHistoryLeadId, setActivityHistoryLeadId] = useState<string | null>(null)
@@ -202,6 +244,41 @@ export function Leads() {
   }, [location.state, navigate])
 
   useEffect(() => {
+    const f = searchParams.get('filter')?.trim()
+    if (f !== 'open') return
+    setOpenPipelineOnly(true)
+    setStatusFilter('all')
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev)
+        n.delete('filter')
+        return n
+      },
+      { replace: true },
+    )
+  }, [searchParams, setSearchParams])
+
+  useEffect(() => {
+    const prev = prevOpenActionLeadIdRef.current
+    if (openActionLeadId === prev) return
+    prevOpenActionLeadIdRef.current = openActionLeadId
+    if (!openActionLeadId) return
+    const lead = leads.find((l) => l.id === openActionLeadId)
+    if (lead) {
+      setActionStatusDraftById((p) => ({ ...p, [openActionLeadId]: lead.status }))
+      setNotRelevantReasonDraftById((p) => ({
+        ...p,
+        [openActionLeadId]: lead.notRelevantReason ?? '',
+      }))
+      setNotRelevantReasonErrorById((p) => {
+        const n = { ...p }
+        delete n[openActionLeadId]
+        return n
+      })
+    }
+  }, [openActionLeadId, leads])
+
+  useEffect(() => {
     if (!quoteModalLeadId) return
     setQuoteChannelDraft('')
     setQuoteVisualUrlDraft('')
@@ -223,6 +300,13 @@ export function Leads() {
   const actionMenuLead = useMemo(
     () => (openActionLeadId ? leads.find((x) => x.id === openActionLeadId) ?? null : null),
     [leads, openActionLeadId],
+  )
+  const scheduleDateEditLead = useMemo(
+    () =>
+      scheduleDateEditLeadId
+        ? (leads.find((x) => x.id === scheduleDateEditLeadId) ?? null)
+        : null,
+    [leads, scheduleDateEditLeadId],
   )
 
   const ownerId = user?.uid ?? users[0]?.id ?? ''
@@ -335,6 +419,8 @@ export function Leads() {
       specification: 0,
       quote_sent: 0,
       follow_up: 0,
+      no_answer: 0,
+      not_relevant: 0,
       closed: 0,
     }
     for (const l of leads) {
@@ -346,7 +432,12 @@ export function Leads() {
   const filtered = useMemo(() => {
     const text = q.trim().toLowerCase()
     return leads
-      .filter((l) => (statusFilter === 'all' ? true : l.status === statusFilter))
+      .filter((l) => {
+        if (openPipelineOnly) {
+          return l.status !== 'closed' && l.status !== 'not_relevant'
+        }
+        return statusFilter === 'all' ? true : l.status === statusFilter
+      })
       .filter((l) => {
         if (!text) return true
         return (
@@ -358,7 +449,15 @@ export function Leads() {
         )
       })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }, [leads, statusFilter, q, clientNameById, clients, campaignNameById])
+  }, [
+    leads,
+    statusFilter,
+    openPipelineOnly,
+    q,
+    clientNameById,
+    clients,
+    campaignNameById,
+  ])
   const clientNeedsViewerLead = useMemo(
     () => leads.find((l) => l.id === clientNeedsViewerLeadId) ?? null,
     [leads, clientNeedsViewerLeadId],
@@ -415,18 +514,8 @@ export function Leads() {
     setFormOpen(false)
   }
 
-  const urgencyForLead = (followUpDate?: string): { label: string; color: string } | null => {
-    if (!followUpDate) return null
-    const today = todayYmd()
-    const next = followUpDate.slice(0, 10)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return null
-    if (next < today) return { label: 'דחוף מאוד', color: '#DC2626' }
-    if (next === today) return { label: 'דחוף היום', color: '#EA580C' }
-    if (next <= new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)) {
-      return { label: 'לטיפול בקרוב', color: '#D97706' }
-    }
-    return { label: 'מתוכנן', color: '#64748B' }
-  }
+  const urgencyForLead = (followUpDate?: string): { label: string; color: string } | null =>
+    followUpDate ? leadScheduleUrgency(followUpDate, todayYmd()) : null
 
   const buildFullActivityLog = (lead: (typeof leads)[number]) => {
     const log = [...(lead.activityLog ?? [])]
@@ -447,60 +536,92 @@ export function Leads() {
     if (!lead) return
     const text = (activityDraftById[leadId] ?? '').trim()
     const followUpDate = (followUpDraftById[leadId] ?? '').trim()
-    if (!text && !followUpDate) return
+    const statusDraft = actionStatusDraftById[leadId] ?? lead.status
+    const notRelReason = (notRelevantReasonDraftById[leadId] ?? '').trim()
+    const statusChanged = statusDraft !== lead.status
+    const reasonChanged =
+      statusDraft === 'not_relevant' &&
+      notRelReason !== (lead.notRelevantReason ?? '').trim()
+
+    if (statusDraft === 'not_relevant' && !notRelReason) {
+      setNotRelevantReasonErrorById((p) => ({
+        ...p,
+        [leadId]: 'חובה למלא למה הליד לא רלוונטי לפני שמירה.',
+      }))
+      return
+    }
+    setNotRelevantReasonErrorById((p) => {
+      const n = { ...p }
+      delete n[leadId]
+      return n
+    })
+
+    if (!text && !followUpDate && !statusChanged && !reasonChanged) return
+
     const nowIso = new Date().toISOString()
     const nextFollowUp = followUpDate ? followUpDate.slice(0, 10) : undefined
-    const nextLog = [
-      ...buildFullActivityLog(lead),
-      ...(text
-        ? [
-            {
-              id: crypto.randomUUID(),
-              text,
-              at: nowIso,
-              actorName,
-              ...(nextFollowUp ? { nextFollowUpDate: nextFollowUp } : {}),
-            },
-          ]
-        : []),
-    ]
-    try {
-      await updateLead(leadId, {
-        ...(text ? { lastActivityText: text } : {}),
-        ...(followUpDate ? { nextFollowUpDate: nextFollowUp } : { nextFollowUpDate: undefined }),
-        lastActivityAt: nowIso,
-        activityLog: nextLog,
-        status: 'follow_up',
-      })
-      setActivityDraftById((prev) => ({ ...prev, [leadId]: '' }))
-      setOpenActionLeadId(null)
-    } catch {
-      /* toast כבר הוצג ב־updateLead */
-    }
-  }
-
-  const setLeadStatusWithLog = async (leadId: string, status: LeadStatus) => {
-    const lead = leads.find((x) => x.id === leadId)
-    if (!lead) return
-    if (lead.status === status) return
-    const nowIso = new Date().toISOString()
-    const nextLog = [
-      ...buildFullActivityLog(lead),
-      {
+    let nextLog = [...buildFullActivityLog(lead)]
+    if (statusChanged) {
+      const statusLogText =
+        statusDraft === 'not_relevant'
+          ? `סטטוס שונה ל: ${statusLabels.not_relevant} · סיבה: ${notRelReason}`
+          : `סטטוס שונה ל: ${statusLabels[statusDraft]}`
+      nextLog.push({
         id: crypto.randomUUID(),
-        text: `סטטוס שונה ל: ${statusLabels[status]}`,
+        text: statusLogText,
         at: nowIso,
         actorName,
-        ...(lead.nextFollowUpDate ? { nextFollowUpDate: lead.nextFollowUpDate } : {}),
-      },
-    ]
-    try {
-      await updateLead(leadId, {
-        status,
-        activityLog: nextLog,
-        lastActivityText: `סטטוס שונה ל: ${statusLabels[status]}`,
-        lastActivityAt: nowIso,
+        ...(lead.nextFollowUpDate
+          ? { nextFollowUpDate: lead.nextFollowUpDate.slice(0, 10) }
+          : {}),
       })
+    } else if (reasonChanged) {
+      nextLog.push({
+        id: crypto.randomUUID(),
+        text: `עודכנה סיבת «לא רלוונטי»: ${notRelReason}`,
+        at: nowIso,
+        actorName,
+        ...(lead.nextFollowUpDate
+          ? { nextFollowUpDate: lead.nextFollowUpDate.slice(0, 10) }
+          : {}),
+      })
+    }
+    if (text) {
+      nextLog.push({
+        id: crypto.randomUUID(),
+        text,
+        at: nowIso,
+        actorName,
+        ...(nextFollowUp ? { nextFollowUpDate: nextFollowUp } : {}),
+      })
+    }
+    const payload: Record<string, unknown> = {
+      ...(followUpDate ? { nextFollowUpDate: nextFollowUp } : { nextFollowUpDate: undefined }),
+      lastActivityAt: nowIso,
+      activityLog: nextLog,
+    }
+    if (statusChanged) {
+      payload.status = statusDraft
+    }
+    if (statusDraft === 'not_relevant') {
+      payload.notRelevantReason = notRelReason
+    } else if (lead.notRelevantReason) {
+      payload.notRelevantReason = deleteField()
+    }
+    if (text) {
+      payload.lastActivityText = text
+    } else if (statusChanged) {
+      payload.lastActivityText =
+        statusDraft === 'not_relevant'
+          ? `לא רלוונטי: ${notRelReason.length > 140 ? `${notRelReason.slice(0, 140)}…` : notRelReason}`
+          : `סטטוס שונה ל: ${statusLabels[statusDraft]}`
+    } else if (reasonChanged) {
+      payload.lastActivityText =
+        notRelReason.length > 140 ? `${notRelReason.slice(0, 140)}…` : notRelReason
+    }
+    try {
+      await updateLead(leadId, payload as Partial<Lead>)
+      setActivityDraftById((prev) => ({ ...prev, [leadId]: '' }))
       setOpenActionLeadId(null)
     } catch {
       /* toast כבר הוצג ב־updateLead */
@@ -721,13 +842,9 @@ export function Leads() {
   }
 
   function LeadMobileCard({ l }: { l: Lead }) {
-    const fu = l.nextFollowUpDate?.slice(0, 10)
-    const qr = l.quoteReturnByDate?.slice(0, 10)
-    const fuV = fu && /^\d{4}-\d{2}-\d{2}$/.test(fu) ? fu : undefined
-    const qrV = qr && /^\d{4}-\d{2}-\d{2}$/.test(qr) ? qr : undefined
-    const scheduleDate = fuV ?? qrV
+    const scheduleDate = leadScheduleYmd(l)
     const urgency = scheduleDate ? urgencyForLead(scheduleDate) : null
-    const caption = fuV ? 'חזרה' : 'תאריך חזרה ללקוח'
+    const caption = leadScheduleCaption(l)
 
     const mobField = (label: string, node: ReactNode) => (
       <div className="min-w-0">
@@ -737,12 +854,23 @@ export function Leads() {
     )
 
     return (
-      <article className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)]">
+      <article
+        className={`overflow-hidden rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.05)] ${
+          l.status === 'not_relevant' ? 'bg-[#FEF2F2]' : 'bg-[var(--dash-panel-bg)]'
+        } ${leadCardSurfaceClass(l.status)}`}
+      >
         <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--border)] pb-3">
           <h3 className="min-w-0 flex-1 text-base font-extrabold leading-snug text-[var(--text-dark)]">
             {l.name}
           </h3>
-          <Badge label={statusLabels[l.status]} color={statusColors[l.status]} />
+          <div className="flex min-w-0 max-w-[min(100%,14rem)] shrink-0 flex-col items-end gap-1 text-end">
+            <Badge label={statusLabels[l.status]} color={statusColors[l.status]} />
+            {l.status === 'not_relevant' && l.notRelevantReason?.trim() ? (
+              <p className="text-[10px] leading-snug text-[var(--text-mid)]">
+                {l.notRelevantReason.trim()}
+              </p>
+            ) : null}
+          </div>
         </div>
 
         {l.status === 'quote_sent' &&
@@ -899,14 +1027,29 @@ export function Leads() {
           ) : null}
           {mobField(
             'דחיפות',
-            !scheduleDate || !urgency ? (
-              <span className="text-[12px] text-[var(--text-light)]">ללא תזמון</span>
+            l.status === 'not_relevant' ? (
+              <span className="text-[12px] text-[var(--text-light)]">לא רלוונטי — ללא מעקב תזמון</span>
+            ) : !scheduleDate || !urgency ? (
+              <button
+                type="button"
+                className="text-[12px] font-semibold text-[var(--orange)] underline"
+                onClick={() => setScheduleDateEditLeadId(l.id)}
+              >
+                ללא תזמון · קביעת תאריך
+              </button>
             ) : (
               <div className="space-y-1">
                 <Badge label={urgency.label} color={urgency.color} />
-                <p className="text-[11px] text-[var(--text-light)]">
-                  {caption}: {formatDateIL(scheduleDate)}
-                </p>
+                <button
+                  type="button"
+                  className="w-full text-right text-[11px] hover:opacity-90"
+                  onClick={() => setScheduleDateEditLeadId(l.id)}
+                >
+                  <span className="text-[var(--text-light)]">{caption}: </span>
+                  <span className="font-semibold text-[var(--text-dark)] underline decoration-dotted underline-offset-2">
+                    {formatDateIL(scheduleDate)}
+                  </span>
+                </button>
               </div>
             ),
           )}
@@ -967,46 +1110,70 @@ export function Leads() {
       >
         <button
           type="button"
-          onClick={() => setStatusFilter('all')}
+          onClick={() => {
+            setOpenPipelineOnly(false)
+            setStatusFilter('all')
+          }}
           className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
-            statusFilter === 'all'
+            statusFilter === 'all' && !openPipelineOnly
               ? 'border-[var(--orange)] bg-[var(--orange-light)] shadow-[0_1px_4px_rgba(249,115,22,0.18)]'
-              : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:bg-[var(--surface-muted)]'
+              : openPipelineOnly
+                ? 'border-amber-400 bg-amber-50 shadow-[0_1px_4px_rgba(245,158,11,0.2)]'
+                : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:bg-[var(--surface-muted)]'
           }`}
         >
-          <span className="text-[11px] font-semibold text-[var(--text-mid)]">סה״כ לידים</span>
+          <span className="text-[11px] font-semibold text-[var(--text-mid)]">
+            {openPipelineOnly ? 'צינור פתוח' : 'סה״כ לידים'}
+          </span>
           <span className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
-            {leads.length}
+            {openPipelineOnly
+              ? leads.filter(
+                  (l) => l.status !== 'closed' && l.status !== 'not_relevant',
+                ).length
+              : leads.length}
           </span>
         </button>
-        {LEAD_STATUSES_ORDERED.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatusFilter(s)}
-            className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
-              statusFilter === s
-                ? 'shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
-                : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:bg-[var(--surface-muted)]'
-            }`}
-            style={
-              statusFilter === s
-                ? {
-                    borderColor: statusColors[s],
-                    backgroundColor: `${statusColors[s]}14`,
-                  }
-                : undefined
-            }
-          >
-            <span className="text-[11px] font-semibold text-[var(--text-mid)]">{statusLabels[s]}</span>
-            <span
-              className="text-[22px] font-extrabold tabular-nums"
-              style={{ color: statusColors[s] }}
+        {LEAD_STATUSES_ORDERED.map((s) => {
+          const isSel = statusFilter === s && !openPipelineOnly
+          const isNotRel = s === 'not_relevant'
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => {
+                setOpenPipelineOnly(false)
+                setStatusFilter(s)
+              }}
+              className={`flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
+                isSel ? 'shadow-[0_1px_4px_rgba(0,0,0,0.08)]' : 'hover:bg-[var(--surface-muted)]'
+              } ${
+                isNotRel
+                  ? isSel
+                    ? 'border-[#DC2626] bg-[#FEE2E2]'
+                    : 'border-[#FECACA] bg-[#FEF2F2]'
+                  : isSel
+                    ? ''
+                    : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)]'
+              }`}
+              style={
+                isSel && !isNotRel
+                  ? {
+                      borderColor: statusColors[s],
+                      backgroundColor: `${statusColors[s]}14`,
+                    }
+                  : undefined
+              }
             >
-              {statusCounts[s]}
-            </span>
-          </button>
-        ))}
+              <span className="text-[11px] font-semibold text-[var(--text-mid)]">{statusLabels[s]}</span>
+              <span
+                className="text-[22px] font-extrabold tabular-nums"
+                style={{ color: statusColors[s] }}
+              >
+                {statusCounts[s]}
+              </span>
+            </button>
+          )
+        })}
       </section>
 
       {formOpen ? (
@@ -1193,20 +1360,43 @@ export function Leads() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button type="button" className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' ? 'hub-btn-orange' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`} onClick={() => setStatusFilter('all')}>
+        {openPipelineOnly ? (
+          <div className="w-full basis-full rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-[12px] text-amber-950">
+            <span className="font-bold">צינור פתוח</span>
+            {' — '}ללא נסגר / לא רלוונטי ·
+            <button
+              type="button"
+              className="ms-1 font-semibold text-[var(--orange)] underline"
+              onClick={() => setOpenPipelineOnly(false)}
+            >
+              ביטול מסנן
+            </button>
+          </div>
+        ) : null}
+        <button
+          type="button"
+          className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${statusFilter === 'all' && !openPipelineOnly ? 'hub-btn-orange' : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'}`}
+          onClick={() => {
+            setOpenPipelineOnly(false)
+            setStatusFilter('all')
+          }}
+        >
           הכל
         </button>
         {LEAD_STATUSES_ORDERED.map((s) => (
           <button
             key={s}
             type="button"
-            onClick={() => setStatusFilter(s)}
+            onClick={() => {
+              setOpenPipelineOnly(false)
+              setStatusFilter(s)
+            }}
             className={`rounded-[10px] px-3 py-1.5 text-xs font-semibold ${
-              statusFilter === s
+              statusFilter === s && !openPipelineOnly
                 ? 'text-white'
                 : 'border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)]'
             }`}
-            style={statusFilter === s ? { backgroundColor: statusColors[s] } : undefined}
+            style={statusFilter === s && !openPipelineOnly ? { backgroundColor: statusColors[s] } : undefined}
           >
             {statusLabels[s]}
           </button>
@@ -1242,7 +1432,10 @@ export function Leads() {
             </thead>
             <tbody>
               {filtered.map((l) => (
-                <tr key={l.id} className="border-t border-[var(--border)] align-top">
+                <tr
+                  key={l.id}
+                  className={`border-t border-[var(--border)] align-top ${leadFrameInsetClass(l.status)} ${leadRowSurfaceClass(l.status)}`}
+                >
                   <td className="px-3 py-3 font-semibold text-[var(--text-dark)]">{l.name}</td>
                   <td className="px-3 py-3 text-[var(--text-mid)]">
                     {l.company ? (
@@ -1336,7 +1529,14 @@ export function Leads() {
                     {ownerNameById.get(l.ownerId) ?? 'לא משויך'}
                   </td>
                   <td className="px-3 py-3">
-                    <Badge label={statusLabels[l.status]} color={statusColors[l.status]} />
+                    <div className="min-w-0 space-y-1">
+                      <Badge label={statusLabels[l.status]} color={statusColors[l.status]} />
+                      {l.status === 'not_relevant' && l.notRelevantReason?.trim() ? (
+                        <p className="max-w-[14rem] text-[10px] leading-snug text-[var(--text-mid)]">
+                          {l.notRelevantReason.trim()}
+                        </p>
+                      ) : null}
+                    </div>
                     {l.status === 'quote_sent' &&
                     (l.quoteChannel ||
                       l.quotePdfUrl ||
@@ -1411,28 +1611,42 @@ export function Leads() {
                   </td>
                   <td className="px-3 py-3">
                     {(() => {
-                      const fu = l.nextFollowUpDate?.slice(0, 10)
-                      const qr = l.quoteReturnByDate?.slice(0, 10)
-                      const fuV =
-                        fu && /^\d{4}-\d{2}-\d{2}$/.test(fu) ? fu : undefined
-                      const qrV =
-                        qr && /^\d{4}-\d{2}-\d{2}$/.test(qr) ? qr : undefined
-                      const scheduleDate = fuV ?? qrV
+                      if (l.status === 'not_relevant') {
+                        return (
+                          <span className="text-[11px] text-[var(--text-light)]">
+                            לא רלוונטי — ללא מעקב תזמון
+                          </span>
+                        )
+                      }
+                      const scheduleDate = leadScheduleYmd(l)
                       const urgency = scheduleDate
                         ? urgencyForLead(scheduleDate)
                         : null
                       if (!scheduleDate || !urgency) {
                         return (
-                          <span className="text-[11px] text-[var(--text-light)]">ללא תזמון</span>
+                          <button
+                            type="button"
+                            className="text-[11px] font-semibold text-[var(--orange)] underline"
+                            onClick={() => setScheduleDateEditLeadId(l.id)}
+                          >
+                            ללא תזמון · קביעת תאריך
+                          </button>
                         )
                       }
-                      const caption = fuV ? 'חזרה' : 'תאריך חזרה ללקוח'
+                      const caption = leadScheduleCaption(l)
                       return (
                         <div className="space-y-1">
                           <Badge label={urgency.label} color={urgency.color} />
-                          <p className="text-[10px] text-[var(--text-light)]">
-                            {caption}: {formatDateIL(scheduleDate)}
-                          </p>
+                          <button
+                            type="button"
+                            className="w-full text-right text-[10px] hover:opacity-90"
+                            onClick={() => setScheduleDateEditLeadId(l.id)}
+                          >
+                            <span className="text-[var(--text-light)]">{caption}: </span>
+                            <span className="font-semibold text-[var(--text-dark)] underline decoration-dotted underline-offset-2">
+                              {formatDateIL(scheduleDate)}
+                            </span>
+                          </button>
                         </div>
                       )
                     })()}
@@ -1483,29 +1697,77 @@ export function Leads() {
           <div className="space-y-3">
             <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">סטטוס ליד</p>
             <div className="flex flex-wrap gap-1.5">
-              {LEAD_STATUSES_ORDERED.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => {
-                    if (s === 'quote_sent') {
-                      setOpenActionLeadId(null)
-                      setQuoteModalLeadId(actionMenuLead.id)
-                      return
-                    }
-                    void setLeadStatusWithLog(actionMenuLead.id, s)
-                  }}
-                  className="rounded-[8px] border px-2 py-1 text-[10px] font-semibold"
-                  style={{
-                    borderColor: statusColors[s],
-                    color: actionMenuLead.status === s ? '#fff' : statusColors[s],
-                    backgroundColor: actionMenuLead.status === s ? statusColors[s] : '#fff',
-                  }}
-                >
-                  {statusLabels[s]}
-                </button>
-              ))}
+              {LEAD_STATUSES_ORDERED.map((s) => {
+                const selected =
+                  (actionStatusDraftById[actionMenuLead.id] ?? actionMenuLead.status) === s
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      if (s === 'quote_sent') {
+                        setOpenActionLeadId(null)
+                        setQuoteModalLeadId(actionMenuLead.id)
+                        return
+                      }
+                      setActionStatusDraftById((prev) => ({
+                        ...prev,
+                        [actionMenuLead.id]: s,
+                      }))
+                      if (s !== 'not_relevant') {
+                        setNotRelevantReasonErrorById((p) => {
+                          const n = { ...p }
+                          delete n[actionMenuLead.id]
+                          return n
+                        })
+                      }
+                    }}
+                    className="rounded-[8px] border px-2 py-1 text-[10px] font-semibold"
+                    style={{
+                      borderColor: statusColors[s],
+                      color: selected ? '#fff' : statusColors[s],
+                      backgroundColor: selected ? statusColors[s] : '#fff',
+                    }}
+                  >
+                    {statusLabels[s]}
+                  </button>
+                )
+              })}
             </div>
+            {(actionStatusDraftById[actionMenuLead.id] ?? actionMenuLead.status) ===
+            'not_relevant' ? (
+              <div className="rounded-[10px] border border-[#FECACA] bg-[#FEF2F2] p-3">
+                <p className="mb-1 text-[10px] font-bold text-[var(--text-dark)]">
+                  למה לא רלוונטי? <span className="text-[#B91C1C]">*</span>
+                </p>
+                <textarea
+                  rows={3}
+                  className={`w-full bg-[var(--dash-panel-bg)] ${
+                    notRelevantReasonErrorById[actionMenuLead.id]
+                      ? 'ring-2 ring-[#DC2626] ring-offset-1'
+                      : ''
+                  }`}
+                  placeholder="למשל: בחר במתחרה, אין תקציב, כבר לא פעיל בתחום…"
+                  value={notRelevantReasonDraftById[actionMenuLead.id] ?? ''}
+                  onChange={(e) => {
+                    setNotRelevantReasonDraftById((prev) => ({
+                      ...prev,
+                      [actionMenuLead.id]: e.target.value,
+                    }))
+                    setNotRelevantReasonErrorById((p) => {
+                      const n = { ...p }
+                      delete n[actionMenuLead.id]
+                      return n
+                    })
+                  }}
+                />
+                {notRelevantReasonErrorById[actionMenuLead.id] ? (
+                  <p className="mt-1.5 text-[10px] font-semibold text-[#B91C1C]">
+                    {notRelevantReasonErrorById[actionMenuLead.id]}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
               מנהל לקוח (עובד מהמערכת)
             </p>
@@ -1920,10 +2182,18 @@ export function Leads() {
                   {ownerNameById.get(leadDetailsLead.ownerId) ?? 'לא משויך'}
                 </LeadDetailRow>
                 <LeadDetailRow label="סטטוס">
-                  <Badge
-                    label={statusLabels[leadDetailsLead.status]}
-                    color={statusColors[leadDetailsLead.status]}
-                  />
+                  <div className="space-y-1.5">
+                    <Badge
+                      label={statusLabels[leadDetailsLead.status]}
+                      color={statusColors[leadDetailsLead.status]}
+                    />
+                    {leadDetailsLead.status === 'not_relevant' &&
+                    leadDetailsLead.notRelevantReason?.trim() ? (
+                      <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--text-mid)]">
+                        {leadDetailsLead.notRelevantReason.trim()}
+                      </p>
+                    ) : null}
+                  </div>
                 </LeadDetailRow>
                 <LeadDetailRow label="תאריך כניסה">
                   {formatDateIL(leadDetailsLead.createdAt)}
@@ -2028,21 +2298,37 @@ export function Leads() {
             >
               <h3 className="mb-1 text-[12px] font-bold text-[var(--text-light)]">תזמון מעקב</h3>
               <div className="mt-2">
-                <LeadDetailRow label="תאריך חזרה מתוכננת">
-                  {leadDetailsLead.nextFollowUpDate
-                    ? formatDateIL(leadDetailsLead.nextFollowUpDate)
-                    : '—'}
-                </LeadDetailRow>
-                <LeadDetailRow label="דחיפות">
-                  {urgencyForLead(leadDetailsLead.nextFollowUpDate) ? (
-                    <Badge
-                      label={urgencyForLead(leadDetailsLead.nextFollowUpDate)!.label}
-                      color={urgencyForLead(leadDetailsLead.nextFollowUpDate)!.color}
-                    />
-                  ) : (
-                    'ללא תזמון'
-                  )}
-                </LeadDetailRow>
+                {leadDetailsLead.status === 'not_relevant' ? (
+                  <>
+                    <p className="text-[13px] text-[var(--text-mid)]">
+                      לא רלוונטי — אין תאריך חזרה או דחיפות במעקב.
+                    </p>
+                    {!leadDetailsLead.notRelevantReason?.trim() ? (
+                      <p className="mt-2 text-[12px] text-[var(--text-light)]">
+                        לא נשמרה סיבה (מומלץ לעדכן דרך «פעולות»).
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <LeadDetailRow label="תאריך חזרה מתוכננת">
+                      {leadDetailsLead.nextFollowUpDate
+                        ? formatDateIL(leadDetailsLead.nextFollowUpDate)
+                        : '—'}
+                    </LeadDetailRow>
+                    <LeadDetailRow label="דחיפות">
+                      {(() => {
+                        const s = leadScheduleYmd(leadDetailsLead)
+                        const u = s ? urgencyForLead(s) : null
+                        return u ? (
+                          <Badge label={u.label} color={u.color} />
+                        ) : (
+                          'ללא תזמון'
+                        )
+                      })()}
+                    </LeadDetailRow>
+                  </>
+                )}
                 <LeadDetailRow label="עדכון אחרון (טקסט)">
                   {leadDetailsLead.lastActivityText ? (
                     <span className="whitespace-pre-wrap">{leadDetailsLead.lastActivityText}</span>
@@ -2166,6 +2452,12 @@ export function Leads() {
           </div>
         </div>
       </Modal>
+
+      <LeadScheduleDateEditorModal
+        lead={scheduleDateEditLead}
+        isOpen={Boolean(scheduleDateEditLeadId)}
+        onClose={() => setScheduleDateEditLeadId(null)}
+      />
     </div>
   )
 }

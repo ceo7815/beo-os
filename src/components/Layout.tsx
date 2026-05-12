@@ -8,7 +8,9 @@ import type { TeamMember } from '../types'
 import { HubRealtimeBubbleHost } from './HubRealtimeBubbleHost'
 import { ToastHost } from './shared/Toast'
 import { QuickActionsFloat } from './QuickActionsFloat'
+import { QuickCalendarSlider } from './QuickCalendarSlider'
 import { QuickTasksSlider } from './QuickTasksSlider'
+import { MeetingDrawer } from './MeetingDrawer'
 import { TaskDrawer } from './TaskDrawer'
 import { isAdminRole } from './RequireAdmin'
 
@@ -357,6 +359,38 @@ export function Layout() {
                 משימות
               </NavLink>
               <NavLink
+                to="/calendar"
+                className={({ isActive }) =>
+                  `${navBase} ${
+                    isActive
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                  }`
+                }
+              >
+                <NavGlyph>
+                  <rect x="3" y="5" width="18" height="16" rx="2" />
+                  <path d="M3 10h18M8 3v4M16 3v4" />
+                </NavGlyph>
+                יומן
+              </NavLink>
+              <NavLink
+                to="/prompts"
+                className={({ isActive }) =>
+                  `${navBase} ${
+                    isActive
+                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                  }`
+                }
+              >
+                <NavGlyph>
+                  <path d="M12 3v2.5M12 18.5V21M5.64 5.64l1.77 1.77M16.59 16.59l1.77 1.77M3 12h2.5M18.5 12H21M5.64 18.36l1.77-1.77M16.59 7.41l1.77-1.77" />
+                  <path d="M15.5 12a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0z" />
+                </NavGlyph>
+                ספריית פרומפטים
+              </NavLink>
+              <NavLink
                 to="/attendance"
                 className={({ isActive }) =>
                   `${navBase} ${
@@ -477,7 +511,9 @@ export function Layout() {
         <main className="relative min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           <QuickActionsFloat />
           <QuickTasksSlider />
+          <QuickCalendarSlider />
           <TaskDrawer />
+          <MeetingDrawer />
           <Outlet />
         </main>
       </div>

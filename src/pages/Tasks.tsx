@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { taskVisibleToUser } from '../lib/taskVisibility'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
-import { addDaysYmd, formatDateIL, formatDateTimeIL, todayYmd } from '../lib/dates'
+import { addDaysYmd, formatDateIL, formatDateTimeIL, formatTaskDueDisplay, todayYmd } from '../lib/dates'
 import {
   supplierDisplayName,
   supplierNameMap,
@@ -204,7 +205,7 @@ function TaskCard({
           ) : null}
           <p>
             <span className="text-[var(--text-mid)]">תאריך יעד: </span>
-            <span className="font-medium">{formatDateIL(task.dueDate)}</span>
+            <span className="font-medium">{formatTaskDueDisplay(task.dueDate, task.dueTime)}</span>
           </p>
           {assigneeLabel ? (
             <p>
@@ -473,6 +474,7 @@ function KanbanColumn({
   canDrop,
   onDropTask,
   onDragEnterColumn,
+  columnDomId,
 }: {
   title: string
   count: number
@@ -482,9 +484,12 @@ function KanbanColumn({
   canDrop: boolean
   onDropTask: () => void
   onDragEnterColumn: () => void
+  /** לעוגן מדף חיצוני (למשל דשבורד → באיחור) */
+  columnDomId?: string
 }) {
   return (
     <div
+      id={columnDomId}
       className={`flex min-w-[240px] flex-1 flex-col rounded-2xl ${hubSectionClass(sectionSeq)} transition ${
         canDrop
           ? 'ring-2 ring-[var(--orange-light)] ring-offset-2 ring-offset-[var(--bg-main)]'
@@ -513,6 +518,7 @@ function KanbanColumn({
 
 export function Tasks() {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { users: teamMembers } = useUsers()
   const { clients } = useClients()
   const { suppliers } = useSuppliers()
@@ -540,6 +546,26 @@ export function Tasks() {
   const [adminTeamScope, setAdminTeamScope] = useState<AdminTeamScope>('mine')
   /** תאריך ייחוס לעמודות היום / מחר / באיחור / אחר כך (ברירת מחדל: היום האמיתי) */
   const [boardAnchor, setBoardAnchor] = useState(() => todayYmd())
+
+  useEffect(() => {
+    const focus = searchParams.get('focus')?.trim().toLowerCase()
+    if (focus !== 'overdue') return
+    setBoardAnchor(todayYmd())
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev)
+        n.delete('focus')
+        return n
+      },
+      { replace: true },
+    )
+    const t = window.setTimeout(() => {
+      document
+        .getElementById('tasks-kanban-overdue')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
+    }, 80)
+    return () => window.clearTimeout(t)
+  }, [searchParams, setSearchParams])
 
   const defaultAssigneeId = user?.uid ?? teamMembers[0]?.id ?? ''
   const myRole =
@@ -940,6 +966,7 @@ export function Tasks() {
             return (
               <KanbanColumn
                 key={col.key}
+                columnDomId={col.key === 'overdue' ? 'tasks-kanban-overdue' : undefined}
                 title={columnTitle}
                 count={list.length}
                 badgeColor={col.badgeColor}
@@ -1201,7 +1228,7 @@ function SentTasksSection({
                       {boardStatusHe(t.status)}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-[var(--text-mid)]">{formatDateIL(t.dueDate)}</td>
+                  <td className="px-3 py-2 text-[var(--text-mid)]">{formatTaskDueDisplay(t.dueDate, t.dueTime)}</td>
                 </tr>
               ))}
             </tbody>

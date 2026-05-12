@@ -75,6 +75,8 @@ export type LeadStatus =
   | 'specification'
   | 'quote_sent'
   | 'follow_up'
+  | 'no_answer'
+  | 'not_relevant'
   | 'closed'
 
 /** אופן שליחת הצעת המחיר כשהסטטוס «נשלחה הצעת מחיר» */
@@ -138,6 +140,8 @@ export interface Task {
   projectId?: string
   supplierId?: string
   dueDate: string
+  /** שעת יעד אופציונלית (HH:mm, 24 שעות) — מוצג לצד תאריך היעד */
+  dueTime?: string
   reminderDate?: string
   tags: string[]
   reminders: TaskReminderEntry[]
@@ -158,6 +162,38 @@ export interface Task {
   recurringTemplateId?: string
   /** עותק לתצוגה — מתעדכן מן התבנית בכל מופע */
   recurringFrequency?: TaskRecurrence
+}
+
+/**
+ * פגישה / יומן — אוסף Firestore `meetings`.
+ * `attendeeUserIds` — מי רואה ביומן (array-contains); בדרך כלל יוצר + מאורגן + משתתפים.
+ * `excludeCreatorFromAttendees` — היוצר לא נכלל (פגישה בשם עובד/גורם חיצוני בלבד).
+ */
+export interface Meeting {
+  id: string
+  title: string
+  /** מטרת הפגישה */
+  purpose: string
+  /** תוכן / סדר יום */
+  agenda: string
+  /** תאריך התחלה YYYY-MM-DD */
+  startDate: string
+  /** שעת התחלה HH:mm (אופציונלי) */
+  startTime?: string
+  /** שעת סיום HH:mm (אופציונלי) */
+  endTime?: string
+  location?: string
+  clientId?: string
+  projectId?: string
+  supplierId?: string
+  leadId?: string
+  organizerUserId: string
+  participantUserIds: string[]
+  attendeeUserIds: string[]
+  /** כש-true — יוצר הפגישה לא ב-attendeeUserIds (לא ביומן שלו, לא מקבל מייל הזמנה) */
+  excludeCreatorFromAttendees?: boolean
+  createdBy: string
+  createdAt: string
 }
 
 /** תאימות למודול Kanban */
@@ -236,6 +272,8 @@ export interface Lead {
   quoteVisualUrl?: string
   /** תאריך יעד לחזרה ללקוח בנוגע להצעת המחיר — נשמר בעת מעבר ל־quote_sent */
   quoteReturnByDate?: string
+  /** נדרש כש־status הוא «לא רלוונטי» — הסבר למה */
+  notRelevantReason?: string
   createdAt: string
 }
 

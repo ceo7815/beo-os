@@ -6,13 +6,15 @@ import {
   useState,
 } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { formatDateTimeIL, todayYmd, toDateInputYmd } from '../lib/dates'
+import { formatDateTimeIL, todayYmd, toDateInputYmd, normalizeDueTimeHm } from '../lib/dates'
 import { boardStatusHe } from '../lib/boardTaskLabels'
 import { formatRelativeHebrew } from '../lib/relativeTimeHe'
 import { reminderBadgeHe } from '../lib/reminderBadgeHe'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
-import { NEW_TASK_DRAWER_ID } from '../lib/taskDrawerIds'
+import { NEW_TASK_DRAWER_ID, type NewTaskDraftSeed } from '../lib/taskDrawerIds'
 import { ClientQuickSelect } from './ClientQuickSelect'
+import { ProjectQuickSelect } from './ProjectQuickSelect'
+import { SupplierQuickSelect } from './SupplierQuickSelect'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { SUPPLIER_NAME_MISSING } from '../lib/supplierDisplay'
@@ -40,6 +42,7 @@ type TaskDraft = {
   projectId: string
   supplierId: string
   dueDate: string
+  dueTime: string
   tags: string[]
   reminders: TaskReminderEntry[]
 }
@@ -55,6 +58,7 @@ function initDraft(t: Task): TaskDraft {
     projectId: t.projectId ?? '',
     supplierId: t.supplierId ?? '',
     dueDate: t.dueDate,
+    dueTime: t.dueTime ?? '',
     tags: [...t.tags],
     reminders: t.reminders.map((r) => ({ ...r })),
   }
@@ -74,6 +78,9 @@ function buildPatch(task: Task, d: TaskDraft): Partial<Task> {
   const ds = d.supplierId.trim() || undefined
   if ((ds ?? '') !== (task.supplierId ?? '')) patch.supplierId = ds
   if (d.dueDate !== task.dueDate) patch.dueDate = d.dueDate
+  const nextDueHm = normalizeDueTimeHm(d.dueTime)
+  const prevDueHm = normalizeDueTimeHm(task.dueTime)
+  if (nextDueHm !== prevDueHm) patch.dueTime = nextDueHm
   if (JSON.stringify(d.tags) !== JSON.stringify(task.tags)) patch.tags = [...d.tags]
   if (JSON.stringify(d.reminders) !== JSON.stringify(task.reminders)) {
     patch.reminders = d.reminders.map((r) => ({ ...r }))
@@ -81,10 +88,10 @@ function buildPatch(task: Task, d: TaskDraft): Partial<Task> {
   return patch
 }
 
-function localUnsavedTaskFromSeed(
-  seed: { assigneeId: string; dueDate: string },
-  createdBy: string,
-): Task {
+function localUnsavedTaskFromSeed(seed: NewTaskDraftSeed, createdBy: string): Task {
+  const cid = seed.clientId?.trim()
+  const pid = seed.projectId?.trim()
+  const sid = seed.supplierId?.trim()
   return {
     id: NEW_TASK_DRAWER_ID,
     title: '',
@@ -92,9 +99,9 @@ function localUnsavedTaskFromSeed(
     status: 'todo',
     priority: 'medium',
     assigneeId: seed.assigneeId,
-    clientId: undefined,
-    projectId: undefined,
-    supplierId: undefined,
+    clientId: cid || undefined,
+    projectId: pid || undefined,
+    supplierId: sid || undefined,
     dueDate: seed.dueDate,
     tags: [],
     reminders: [],
@@ -125,6 +132,10 @@ function applyPatchToTask(task: Task, patch: Partial<Task>): Task {
       patch.supplierId !== undefined
         ? patch.supplierId || undefined
         : task.supplierId,
+    dueTime:
+      patch.dueTime !== undefined
+        ? patch.dueTime || undefined
+        : task.dueTime,
   }
 }
 
@@ -180,18 +191,30 @@ export function TaskDrawer() {
   const [draft, setDraft] = useState<TaskDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const prevTaskIdRef = useRef<string | null>(null)
+  const newTaskSeedFingerprintRef = useRef<string>('')
 
   useLayoutEffect(() => {
     if (!taskId || !task) {
       setDraft(null)
       prevTaskIdRef.current = null
+      newTaskSeedFingerprintRef.current = ''
+      return
+    }
+    if (taskId === NEW_TASK_DRAWER_ID && newTaskDraftSeed) {
+      const fp = JSON.stringify(newTaskDraftSeed)
+      if (newTaskSeedFingerprintRef.current !== fp) {
+        newTaskSeedFingerprintRef.current = fp
+        setDraft(initDraft(task))
+      }
+      prevTaskIdRef.current = taskId
       return
     }
     if (prevTaskIdRef.current !== taskId) {
       prevTaskIdRef.current = taskId
+      newTaskSeedFingerprintRef.current = ''
       setDraft(initDraft(task))
     }
-  }, [taskId, task])
+  }, [taskId, task, newTaskDraftSeed])
 
   useEffect(() => {
     if (taskId) {
@@ -206,6 +229,11 @@ export function TaskDrawer() {
     if (!cid) return projects
     return projects.filter((p) => p.clientId === cid)
   }, [projects, draft])
+
+  const clientNameByIdMap = useMemo(
+    () => new Map(clients.map((c) => [c.id, c.name])),
+    [clients],
+  )
 
   const dirty = useMemo(() => {
     if (!task || !draft) return false
@@ -258,6 +286,7 @@ export function TaskDrawer() {
             projectId: draft.projectId.trim() || undefined,
             supplierId: draft.supplierId.trim() || undefined,
             dueDate: draft.dueDate,
+            dueTime: normalizeDueTimeHm(draft.dueTime),
             reminderDate: undefined,
             tags: draft.tags,
             reminders: draft.reminders,
@@ -505,22 +534,16 @@ export function TaskDrawer() {
                 <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
                   ספק (אופציונלי)
                 </label>
-                <select
-                  value={draft.supplierId}
-                  onChange={(e) =>
-                    setDraft((d) =>
-                      d ? { ...d, supplierId: e.target.value } : d,
-                    )
-                  }
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
-                >
-                  <option value="">—</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm">
+                  <SupplierQuickSelect
+                    id="task-drawer-supplier"
+                    suppliers={suppliers}
+                    value={draft.supplierId}
+                    onChange={(sid) =>
+                      setDraft((d) => (d ? { ...d, supplierId: sid } : d))
+                    }
+                  />
+                </div>
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
@@ -535,45 +558,70 @@ export function TaskDrawer() {
                     לבחירת לקוח — רשימת פרויקטים תוצג לפי הלקוח
                   </p>
                 )}
-                <select
-                  value={
-                    draft.projectId &&
-                    projectsForTask.some((p) => p.id === draft.projectId)
-                      ? draft.projectId
-                      : ''
-                  }
-                  onChange={(e) =>
-                    setDraft((d) =>
-                      d ? { ...d, projectId: e.target.value } : d,
-                    )
-                  }
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
-                >
-                  <option value="">—</option>
-                  {projectsForTask.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm">
+                  <ProjectQuickSelect
+                    id="task-drawer-project"
+                    projects={projectsForTask}
+                    clientNameById={clientNameByIdMap}
+                    value={
+                      draft.projectId &&
+                      projectsForTask.some((p) => p.id === draft.projectId)
+                        ? draft.projectId
+                        : ''
+                    }
+                    onChange={(pid) =>
+                      setDraft((d) => (d ? { ...d, projectId: pid } : d))
+                    }
+                  />
+                </div>
                 {draft.clientId?.trim() && projectsForTask.length === 0 ? (
                   <p className="mt-1 text-[10px] text-[var(--text-light)]">
                     אין פרויקטים ללקוח זה — צרו פרויקט מעמוד הפרויקטים
                   </p>
                 ) : null}
               </div>
-              <div>
-                <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
-                  תאריך יעד
-                </label>
-                <input
-                  type="date"
-                  value={toDateInputYmd(draft.dueDate)}
-                  onChange={(e) =>
-                    setDraft((d) => (d ? { ...d, dueDate: e.target.value } : d))
-                  }
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
-                />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
+                    תאריך יעד
+                  </label>
+                  <input
+                    type="date"
+                    value={toDateInputYmd(draft.dueDate)}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setDraft((d) =>
+                        d
+                          ? {
+                              ...d,
+                              dueDate: v,
+                              dueTime: v ? d.dueTime : '',
+                            }
+                          : d,
+                      )
+                    }}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
+                    שעת יעד (אופציונלי)
+                  </label>
+                  <input
+                    type="time"
+                    value={normalizeDueTimeHm(draft.dueTime) ?? ''}
+                    onChange={(e) =>
+                      setDraft((d) =>
+                        d ? { ...d, dueTime: e.target.value } : d,
+                      )
+                    }
+                    disabled={!toDateInputYmd(draft.dueDate)}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-45"
+                  />
+                  <p className="mt-1 text-[10px] text-[var(--text-mid)]">
+                    מוצג ליד תאריך היעד ברשימות ובכרטיס המשימה
+                  </p>
+                </div>
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">

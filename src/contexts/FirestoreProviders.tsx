@@ -9,6 +9,7 @@ import { SuppliersProvider } from '../hooks/useSuppliers'
 import { HostingProvider } from '../hooks/useHosting'
 import { LeadsProvider } from '../hooks/useLeads'
 import { CampaignsProvider } from '../hooks/useCampaigns'
+import { MeetingsProvider } from '../hooks/useMeetings'
 import { TasksProvider } from '../hooks/useTasks'
 import { UsersProvider } from '../hooks/useUsers'
 import { useAuth } from './AuthContext'
@@ -30,9 +31,11 @@ export function FirestoreProviders() {
                   <LeadsProvider>
                     <TasksProvider>
                       <ProjectsProvider>
-                        <FirestoreDocsSync />
-                        <HubRealtimeNotifications />
-                        <Outlet />
+                        <MeetingsProvider>
+                          <FirestoreDocsSync />
+                          <HubRealtimeNotifications />
+                          <Outlet />
+                        </MeetingsProvider>
                       </ProjectsProvider>
                     </TasksProvider>
                   </LeadsProvider>
