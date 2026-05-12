@@ -502,7 +502,8 @@ export function docToTeamMember(
 ): TeamMember {
   const x = d.data()
   const rawRole = String(x.role ?? '')
-  const role = rawRole === 'admin' || rawRole === 'superadmin' ? 'admin' : 'employee'
+  const rNorm = rawRole.trim().toLowerCase()
+  const role = rNorm === 'admin' || rNorm === 'superadmin' ? 'admin' : 'employee'
   let monthlyWorkHours: number | null | undefined
   if (!Object.prototype.hasOwnProperty.call(x, 'monthlyWorkHours')) {
     monthlyWorkHours = undefined

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useClients } from '../hooks/useClients'
 import { usePasswordVault } from '../hooks/usePasswordVault'
 import { useUsers } from '../hooks/useUsers'
+import { useHubStore } from '../store/useStore'
 import { PASSWORD_VAULT_CATEGORIES } from '../lib/passwordVaultCategories'
 import { formatDateTimeIL } from '../lib/dates'
 import { hubSectionClass } from '../lib/hubSectionBorder'
@@ -97,9 +98,17 @@ export function Vault() {
   const { user } = useAuth()
   const { users, loading: usersLoading } = useUsers()
   const { clients } = useClients()
+  const hubUser = useHubStore((s) => s.currentUser)
 
-  const role = users.find((m) => m.id === user?.uid)?.role ?? ''
-  const vaultAdmin = isAdminRole(role)
+  /** תפקיד גולמי מ-Firestore (כמו ב-security rules) — לא רק המיפוי מ-useUsers */
+  const roleFromTeam = users.find((m) => m.id === user?.uid)?.role ?? ''
+  const hubUid = hubUser?.uid
+  const hubRoleRaw = hubUser?.role
+  const rawRoleForVault =
+    hubUid === user?.uid && typeof hubRoleRaw === 'string' && hubRoleRaw.trim() !== ''
+      ? hubRoleRaw
+      : roleFromTeam
+  const vaultAdmin = isAdminRole(rawRoleForVault)
 
   const { entries, loading, addEntry, updateEntry, removeEntry } = usePasswordVault({
     uid: user?.uid,
@@ -206,7 +215,7 @@ export function Vault() {
         <p className="max-w-2xl text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
           {vaultAdmin
             ? 'ניהול מרכזי של סיסמאות ופרטי גישה — בחר מי ברשימת המשתמשים חשוף לכל רשומה. הסיסמה מוסתרת עד לחיצה על «הצג».'
-            : 'אפשר להוסיף פריט חדש ולבחור מי יראה אותו. תראה כאן גם פריטים שמנהל שיתף איתך או ששיתפת עם עצמך/עם הצוות. פריט שמנהל הגביל לרשימת משתמשים — לא יופיע למי שלא ברשימה. הסיסמה מוסתרת עד לחיצה על «הצג».'}
+            : 'אפשר להוסיף פריט חדש ולבחור מי יראה אותו. תראה כאן פריטים שמנהל שיתף איתך, ששיתפת עם הצוות, או שבהם «שם משתמש / אימייל» תואם לאימייל ההתחברות שלך. פריט שמוגבל לרשימת משתמשים — לא יופיע אם לא נכללת ברשימה וגם האימייל בשדה שם המשתמש אינו שלך. הסיסמה מוסתרת עד לחיצה על «הצג».'}
         </p>
       </header>
 
@@ -577,13 +586,14 @@ function VaultEntryModal({
           <p className="mb-2 text-[11px] leading-relaxed text-[var(--text-light)]">
             {isVaultAdmin ? (
               <>
-                סמן מי יראה את הרשומה ואת פרטי הגישה (סיסמה או Google). עובד שלא ברשימה לא יראה פריט זה כלל. ריק =
-                רק מנהלי מערכת.
+                סמן מי יראה את הרשומה ואת פרטי הגישה (סיסמה או Google). עובד שאימייל ההתחברות שלו זהה לשדה «שם
+                משתמש / אימייל» רואה את הפריט גם בלי סימון ברשימה. עובד אחר שלא מסומן — לא יראה. ריק = רק מנהלי
+                מערכת.
               </>
             ) : (
               <>
-                סמן מי יראה את הרשומה ואת פרטי הגישה. עובד שלא ברשימה לא יראה פריט זה. אם לא תסמן אף אחד — הפריט
-                יישמר כאישי (רק אתה ומנהלי המערכת).
+                סמן מי יראה את הרשומה ואת פרטי הגישה. עובד שלא מסומן לא יראה, אלא אם אימייל ההתחברות שלו תואם לשדה
+                «שם משתמש / אימייל». אם לא תסמן אף אחד — הפריט יישמר כאישי (רק אתה ומנהלי המערכת).
               </>
             )}
           </p>

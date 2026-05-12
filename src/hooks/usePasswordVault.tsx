@@ -58,13 +58,12 @@ function docToEntry(id: string, data: Record<string, unknown>): PasswordVaultEnt
   }
 }
 
-function mergeVaultSnaps(uidSnap: QuerySnapshot | null, emailSnap: QuerySnapshot | null): PasswordVaultEntry[] {
+/** מאחד מספר תוצאות שאילתה — אותו מסמך יכול להופיע ביותר משאילתה אחת */
+function mergeVaultSnaps(...snaps: (QuerySnapshot | null)[]): PasswordVaultEntry[] {
   const merged = new Map<string, Record<string, unknown>>()
-  if (uidSnap) {
-    for (const d of uidSnap.docs) merged.set(d.id, d.data() as Record<string, unknown>)
-  }
-  if (emailSnap) {
-    for (const d of emailSnap.docs) merged.set(d.id, d.data() as Record<string, unknown>)
+  for (const snap of snaps) {
+    if (!snap) continue
+    for (const d of snap.docs) merged.set(d.id, d.data() as Record<string, unknown>)
   }
   const list = [...merged.entries()].map(([id, data]) => docToEntry(id, data))
   list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -81,9 +80,15 @@ export type UsePasswordVaultOpts = {
 export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordVaultOpts) {
   const [entries, setEntries] = useState<PasswordVaultEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const snapsRef = useRef<{ uid: QuerySnapshot | null; email: QuerySnapshot | null }>({
+  const snapsRef = useRef<{
+    uid: QuerySnapshot | null
+    email: QuerySnapshot | null
+    /** רשומות ששדה username (אימייל התחברות) תואם למשתמש — גם בלי visibleUserIds */
+    usernameEmail: QuerySnapshot | null
+  }>({
     uid: null,
     email: null,
+    usernameEmail: null,
   })
 
   useEffect(() => {
@@ -111,7 +116,7 @@ export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordV
     const authUnsub = onAuthStateChanged(auth, (firebaseUser) => {
       fsUnsubs.forEach((u) => u())
       fsUnsubs = []
-      snapsRef.current = { uid: null, email: null }
+      snapsRef.current = { uid: null, email: null, usernameEmail: null }
       errReported = false
 
       if (cancelled) return
@@ -148,9 +153,15 @@ export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordV
 
       const emit = () => {
         if (cancelled) return
-        const { uid: uSnap, email: eSnap } = snapsRef.current
-        if (!uSnap && !(useEmailQuery && eSnap)) return
-        setEntries(mergeVaultSnaps(uSnap, useEmailQuery ? eSnap : null))
+        const { uid: uSnap, email: eSnap, usernameEmail: ueSnap } = snapsRef.current
+        if (!uSnap && !(useEmailQuery && eSnap) && !(useEmailQuery && ueSnap)) return
+        setEntries(
+          mergeVaultSnaps(
+            uSnap,
+            useEmailQuery ? eSnap : null,
+            useEmailQuery ? ueSnap : null,
+          ),
+        )
         setLoading(false)
       }
 
@@ -173,6 +184,17 @@ export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordV
             qEmail,
             (snap) => {
               snapsRef.current.email = snap
+              emit()
+            },
+            reportErr,
+          ),
+        )
+        const qUsernameEmail = query(collection(db, COLL), where('username', '==', vaultEmail))
+        fsUnsubs.push(
+          onSnapshot(
+            qUsernameEmail,
+            (snap) => {
+              snapsRef.current.usernameEmail = snap
               emit()
             },
             reportErr,

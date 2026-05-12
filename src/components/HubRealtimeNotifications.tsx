@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { DocumentData } from 'firebase/firestore'
+import type { DocumentData, QuerySnapshot } from 'firebase/firestore'
 import { collection, onSnapshot } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { db } from '../lib/firebase'
@@ -33,6 +33,15 @@ function actorFromDoc(data: DocumentData): { id: string; name: string } | null {
   return { id, name }
 }
 
+/**
+ * מונע בועות שווא אחרי רענון: אחרי listen, ה־snapshot הראשון מהשרת מכיל docChanges
+ * שמסמנים מסמכים כ־"added" ביחס למטמון ריק — לא שינוי אמיתי בזמן אמת.
+ */
+function skipHubRealtimeHydrationSnap(snap: QuerySnapshot, serverBaselineDone: boolean): boolean {
+  if (snap.metadata.fromCache) return true
+  return !serverBaselineDone
+}
+
 /** מאזינים ל־Firestore ושולחים התראות רקע + מונה בטאב */
 export function HubRealtimeNotifications() {
   const { user } = useAuth()
@@ -55,12 +64,12 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
-    let first = true
+    let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'leads'),
       (snap) => {
-        if (first) {
-          first = false
+        if (skipHubRealtimeHydrationSnap(snap, serverBaselineDone)) {
+          if (!snap.metadata.fromCache) serverBaselineDone = true
           return
         }
         for (const ch of snap.docChanges()) {
@@ -91,12 +100,12 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
-    let first = true
+    let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'clients'),
       (snap) => {
-        if (first) {
-          first = false
+        if (skipHubRealtimeHydrationSnap(snap, serverBaselineDone)) {
+          if (!snap.metadata.fromCache) serverBaselineDone = true
           return
         }
         for (const ch of snap.docChanges()) {
@@ -129,18 +138,21 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
-    let first = true
+    let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'tasks'),
       (snap) => {
-        if (first) {
-          first = false
-          for (const d of snap.docs) {
-            const x = d.data()
-            prevTaskSig.current.set(
-              d.id,
-              `${String(x.assigneeId ?? '')}|${String(x.createdBy ?? '')}`,
-            )
+        if (skipHubRealtimeHydrationSnap(snap, serverBaselineDone)) {
+          if (!snap.metadata.fromCache) {
+            prevTaskSig.current.clear()
+            for (const d of snap.docs) {
+              const x = d.data()
+              prevTaskSig.current.set(
+                d.id,
+                `${String(x.assigneeId ?? '')}|${String(x.createdBy ?? '')}`,
+              )
+            }
+            serverBaselineDone = true
           }
           return
         }
@@ -206,12 +218,12 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
-    let first = true
+    let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'collectionTracking'),
       (snap) => {
-        if (first) {
-          first = false
+        if (skipHubRealtimeHydrationSnap(snap, serverBaselineDone)) {
+          if (!snap.metadata.fromCache) serverBaselineDone = true
           return
         }
         for (const ch of snap.docChanges()) {
@@ -234,12 +246,12 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
-    let first = true
+    let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'campaigns'),
       (snap) => {
-        if (first) {
-          first = false
+        if (skipHubRealtimeHydrationSnap(snap, serverBaselineDone)) {
+          if (!snap.metadata.fromCache) serverBaselineDone = true
           return
         }
         for (const ch of snap.docChanges()) {
@@ -270,12 +282,12 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
-    let first = true
+    let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'suppliers'),
       (snap) => {
-        if (first) {
-          first = false
+        if (skipHubRealtimeHydrationSnap(snap, serverBaselineDone)) {
+          if (!snap.metadata.fromCache) serverBaselineDone = true
           return
         }
         for (const ch of snap.docChanges()) {

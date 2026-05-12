@@ -6,7 +6,6 @@ import { getCollectionTrackingStatus } from '../lib/collectionTrackingStatus'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import { isAdminRole } from './RequireAdmin'
-import { useAttendance } from '../hooks/useAttendance'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useCollectionTracking } from '../hooks/useCollectionTracking'
 import { useHosting } from '../hooks/useHosting'
@@ -80,7 +79,6 @@ export function ClientActivityModal(props: Props) {
   const { entries: collectionEntries } = useCollectionTracking()
   const { invoices } = useInvoices()
   const { records: hostingRecords } = useHosting()
-  const { logs: attendanceLogs } = useAttendance()
 
   const vaultRole = users.find((m) => m.id === user?.uid)?.role ?? ''
   const vaultAdmin = isAdminRole(vaultRole)
@@ -107,7 +105,6 @@ export function ClientActivityModal(props: Props) {
         invoices: [] as typeof invoices,
         hosting: [] as typeof hostingRecords,
         vault: [] as typeof vaultEntries,
-        attendance: [] as typeof attendanceLogs,
       }
     }
     const cid = client.id
@@ -144,9 +141,6 @@ export function ClientActivityModal(props: Props) {
     const sortedVault = vaultEntries
       .filter((v) => v.clientId === cid)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    const sortedAttendance = [...attendanceLogs]
-      .filter((log) => log.clientId === cid)
-      .sort((a, b) => b.startAt.localeCompare(a.startAt))
 
     return {
       projects: sortedProjects,
@@ -157,7 +151,6 @@ export function ClientActivityModal(props: Props) {
       invoices: sortedInvoices,
       hosting: sortedHosting,
       vault: sortedVault,
-      attendance: sortedAttendance,
     }
   }, [
     client,
@@ -169,7 +162,6 @@ export function ClientActivityModal(props: Props) {
     invoices,
     hostingRecords,
     vaultEntries,
-    attendanceLogs,
   ])
 
   const today = todayYmd()
@@ -192,7 +184,7 @@ export function ClientActivityModal(props: Props) {
     >
       <p className="mb-4 text-[13px] leading-relaxed text-[var(--text-mid)]">
         סיכום כל הרשומות במערכת המקושרות ללקוח — פרויקטים, משימות, לידים, קמפיינים, גבייה, חשבוניות,
-        אחסון ודומיינים, כספת סיסמאות (ללא חשיפת סיסמאות), ויומני נוכחות עם שיוך ללקוח.
+        אחסון ודומיינים, וכספת סיסמאות (ללא חשיפת סיסמאות). נתוני נוכחות ושעות מוצגים בעמוד הנוכחות (Clockify).
       </p>
 
       <div className="space-y-4">
@@ -539,47 +531,6 @@ export function ClientActivityModal(props: Props) {
                   <p className="mt-1 text-[10px] text-[var(--text-light)]">
                     עודכן {formatDateTimeIL(e.updatedAt)}
                   </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className={`rounded-2xl ${hubSectionClass(1)} p-4 shadow-none`}>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-[var(--text-dark)]">נוכחות וזמני עבודה (שיוך ללקוח)</h3>
-            <button
-              type="button"
-              className="text-[11px] font-semibold text-[var(--orange)] hover:underline"
-              onClick={() => {
-                onClose()
-                navigate('/attendance')
-              }}
-            >
-              לעמוד נוכחות
-            </button>
-          </div>
-          {aggregated.attendance.length === 0 ? (
-            <p className="text-sm text-[var(--text-mid)]">
-              אין רישומי נוכחות עם שיוך ישיר ללקוח זה (בטווח הטעינה במערכת).
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {aggregated.attendance.map((log) => (
-                <li
-                  key={log.id}
-                  className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[12px]"
-                >
-                  <p className="text-[var(--text-dark)]">
-                    {memberName.get(log.userId) ?? log.userId}
-                  </p>
-                  <p className="mt-1 text-[11px] text-[var(--text-mid)]">
-                    התחלה {formatDateTimeIL(log.startAt)}
-                    {log.endAt ? ` · סיום ${formatDateTimeIL(log.endAt)}` : ' · פתוח'}
-                  </p>
-                  {log.note?.trim() ? (
-                    <p className="mt-1 text-[11px] text-[var(--text-mid)]">{log.note.trim()}</p>
-                  ) : null}
                 </li>
               ))}
             </ul>

@@ -1,27 +1,16 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendAssigneeTaskNotification = exports.enforceAttendanceDiscipline = exports.submitProgressCheckIn = exports.updateManagedUserPassword = exports.updateManagedUserEmail = exports.createManagedUser = void 0;
+exports.sendAssigneeTaskNotification = exports.updateManagedUserPassword = exports.updateManagedUserEmail = exports.createManagedUser = void 0;
 require("./loadEnv.js");
 const app_1 = require("firebase-admin/app");
 const auth_1 = require("firebase-admin/auth");
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
-const scheduler_1 = require("firebase-functions/v2/scheduler");
 const taskAssignmentMail_js_1 = require("./taskAssignmentMail.js");
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
 const adminAuth = (0, auth_1.getAuth)();
-/**
- * ספי אכיפה בשרת — לא לקחץ מדי: טאב ברקע / שינה / רשת חלשה עלולים לדלג על heartbeat.
- * ניתוק אוטומטי + סגירת לוג רק אחרי תקופה ארוכה ללא אות חיים.
- */
-const ENFORCE_IDLE_MINUTES = 50;
-const ENFORCE_HEARTBEAT_MINUTES = 50;
-const CHECKIN_MIN_MINUTES = 40;
-const CHECKIN_MAX_MINUTES = 75;
-/** דקות אחרי מועד צ'ק־אין לפני שמסמנים «הוחמץ» (לא סוגרים משמרת — רק מצטבר זמן לא מאומת) */
-const CHECKIN_GRACE_MINUTES = 15;
 /** חובה לקשר ל־onCall — בלי זה אין הרשאת Secret Manager והפונקציה עלולה להיכשל ב־internal */
 const resendApiKeySecret = (0, params_1.defineSecret)('RESEND_API_KEY');
 const mailFromSecret = (0, params_1.defineSecret)('MAIL_FROM');
@@ -80,19 +69,6 @@ function requireAuthUid(authUid) {
         throw new https_1.HttpsError('unauthenticated', 'יש להתחבר למערכת');
     }
     return authUid;
-}
-function parseIsoMs(value) {
-    if (typeof value !== 'string' || !value.trim())
-        return null;
-    const ms = new Date(value).getTime();
-    return Number.isFinite(ms) ? ms : null;
-}
-function nextRandomCheckInIso(fromMs = Date.now()) {
-    const minutes = Math.floor(Math.random() * (CHECKIN_MAX_MINUTES - CHECKIN_MIN_MINUTES + 1)) + CHECKIN_MIN_MINUTES;
-    return new Date(fromMs + minutes * 60_000).toISOString();
-}
-function normalizeProgressText(value) {
-    return String(value ?? '').trim().replace(/\s+/g, ' ');
 }
 exports.createManagedUser = (0, https_1.onCall)(async (request) => {
     const callerUid = requireAuthUid(request.auth?.uid);
@@ -159,151 +135,6 @@ exports.updateManagedUserPassword = (0, https_1.onCall)(async (request) => {
         updatedAt: firestore_1.FieldValue.serverTimestamp(),
     }, { merge: true });
     return { ok: true };
-});
-exports.submitProgressCheckIn = (0, https_1.onCall)(async (request) => {
-    const uid = requireAuthUid(request.auth?.uid);
-    const data = request.data;
-    const text = normalizeProgressText(data.text);
-    const responseMs = typeof data.responseMs === 'number' && Number.isFinite(data.responseMs) ? data.responseMs : 0;
-    if (text.length < 20) {
-        throw new https_1.HttpsError('invalid-argument', 'יש להזין לפחות 20 תווים בסיכום ההתקדמות');
-    }
-    const presenceRef = db.collection('attendancePresence').doc(uid);
-    const presenceSnap = await presenceRef.get();
-    if (!presenceSnap.exists) {
-        throw new https_1.HttpsError('failed-precondition', 'לא נמצאה משמרת פעילה לעובד');
-    }
-    const presence = presenceSnap.data();
-    if (presence.status !== 'active') {
-        throw new https_1.HttpsError('failed-precondition', 'העובד אינו במצב נוכחות פעיל');
-    }
-    const recentCheckIns = await db
-        .collection('checkIns')
-        .where('userId', '==', uid)
-        .orderBy('createdAt', 'desc')
-        .limit(5)
-        .get();
-    const duplicate = recentCheckIns.docs.some((d) => normalizeProgressText(d.get('text')) === text);
-    if (duplicate) {
-        throw new https_1.HttpsError('already-exists', 'הטקסט זהה לדיווח קודם. יש להזין עדכון ייחודי');
-    }
-    const nowMs = Date.now();
-    const dueMs = parseIsoMs(presence.nextCheckInDueAt);
-    const isLate = dueMs ? nowMs - dueMs > CHECKIN_GRACE_MINUTES * 60_000 : false;
-    const suspiciousFast = responseMs > 0 && responseMs < 2000;
-    const lastVerifiedMs = parseIsoMs(presence.lastVerifiedAt) ?? parseIsoMs(presence.lastCheckInAt) ?? nowMs;
-    const atRiskMinutes = isLate ? Math.max(0, Math.round((nowMs - lastVerifiedMs) / 60000)) : 0;
-    const batch = db.batch();
-    batch.create(db.collection('checkIns').doc(), {
-        userId: uid,
-        sessionId: typeof presence.activeLogId === 'string' ? presence.activeLogId : null,
-        text,
-        responseMs,
-        suspiciousFast,
-        isLate,
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-    });
-    batch.set(presenceRef, {
-        status: 'active',
-        lastCheckInAt: new Date(nowMs).toISOString(),
-        lastVerifiedAt: new Date(nowMs).toISOString(),
-        nextCheckInDueAt: nextRandomCheckInIso(nowMs),
-        unverifiedMinutes: firestore_1.FieldValue.increment(atRiskMinutes),
-        missedCheckIns: firestore_1.FieldValue.increment(isLate ? 1 : 0),
-        updatedAt: firestore_1.FieldValue.serverTimestamp(),
-    }, { merge: true });
-    if (isLate || suspiciousFast) {
-        batch.create(db.collection('activityLogs').doc(), {
-            userId: uid,
-            kind: isLate ? 'late_checkin' : 'suspicious_fast_checkin',
-            detail: isLate
-                ? `צ'ק-אין באיחור. זמן בסיכון: ${atRiskMinutes} דקות`
-                : `צ'ק-אין מהיר חשוד (${responseMs}ms)`,
-            createdAt: firestore_1.FieldValue.serverTimestamp(),
-        });
-    }
-    await batch.commit();
-    return { ok: true, isLate, suspiciousFast, atRiskMinutes };
-});
-exports.enforceAttendanceDiscipline = (0, scheduler_1.onSchedule)('every 2 minutes', async () => {
-    const activeSnap = await db.collection('attendancePresence').where('status', '==', 'active').get();
-    if (activeSnap.empty)
-        return;
-    const nowMs = Date.now();
-    const batch = db.batch();
-    let writes = 0;
-    for (const docSnap of activeSnap.docs) {
-        const presence = docSnap.data();
-        const userId = docSnap.id;
-        const statusBefore = presence.status === 'active' || presence.status === 'paused_idle' ? presence.status : 'offline';
-        const activeLogId = typeof presence.activeLogId === 'string' && presence.activeLogId.trim()
-            ? presence.activeLogId
-            : null;
-        const hbMs = parseIsoMs(presence.lastHeartbeatAt);
-        const activityMs = parseIsoMs(presence.lastActivityAt);
-        const hbLagMinutes = hbMs ? Math.round((nowMs - hbMs) / 60000) : 999;
-        const idleLagMinutes = activityMs ? Math.round((nowMs - activityMs) / 60000) : 999;
-        const missingHeartbeat = hbLagMinutes >= ENFORCE_HEARTBEAT_MINUTES;
-        const missingActivity = idleLagMinutes >= ENFORCE_IDLE_MINUTES;
-        const dueMs = parseIsoMs(presence.nextCheckInDueAt);
-        const missedCheckIn = dueMs ? nowMs - dueMs > CHECKIN_GRACE_MINUTES * 60_000 : false;
-        if (missingHeartbeat || missingActivity) {
-            batch.set(db.collection('attendancePresence').doc(userId), {
-                status: 'suspected_inactive',
-                updatedAt: firestore_1.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            writes += 1;
-            batch.create(db.collection('attendanceAnomalies').doc(), {
-                userId,
-                statusBefore,
-                type: missingHeartbeat ? 'missing_heartbeat' : 'missing_activity',
-                hbLagMinutes,
-                idleLagMinutes,
-                note: missingHeartbeat
-                    ? 'לא התקבל heartbeat; הטאב נסגר/מחשב במצב שינה או נטישה'
-                    : 'אין פעילות משתמש מעל הסף',
-                enforcedAt: firestore_1.FieldValue.serverTimestamp(),
-            });
-            writes += 1;
-        }
-        if (missedCheckIn) {
-            const lastVerifiedMs = parseIsoMs(presence.lastVerifiedAt) ?? parseIsoMs(presence.lastCheckInAt) ?? nowMs;
-            const atRiskMinutes = Math.max(0, Math.round((nowMs - lastVerifiedMs) / 60000));
-            batch.set(db.collection('attendancePresence').doc(userId), {
-                unverifiedMinutes: firestore_1.FieldValue.increment(atRiskMinutes),
-                missedCheckIns: firestore_1.FieldValue.increment(1),
-                nextCheckInDueAt: nextRandomCheckInIso(nowMs),
-                updatedAt: firestore_1.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            writes += 1;
-            batch.create(db.collection('activityLogs').doc(), {
-                userId,
-                kind: 'missed_checkin',
-                detail: `הוחמץ צ'ק-אין. סומן זמן לא מאומת: ${atRiskMinutes} דקות`,
-                createdAt: firestore_1.FieldValue.serverTimestamp(),
-            });
-            writes += 1;
-        }
-        if ((missingHeartbeat || missingActivity) && activeLogId) {
-            batch.set(db.collection('attendanceLogs').doc(activeLogId), {
-                endAt: firestore_1.FieldValue.serverTimestamp(),
-                endReason: 'idle_auto',
-            }, { merge: true });
-            writes += 1;
-            batch.set(db.collection('attendancePresence').doc(userId), {
-                activeLogId: null,
-                activeProjectId: null,
-                activeClientId: null,
-                activeTaskId: null,
-                shiftEndedAt: new Date().toISOString(),
-                updatedAt: firestore_1.FieldValue.serverTimestamp(),
-            }, { merge: true });
-            writes += 1;
-        }
-    }
-    if (writes > 0) {
-        await batch.commit();
-    }
 });
 /** מקומי: functions/.env; פרודקשן: סודות מוזרקים ל־process.env לפי השם */
 function readResendApiKey() {

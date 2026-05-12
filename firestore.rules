@@ -36,15 +36,6 @@ service cloud.firestore {
       return signedIn() && me() == userId;
     }
 
-    /** אימייל מהטוקן (למשל כש-visibleUserIds הכיל אימייל במקום uid בנתונים ישנים) */
-    function authEmail() {
-      return signedIn() &&
-        request.auth.token.email is string &&
-        request.auth.token.email.size() > 0
-        ? request.auth.token.email
-        : '';
-    }
-
     match /users/{userId} {
       allow read: if signedIn();
       allow create: if isAdmin() || (
@@ -97,37 +88,22 @@ service cloud.firestore {
       allow read, write: if signedIn();
     }
 
-    match /attendancePresence/{userId} {
-      allow read: if isAdmin() || isSelf(userId);
-      allow create, update, delete: if isAdmin() || isSelf(userId);
-    }
-
-    match /attendanceLogs/{logId} {
-      allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
-      allow create: if signedIn() && (isAdmin() || request.resource.data.userId == me());
-      allow update, delete: if signedIn() && (isAdmin() || resource.data.userId == me());
-    }
-
-    match /checkIns/{checkInId} {
-      allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
-      allow create: if signedIn() && (isAdmin() || request.resource.data.userId == me());
-      allow update, delete: if isAdmin();
-    }
-
-    match /attendanceAnomalies/{anomalyId} {
-      allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
-      allow create, update, delete: if isAdmin();
-    }
-
     match /activityLogs/{activityId} {
       allow read: if signedIn() && (isAdmin() || resource.data.userId == me());
       allow create: if signedIn() && (isAdmin() || request.resource.data.userId == me());
       allow update, delete: if isAdmin();
     }
 
+    /**
+     * אינטגרציית Clockify — רק אדמין (מפתח API ו־Workspace ID).
+     * מסמכים אחרים תחת attendanceConfig לא בשימוש (מערכת נוכחות ישנה הוסרה).
+     */
+    match /attendanceConfig/clockify {
+      allow read, write: if isAdmin();
+    }
+
     match /attendanceConfig/{configId} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+      allow read, write: if false;
     }
 
     /** לידים — עדכון מצד הלקוח חייב ללא ערכי `undefined` (Firestore דוחה). */
@@ -168,37 +144,23 @@ service cloud.firestore {
     }
 
     /**
-     * כספת סיסמאות:
-     * - אדמין: שאילתה ללא where — isAdmin() בתוך תנאי ה-OR.
-     * - עובד: where('visibleUserIds','array-contains', uid) — hasAny([request.auth.uid]) (תואם ל-array-contains).
-     * - נתונים ישנים עם אימייל במערך: שאילתה שנייה + hasAny([authEmail()]).
+     * כספת סיסמאות (passwords_vault)
+     *
+     * קריאה: כל משתמש מחובר — מונע כשלי permission-denied עם שאילתות מורכבות / isAdmin + get().
+     * סינון מי רואה מה נשאר באפליקציה: עובדים משתמשים ב-array-contains על visibleUserIds;
+     * מנהלים טוענים את כל האוסף. חשוב: משתמש טכני יכול לקרוא את כל המסמכים דרך ה-SDK — פרויקט פנימי בלבד.
      */
     match /passwords_vault/{entryId} {
-      /**
-       * קריאה: OR אחד — עוזר למנתח השאילתות לקשר array-contains על visibleUserIds
-       * ל-hasAny (במקום `in` על רשימה).
-       */
-      allow read: if signedIn() && (
-        isAdmin() ||
-        (
-          resource.data.visibleUserIds is list &&
-          resource.data.visibleUserIds.hasAny([request.auth.uid])
-        ) ||
-        (
-          resource.data.visibleUserIds is list &&
-          authEmail() != '' &&
-          resource.data.visibleUserIds.hasAny([authEmail()])
-        )
-      );
+      allow read: if signedIn();
       allow create: if signedIn() && (
         isAdmin() ||
         (
           request.resource.data.updatedBy == me() &&
           request.resource.data.visibleUserIds is list &&
-          request.resource.data.visibleUserIds.hasAny([request.auth.uid])
+          request.auth.uid in request.resource.data.visibleUserIds
         )
       );
-      allow update, delete: if isAdmin();
+      allow update, delete: if signedIn() && isAdmin();
     }
 
     /**

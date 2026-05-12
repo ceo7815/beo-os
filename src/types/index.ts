@@ -262,67 +262,16 @@ export interface Campaign {
   createdAt: string
 }
 
-export type AttendanceStatus = 'offline' | 'active' | 'paused_idle' | 'suspected_inactive'
-
-export interface AttendancePresence {
-  userId: string
-  status: AttendanceStatus
-  activeLogId?: string
-  activeProjectId?: string
-  activeClientId?: string
-  activeTaskId?: string
-  shiftStartedAt?: string
-  shiftEndedAt?: string
-  lastHeartbeatAt?: string
-  lastActivityAt?: string
-  lastCheckInAt?: string
-  lastVerifiedAt?: string
-  nextCheckInDueAt?: string
-  unverifiedMinutes?: number
-  missedCheckIns?: number
-  updatedAt: string
-}
-
-export interface AttendanceLog {
-  id: string
-  userId: string
-  startAt: string
-  endAt?: string
-  projectId?: string
-  clientId?: string
-  taskId?: string
-  note?: string
-  endReason?: 'manual' | 'idle_auto'
-}
-
-export interface AttendanceAnomaly {
-  id: string
-  userId: string
-  type: 'missing_heartbeat' | 'missing_activity'
-  statusBefore: AttendanceStatus
-  hbLagMinutes?: number
-  idleLagMinutes?: number
-  note?: string
-  enforcedAt: string
-}
-
-export interface AttendancePolicy {
-  id: string
-  autoDeductUnverified: boolean
-  checkInMinMinutes: number
-  checkInMaxMinutes: number
-  checkInGraceMinutes: number
-}
-
-export interface AttendanceCheckIn {
-  id: string
-  userId: string
-  sessionId?: string
-  text: string
-  responseMs: number
-  suspiciousFast: boolean
-  isLate: boolean
-  createdAt: string
+/**
+ * מסמך Firestore: `attendanceConfig/clockify` — מפתח Clockify ו־Workspace (עריכה רק לאדמין ב-rules).
+ * הקריאות ל-Clockify API יבוצעו בשלב הבא (מומלץ Cloud Function בגלל CORS).
+ */
+export interface ClockifyIntegrationConfig {
+  apiKey?: string
+  workspaceId?: string
+  /** לדוגמה: https://api.clockify.me/api/v1 */
+  apiBaseUrl?: string
+  updatedAt?: string
 }
 
 export interface Client {
