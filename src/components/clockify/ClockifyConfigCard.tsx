@@ -46,9 +46,12 @@ export function ClockifyConfigCard({ config, loading, onSave }: Props) {
         הגדרות Clockify (אדמין)
       </h2>
       <p className="mt-2 max-w-3xl text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-        מפתח ה-API ומזהה ה-Workspace נשמרים ב-Firestore במסמך{' '}
-        <code className="rounded bg-[var(--bg-input)] px-1 py-0.5 text-[11px]">attendanceConfig/clockify</code> — רק
-        למנהלי מערכת. בשלב הבא הקריאות ל-Clockify יעברו דרך שירות / Cloud Function (CORS).
+        מפתח ה-API ומזהה ה-Workspace נשמרים ב-Firestore: מסמך אדמין{' '}
+        <code className="rounded bg-[var(--bg-input)] px-1 py-0.5 text-[11px]">attendanceConfig/clockify</code>
+        , ומזהה Workspace מסונכרן גם ל־
+        <code className="rounded bg-[var(--bg-input)] px-1 py-0.5 text-[11px]">attendanceConfig/settings</code> לקריאת
+        עובדים. הקריאות ל-Clockify מתבצעות דרך Cloud Function <code className="text-[11px]">clockifyProxy</code> (Callable
+        Gen2 + <code className="text-[11px]">httpsCallable</code>), לא ישירות ל-API של Clockify מהדפדפן.
       </p>
 
       {loading ? (

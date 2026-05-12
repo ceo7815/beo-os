@@ -7,6 +7,14 @@ export function todayYmd(): string {
   return `${y}-${m}-${day}`
 }
 
+/** יום ראשון של אותו חודש (YYYY-MM-01) לפי YYYY-MM-DD */
+export function ymdFirstOfMonth(ymd: string): string {
+  const part = ymd.slice(0, 10)
+  const [y, m] = part.split('-').map(Number)
+  if (!y || !m) return ymd
+  return `${y}-${String(m).padStart(2, '0')}-01`
+}
+
 /** פורמט ישראלי DD/MM/YYYY מתאריך ISO (YYYY-MM-DD או מלא) */
 export function formatDateIL(isoDate: string | null | undefined): string {
   if (isoDate == null || typeof isoDate !== 'string') return ''

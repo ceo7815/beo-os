@@ -7,6 +7,10 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_STORAGE_BUCKET: string
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string
   readonly VITE_FIREBASE_APP_ID: string
+  /** אופציונלי — אזור Functions (ברירת מחדל us-central1 בקוד) */
+  readonly VITE_FUNCTIONS_REGION?: string
+  /** אופציונלי — URL מלא ל־clockifyProxy (onRequest), אם שונה מברירת המחדל */
+  readonly VITE_CLOCKIFY_PROXY_URL?: string
 }
 
 interface ImportMeta {

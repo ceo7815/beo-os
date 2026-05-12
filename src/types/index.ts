@@ -264,13 +264,19 @@ export interface Campaign {
 
 /**
  * מסמך Firestore: `attendanceConfig/clockify` — מפתח Clockify ו־Workspace (עריכה רק לאדמין ב-rules).
- * הקריאות ל-Clockify API יבוצעו בשלב הבא (מומלץ Cloud Function בגלל CORS).
+ * קריאות ל-Clockify עוברות דרך Cloud Function `clockifyProxy`.
  */
 export interface ClockifyIntegrationConfig {
   apiKey?: string
   workspaceId?: string
   /** לדוגמה: https://api.clockify.me/api/v1 */
   apiBaseUrl?: string
+  updatedAt?: string
+}
+
+/** מסמך `attendanceConfig/settings` — workspaceId בלבד (ללא מפתח); קריאה לכל משתמש מחובר */
+export interface ClockifyPublicSettings {
+  workspaceId?: string
   updatedAt?: string
 }
 

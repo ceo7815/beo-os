@@ -95,11 +95,16 @@ service cloud.firestore {
     }
 
     /**
-     * אינטגרציית Clockify — רק אדמין (מפתח API ו־Workspace ID).
-     * מסמכים אחרים תחת attendanceConfig לא בשימוש (מערכת נוכחות ישנה הוסרה).
+     * אינטגרציית Clockify — רק אדמין (מפתח API).
+     * workspaceId זמין גם לעובדים דרך attendanceConfig/settings (ללא מפתח).
      */
     match /attendanceConfig/clockify {
       allow read, write: if isAdmin();
+    }
+
+    match /attendanceConfig/settings {
+      allow read: if signedIn();
+      allow write: if isAdmin();
     }
 
     match /attendanceConfig/{configId} {

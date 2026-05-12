@@ -1,10 +1,15 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { isAdminRole } from '../components/RequireAdmin'
 import { ClockifyAdminDashboard } from '../components/clockify/ClockifyAdminDashboard'
 import { ClockifyConfigCard } from '../components/clockify/ClockifyConfigCard'
 import { ClockifyEmployeeDashboard } from '../components/clockify/ClockifyEmployeeDashboard'
 import { useClockify } from '../hooks/useClockify'
+import {
+  mergeAdminAttendance,
+  useClockifyAdminAttendance,
+  useClockifyEmployeeAttendance,
+} from '../hooks/useClockifyAttendance'
 import { useUsers } from '../hooks/useUsers'
 import { todayYmd } from '../lib/dates'
 
@@ -27,6 +32,21 @@ export function Attendance() {
     setFilterEnd(end)
   }, [])
 
+  const adminAtt = useClockifyAdminAttendance({
+    workspaceId: clockify.workspaceId,
+    enabled: admin && clockify.integrationReady,
+    filterStart,
+    filterEnd,
+  })
+
+  const mergedRows = useMemo(() => mergeAdminAttendance(users, adminAtt.report), [users, adminAtt.report])
+
+  const empAtt = useClockifyEmployeeAttendance({
+    workspaceId: clockify.workspaceId,
+    userEmail: clockify.userEmail,
+    enabled: !admin && clockify.integrationReady,
+  })
+
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-5 md:space-y-8 md:px-8 md:py-8">
       <header className="space-y-2">
@@ -34,9 +54,11 @@ export function Attendance() {
           נוכחות
         </h1>
         <p className="max-w-3xl text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-          אינטגרציה עם <strong className="text-[var(--text-dark)]">Clockify</strong> — תצוגת נתונים בלבד. אין כתיבה
-          ל-Firestore עבור שעות עבודה; מפתח API ו-Workspace נשמרים אצל האדמין בלבד וישמשו בשלב הבא לשליפה מאובטחת
-          (מומלץ Cloud Function בגלל CORS).
+          אינטגרציה עם <strong className="text-[var(--text-dark)]">Clockify</strong> — תצוגת נתונים בלבד. הקריאות ל-API
+          עוברות דרך <strong className="text-[var(--text-dark)]">Firebase Cloud Function</strong>{' '}
+          <code className="rounded bg-[var(--bg-input)] px-1 text-[11px]">clockifyProxy</code> (Callable Gen2 +
+          httpsCallable). מפתח ה-API נשמר בשרת; מזהה Workspace זמין לעובדים דרך{' '}
+          <code className="rounded bg-[var(--bg-input)] px-1 text-[11px]">attendanceConfig/settings</code>.
         </p>
       </header>
 
@@ -48,17 +70,24 @@ export function Attendance() {
             onSave={clockify.saveClockifyConfig}
           />
           <ClockifyAdminDashboard
-            users={users}
+            rows={mergedRows}
+            loading={adminAtt.loading}
+            error={adminAtt.error}
+            workspaceId={clockify.workspaceId}
             integrationReady={clockify.integrationReady}
             filterStart={filterStart}
             filterEnd={filterEnd}
             onFilterChange={onFilterChange}
+            onRefresh={() => void adminAtt.refresh()}
           />
         </>
       ) : (
         <ClockifyEmployeeDashboard
           userEmail={clockify.userEmail}
+          workspaceId={clockify.workspaceId}
           integrationReady={clockify.integrationReady}
+          state={empAtt.state}
+          onRefresh={() => void empAtt.refresh()}
         />
       )}
     </div>

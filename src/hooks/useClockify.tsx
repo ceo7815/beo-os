@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { isAdminRole } from '../components/RequireAdmin'
 import { db } from '../lib/firebase'
-import { parseClockifyConfig, saveClockifyConfigToFirestore } from '../lib/clockifyService'
+import {
+  parseClockifyConfig,
+  parseClockifyPublicSettings,
+  saveClockifyConfigToFirestore,
+} from '../lib/clockifyService'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
-import type { ClockifyIntegrationConfig } from '../types'
+import type { ClockifyIntegrationConfig, ClockifyPublicSettings } from '../types'
 import { useUsers } from './useUsers'
 
 export function useClockify() {
@@ -16,6 +20,9 @@ export function useClockify() {
 
   const [config, setConfig] = useState<ClockifyIntegrationConfig | null>(null)
   const [configLoading, setConfigLoading] = useState(true)
+
+  const [publicSettings, setPublicSettings] = useState<ClockifyPublicSettings | null>(null)
+  const [settingsLoading, setSettingsLoading] = useState(true)
 
   useEffect(() => {
     if (!user || !isAdmin) {
@@ -40,6 +47,31 @@ export function useClockify() {
     return () => unsub()
   }, [user, isAdmin])
 
+  useEffect(() => {
+    if (!user) {
+      setPublicSettings(null)
+      setSettingsLoading(false)
+      return
+    }
+    setSettingsLoading(true)
+    const ref = doc(db, 'attendanceConfig', 'settings')
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        setPublicSettings(
+          snap.exists() ? parseClockifyPublicSettings(snap.data() as Record<string, unknown>) : {},
+        )
+        setSettingsLoading(false)
+      },
+      (err) => {
+        console.error('clockify settings snapshot', err)
+        toastFsError('שגיאה בטעינת הגדרות נוכחות', err, 'clockifySettings')
+        setSettingsLoading(false)
+      },
+    )
+    return () => unsub()
+  }, [user])
+
   const saveClockifyConfig = useCallback(
     async (payload: { apiKey: string; workspaceId: string; apiBaseUrl?: string }) => {
       if (!isAdmin || !user) return
@@ -53,13 +85,25 @@ export function useClockify() {
     [isAdmin, user],
   )
 
-  const integrationReady = Boolean(config?.apiKey?.trim() && config?.workspaceId?.trim())
+  const workspaceId = useMemo(() => {
+    const fromSettings = publicSettings?.workspaceId?.trim() ?? ''
+    if (fromSettings) return fromSettings
+    if (isAdmin) return config?.workspaceId?.trim() ?? ''
+    return ''
+  }, [publicSettings?.workspaceId, isAdmin, config?.workspaceId])
+
+  /** אדמין: נדרש גם מפתח בשרת; עובד: מספיק workspace ב-settings */
+  const integrationReady = Boolean(
+    workspaceId && (isAdmin ? Boolean(config?.apiKey?.trim()) : true),
+  )
 
   return {
     isAdmin,
     userEmail: user?.email?.trim() ?? '',
     config,
     configLoading,
+    settingsLoading,
+    workspaceId,
     saveClockifyConfig,
     integrationReady,
   }

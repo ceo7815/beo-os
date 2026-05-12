@@ -1,39 +1,46 @@
-import { useMemo, useState } from 'react'
-import { formatDateIL, todayYmd } from '../../lib/dates'
+import { useState } from 'react'
+import { formatDateIL, formatDateTimeIL, todayYmd } from '../../lib/dates'
+import { formatHoursShort } from '../../lib/clockifyService'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
 import { Modal } from '../shared/Modal'
-import type { TeamMember } from '../../types'
+import { useClockifyUserDetail, type MergedAdminAttendanceRow } from '../../hooks/useClockifyAttendance'
 
 function ymdFirstOfMonth(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
 
-function isMemberActive(m: TeamMember): boolean {
-  return m.active !== false
-}
-
 type Props = {
-  users: TeamMember[]
+  rows: MergedAdminAttendanceRow[]
+  loading: boolean
+  error: string | null
+  workspaceId: string
   integrationReady: boolean
-  /** טווח תאריכים לסינון — בשלב ה-API יועבר ל-Clockify */
   filterStart: string
   filterEnd: string
   onFilterChange: (start: string, end: string) => void
+  onRefresh: () => void
 }
 
 export function ClockifyAdminDashboard({
-  users,
+  rows,
+  loading,
+  error,
+  workspaceId,
   integrationReady,
   filterStart,
   filterEnd,
   onFilterChange,
+  onRefresh,
 }: Props) {
-  const [detailUser, setDetailUser] = useState<TeamMember | null>(null)
+  const [detailRow, setDetailRow] = useState<MergedAdminAttendanceRow | null>(null)
 
-  const rows = useMemo(
-    () => [...users].filter(isMemberActive).sort((a, b) => a.name.localeCompare(b.name, 'he')),
-    [users],
-  )
+  const detail = useClockifyUserDetail({
+    workspaceId,
+    clockifyUserId: detailRow?.clockifyUserId ?? null,
+    filterStart,
+    filterEnd,
+    open: detailRow != null && Boolean(detailRow.clockifyUserId),
+  })
 
   return (
     <>
@@ -44,8 +51,8 @@ export function ClockifyAdminDashboard({
               צוות ושעות (Clockify)
             </h2>
             <p className="mt-1 max-w-2xl text-[12px] text-[var(--text-mid)] md:text-[13px]">
-              סיכום לפי יום / שבוע / חודש וסטטוס מעקב פעיל — יתמלא אוטומטית אחרי חיבור ה-API. לחיצה על שורה תציג
-              פירוט כניסות, יציאות ופרויקטים.
+              התאמה לפי אימייל (Firebase ↔ Clockify). סיכום היום / השבוע / החודש מתעדכן מרשומות הזמן. לחיצה על שורה
+              פותחת פירוט לפי טווח התאריכים שבחרת.
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
@@ -80,8 +87,25 @@ export function ClockifyAdminDashboard({
             >
               חודש נוכחי
             </button>
+            <button
+              type="button"
+              className="hub-btn-orange text-[12px]"
+              disabled={!integrationReady || loading}
+              onClick={() => onRefresh()}
+            >
+              {loading ? 'טוען…' : 'רענון'}
+            </button>
           </div>
         </div>
+
+        {error ? (
+          <div
+            className="mt-4 rounded-xl border border-red-200 bg-red-50/80 p-3 text-[13px] text-red-900"
+            role="alert"
+          >
+            {error}
+          </div>
+        ) : null}
 
         {!integrationReady ? (
           <div
@@ -89,13 +113,13 @@ export function ClockifyAdminDashboard({
             role="status"
           >
             כדי לטעון נתונים מ-Clockify יש להגדיר למעלה <strong className="text-[var(--text-dark)]">API Key</strong>{' '}
-            ו-<strong className="text-[var(--text-dark)]">Workspace ID</strong> ולשמור. אחר כך יחובר ה-API (כולל
-            טיפול ב-CORS).
+            ו-<strong className="text-[var(--text-dark)]">Workspace ID</strong> ולשמור. הקריאות עוברות דרך Cloud
+            Function מאובטחת (ללא CORS מהדפדפן).
           </div>
         ) : null}
 
         <div className="mt-5 overflow-x-auto rounded-xl border border-[var(--border)]">
-          <table className="min-w-[720px] w-full border-collapse text-right text-[13px]">
+          <table className="min-w-[760px] w-full border-collapse text-right text-[13px]">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg-input)]/60 text-[11px] font-bold uppercase tracking-wide text-[var(--text-light)]">
                 <th className="px-3 py-3">עובד</th>
@@ -103,48 +127,73 @@ export function ClockifyAdminDashboard({
                 <th className="px-3 py-3 text-center">היום</th>
                 <th className="px-3 py-3 text-center">השבוע</th>
                 <th className="px-3 py-3 text-center">החודש</th>
-                <th className="px-3 py-3 text-center">מעקב פעיל</th>
+                <th className="px-3 py-3 text-center">בטווח</th>
+                <th className="px-3 py-3 text-center">פעיל</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((m, idx) => (
-                <tr
-                  key={m.id}
-                  className={`cursor-pointer border-b border-[var(--border)] transition hover:bg-[var(--orange-light)]/25 ${
-                    idx % 2 === 0 ? 'bg-[var(--dash-panel-bg)]/40' : ''
-                  }`}
-                  onClick={() => setDetailUser(m)}
-                >
-                  <td className="px-3 py-3 font-semibold text-[var(--text-dark)]">{m.name}</td>
-                  <td className="px-3 py-3 font-mono text-[12px] text-[var(--text-mid)]" dir="ltr">
-                    {m.email?.trim() || '—'}
-                  </td>
-                  <td className="px-3 py-3 text-center tabular-nums text-[var(--text-mid)]">—</td>
-                  <td className="px-3 py-3 text-center tabular-nums text-[var(--text-mid)]">—</td>
-                  <td className="px-3 py-3 text-center tabular-nums text-[var(--text-mid)]">—</td>
-                  <td className="px-3 py-3 text-center">
-                    <span className="inline-flex rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[11px] font-semibold text-[var(--text-mid)]">
-                      {integrationReady ? 'בקרוב (API)' : 'לא מוגדר'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row, idx) => {
+                const { member: m } = row
+                return (
+                  <tr
+                    key={m.id}
+                    className={`cursor-pointer border-b border-[var(--border)] transition hover:bg-[var(--orange-light)]/25 ${
+                      idx % 2 === 0 ? 'bg-[var(--dash-panel-bg)]/40' : ''
+                    }`}
+                    onClick={() => setDetailRow(row)}
+                  >
+                    <td className="px-3 py-3 font-semibold text-[var(--text-dark)]">{m.name}</td>
+                    <td className="px-3 py-3 font-mono text-[12px] text-[var(--text-mid)]" dir="ltr">
+                      {m.email?.trim() || '—'}
+                    </td>
+                    <td className="px-3 py-3 text-center tabular-nums text-[var(--text-mid)]">
+                      {integrationReady ? `${formatHoursShort(row.hoursToday)} ש׳` : '—'}
+                    </td>
+                    <td className="px-3 py-3 text-center tabular-nums text-[var(--text-mid)]">
+                      {integrationReady ? `${formatHoursShort(row.hoursWeek)} ש׳` : '—'}
+                    </td>
+                    <td className="px-3 py-3 text-center tabular-nums text-[var(--text-mid)]">
+                      {integrationReady ? `${formatHoursShort(row.hoursMonth)} ש׳` : '—'}
+                    </td>
+                    <td className="px-3 py-3 text-center tabular-nums text-[var(--text-mid)]">
+                      {integrationReady ? `${formatHoursShort(row.hoursInRange)} ש׳` : '—'}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{
+                          backgroundColor: row.active ? '#22c55e' : 'var(--text-light)',
+                        }}
+                        title={row.active ? 'מעקב פעיל' : 'לא פעיל'}
+                        aria-label={row.active ? 'מעקב פעיל' : 'לא פעיל'}
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
-        {rows.length === 0 ? (
+
+        {integrationReady && !loading && rows.length > 0 ? (
+          <p className="mt-3 text-[11px] text-[var(--text-light)]">
+            עמודת «בטווח»: סה״כ שעות בין {formatDateIL(filterStart)} ל-{formatDateIL(filterEnd)} (לפי שעון מקומי).
+          </p>
+        ) : null}
+
+        {rows.length === 0 && integrationReady && !loading ? (
           <p className="mt-4 text-center text-sm text-[var(--text-mid)]">אין עובדים פעילים ברשימה.</p>
         ) : null}
       </section>
 
       <Modal
-        isOpen={detailUser != null}
-        onClose={() => setDetailUser(null)}
-        title={detailUser ? `פירוט נוכחות · ${detailUser.name}` : ''}
+        isOpen={detailRow != null}
+        onClose={() => setDetailRow(null)}
+        title={detailRow ? `פירוט נוכחות · ${detailRow.member.name}` : ''}
         size="xl"
         bodyClassName="max-h-[min(80vh,720px)] overflow-y-auto"
       >
-        {detailUser ? (
+        {detailRow ? (
           <div className="space-y-5 text-[13px]">
             <p className="text-[var(--text-mid)]">
               טווח נבחר:{' '}
@@ -152,24 +201,109 @@ export function ClockifyAdminDashboard({
                 {formatDateIL(filterStart)} – {formatDateIL(filterEnd)}
               </span>
             </p>
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)]/40 p-4">
-              <h3 className="text-[12px] font-bold uppercase tracking-wide text-[var(--orange)]">
-                כניסות / יציאות / פרויקטים
-              </h3>
-              <p className="mt-2 text-[var(--text-mid)]">
-                כאן יוצגו רשומות time entries מ-Clockify לאחר חיבור ה-API (כולל שם פרויקט, משך, התחלה/סיום).
-              </p>
-              <div className="mt-3 rounded-lg border border-dashed border-[var(--border)] p-6 text-center text-[12px] text-[var(--text-light)]">
-                placeholder: רשימת entries
+
+            {!detailRow.clockifyUserId ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-amber-950">
+                אין משתמש Clockify עם אותו אימייל כמו בעובד זה — לא ניתן לטעון רשומות זמן.
               </div>
-            </div>
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)]/40 p-4">
-              <h3 className="text-[12px] font-bold uppercase tracking-wide text-[var(--orange)]">סיכום יומי</h3>
-              <p className="mt-2 text-[var(--text-mid)]">placeholder: טבלת ימים עם סה״כ שעות ליום.</p>
-              <div className="mt-3 rounded-lg border border-dashed border-[var(--border)] p-6 text-center text-[12px] text-[var(--text-light)]">
-                placeholder: day breakdown
-              </div>
-            </div>
+            ) : detail.loading ? (
+              <p className="text-[var(--text-mid)]">טוען פירוט…</p>
+            ) : detail.error ? (
+              <div className="rounded-xl border border-red-200 bg-red-50/80 p-3 text-red-900">{detail.error}</div>
+            ) : (
+              <>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)]/30 p-4">
+                  <h3 className="text-[12px] font-bold uppercase tracking-wide text-[var(--orange)]">
+                    סיכום יומי בטווח
+                  </h3>
+                  <div className="mt-3 space-y-2">
+                    {detail.days
+                      .filter((d) => d.totalHours > 0.001 || d.entries.length > 0)
+                      .map((d) => (
+                        <div
+                          key={d.ymd}
+                          className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)]/60 py-2 last:border-0"
+                        >
+                          <span className="font-semibold text-[var(--text-dark)]">{formatDateIL(d.ymd)}</span>
+                          <span className="tabular-nums text-[var(--text-mid)]">
+                            {formatHoursShort(d.totalHours)} ש׳
+                          </span>
+                        </div>
+                      ))}
+                    {detail.days.every((d) => d.totalHours <= 0.001 && d.entries.length === 0) ? (
+                      <p className="text-[var(--text-mid)]">אין רשומות בטווח זה.</p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)]/30 p-4">
+                  <h3 className="text-[12px] font-bold uppercase tracking-wide text-[var(--orange)]">
+                    כניסות / יציאות / פרויקטים
+                  </h3>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-[560px] w-full border-collapse text-right text-[12px]">
+                      <thead>
+                        <tr className="border-b border-[var(--border)] text-[10px] font-bold uppercase text-[var(--text-light)]">
+                          <th className="py-2 pe-2">יום</th>
+                          <th className="py-2 pe-2">התחלה</th>
+                          <th className="py-2 pe-2">סיום</th>
+                          <th className="py-2 pe-2">פרויקט</th>
+                          <th className="py-2 text-center">שעות</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.days.flatMap((d) =>
+                          d.entries.map((e) => (
+                            <tr key={`${d.ymd}-${e.id}`} className="border-b border-[var(--border)]/50">
+                              <td className="py-2 pe-2 whitespace-nowrap">{formatDateIL(d.ymd)}</td>
+                              <td className="py-2 pe-2 font-mono text-[11px]" dir="ltr">
+                                {formatDateTimeIL(e.start)}
+                              </td>
+                              <td className="py-2 pe-2 font-mono text-[11px]" dir="ltr">
+                                {e.end ? formatDateTimeIL(e.end) : '—'}
+                              </td>
+                              <td className="py-2 pe-2 text-[var(--text-mid)]">{e.projectName}</td>
+                              <td className="py-2 text-center tabular-nums">{formatHoursShort(e.hours)}</td>
+                            </tr>
+                          )),
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-input)]/40 p-4">
+                  <h3 className="text-[12px] font-bold text-[var(--text-mid)]">סיכום מהיר (היום / שבוע / חודש)</h3>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {(() => {
+                      const barMax = Math.max(
+                        0.01,
+                        detailRow.hoursToday,
+                        detailRow.hoursWeek,
+                        detailRow.hoursMonth,
+                      )
+                      return (['hoursToday', 'hoursWeek', 'hoursMonth'] as const).map((k) => {
+                        const v = detailRow[k]
+                        return (
+                          <div key={k} className="min-w-[100px] flex-1 rounded-lg border border-[var(--border)] p-2">
+                            <div className="text-[10px] font-bold uppercase text-[var(--text-light)]">
+                              {k === 'hoursToday' ? 'היום' : k === 'hoursWeek' ? 'שבוע' : 'חודש'}
+                            </div>
+                            <div className="mt-1 h-2 overflow-hidden rounded-full bg-[var(--bg-input)]">
+                              <div
+                                className="h-full rounded-full bg-[var(--orange)]"
+                                style={{ width: `${Math.min(100, (v / barMax) * 100)}%` }}
+                              />
+                            </div>
+                            <div className="mt-1 tabular-nums text-[var(--text-dark)]">{formatHoursShort(v)} ש׳</div>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         ) : null}
       </Modal>
