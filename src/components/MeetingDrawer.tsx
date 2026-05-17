@@ -9,7 +9,7 @@ import { useUsers } from '../hooks/useUsers'
 import { ClientQuickSelect } from './ClientQuickSelect'
 import { ProjectQuickSelect } from './ProjectQuickSelect'
 import { SupplierQuickSelect } from './SupplierQuickSelect'
-import { normalizeDueTimeHm, todayYmd, toDateInputYmd } from '../lib/dates'
+import { formatDateTimeIL, normalizeDueTimeHm, todayYmd, toDateInputYmd } from '../lib/dates'
 import { buildAttendeeUserIds } from '../lib/meetingAttendees'
 import { NEW_MEETING_DRAWER_ID, type NewMeetingDraftSeed } from '../lib/meetingDrawerIds'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
@@ -145,6 +145,8 @@ export function MeetingDrawer() {
 
   const [draft, setDraft] = useState<MeetingDraft | null>(null)
   const [saving, setSaving] = useState(false)
+  const [completionDraft, setCompletionDraft] = useState('')
+  const [closing, setClosing] = useState(false)
   const prevIdRef = useRef<string | null>(null)
   const seedFpRef = useRef('')
 
@@ -170,6 +172,10 @@ export function MeetingDrawer() {
       setDraft(initDraft(meeting))
     }
   }, [meetingId, meeting, newMeetingDraftSeed])
+
+  useEffect(() => {
+    setCompletionDraft('')
+  }, [meetingId])
 
   const projectsForClient = useMemo(() => {
     if (!draft) return projects
@@ -282,6 +288,61 @@ export function MeetingDrawer() {
     }
   }
 
+  const submitCloseMeeting = async () => {
+    if (!userId || !meeting || isNewUnsaved || !draft) return
+    const text = completionDraft.trim()
+    if (!text) {
+      toastFsError(
+        'נא להזין סיכום לפני סגירת הפגישה',
+        new Error('validation'),
+        'meeting',
+      )
+      return
+    }
+    const name =
+      teamMembers.find((m) => m.id === userId)?.name?.trim() ||
+      user?.displayName?.trim() ||
+      'משתמש'
+    const stamp = new Date().toISOString()
+    setClosing(true)
+    try {
+      const completionPatch: Partial<Meeting> = {
+        completed: true,
+        completionSummary: text,
+        completedAt: stamp,
+        completedByUserId: userId,
+        completedByName: name,
+      }
+      const detailPatch = buildPatch(meeting, draft)
+      await updateMeeting(
+        meeting.id,
+        { ...detailPatch, ...completionPatch },
+        { successMessage: 'הפגישה נסגרה והסיכום נשמר' },
+      )
+      setCompletionDraft('')
+      const excludeB =
+        (detailPatch.excludeCreatorFromAttendees ??
+          meeting.excludeCreatorFromAttendees) === true
+      const mergedForDraft: Meeting = {
+        ...meeting,
+        ...detailPatch,
+        ...completionPatch,
+        excludeCreatorFromAttendees: excludeB,
+        attendeeUserIds: buildAttendeeUserIds({
+          createdBy: meeting.createdBy,
+          organizerUserId:
+            detailPatch.organizerUserId ?? meeting.organizerUserId,
+          participantUserIds:
+            detailPatch.participantUserIds ?? meeting.participantUserIds,
+          excludeCreatorFromAttendees: excludeB,
+        }),
+      }
+      setDraft(initDraft(mergedForDraft))
+    } finally {
+      setClosing(false)
+    }
+  }
+
   useEffect(() => {
     if (meetingId) document.body.style.overflow = 'hidden'
     return () => {
@@ -334,6 +395,11 @@ export function MeetingDrawer() {
               {dirty ? (
                 <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-bold text-[#B45309]">
                   שינויים שלא נשמרו
+                </span>
+              ) : null}
+              {!isNewUnsaved && meeting.completed ? (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                  פגישה הסתיימה
                 </span>
               ) : null}
             </div>
@@ -589,6 +655,59 @@ export function MeetingDrawer() {
               ))}
             </select>
           </div>
+
+          {!isNewUnsaved ? (
+            <div className="rounded-xl border border-[#0EA5E9]/35 bg-[#F0F9FF]/80 p-4">
+              <p className="mb-2 text-[12px] font-extrabold text-[#0369A1]">
+                סיכום פגישה
+              </p>
+              {meeting.completed ? (
+                <div className="space-y-2 text-right">
+                  <pre
+                    dir="auto"
+                    className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-[var(--border)] bg-[var(--bg-input)] p-3 font-sans text-[13px] leading-relaxed text-[var(--text-dark)]"
+                  >
+                    {meeting.completionSummary?.trim()
+                      ? meeting.completionSummary
+                      : '—'}
+                  </pre>
+                  <p className="text-[11px] text-[var(--text-mid)]">
+                    <span className="font-bold text-[var(--text-dark)]">
+                      {meeting.completedByName?.trim() || 'משתמש'}
+                    </span>
+                    {meeting.completedAt ? (
+                      <>
+                        {' · '}
+                        {formatDateTimeIL(meeting.completedAt)}
+                      </>
+                    ) : null}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] leading-snug text-[var(--text-mid)]">
+                    כל משתמש מחובר יכול לסגור את הפגישה ולרשום סיכום. הפעולה תשמור
+                    גם שינויים בטופס שלא נשמרו בנפרד.
+                  </p>
+                  <textarea
+                    value={completionDraft}
+                    onChange={(e) => setCompletionDraft(e.target.value)}
+                    rows={5}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-dark)] outline-none"
+                    placeholder="סיכום מסודר: החלטות, משימות המשך, נקודות לתיעוד…"
+                  />
+                  <button
+                    type="button"
+                    disabled={closing || saving}
+                    onClick={() => void submitCloseMeeting()}
+                    className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {closing ? 'שומר סיכום…' : 'סגור פגישה ושמור סיכום'}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] px-5 py-4">

@@ -912,7 +912,11 @@ export function TasksProvider({ children }: { children: ReactNode }) {
           nextAssigneeId &&
           nextAssigneeId !== uid
         ) {
-          requestAssigneeTaskEmail(id)
+          const isTransfer = Boolean(prevAssigneeId)
+          requestAssigneeTaskEmail(
+            id,
+            isTransfer ? { kind: 'transfer' } : undefined,
+          )
         }
 
         const mergedStatus = patch.status ?? prev.status

@@ -93,39 +93,71 @@ function requireAuthUid(authUid) {
     }
     return authUid;
 }
-exports.createManagedUser = (0, https_1.onCall)(async (request) => {
-    const callerUid = requireAuthUid(request.auth?.uid);
-    await assertSuperadmin(callerUid);
-    const data = request.data;
-    const email = String(data.email ?? '').trim().toLowerCase();
-    const password = String(data.password ?? '').trim();
-    const name = String(data.name ?? '').trim();
-    const role = ensureRole(data.role);
-    if (!email || !password || !name) {
-        throw new https_1.HttpsError('invalid-argument', 'יש למלא שם, אימייל וסיסמה');
+const callableGen2Base = {
+    region: 'us-central1',
+    /** Gen2 + Cloud Run: ה-Callable שולח Bearer דרך Firebase; invoker public נדרש לרוב הפריסות */
+    invoker: 'public',
+};
+function mapAuthCreateUserError(e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/email-already-exists|EMAIL_EXISTS/i.test(msg)) {
+        return new https_1.HttpsError('already-exists', 'כבר קיים משתמש Auth עם אימייל זה');
     }
-    if (password.length < 6) {
-        throw new https_1.HttpsError('invalid-argument', 'הסיסמה חייבת לפחות 6 תווים');
+    if (/invalid-email/i.test(msg)) {
+        return new https_1.HttpsError('invalid-argument', 'כתובת אימייל לא תקינה');
     }
-    const user = await adminAuth.createUser({
-        email,
-        password,
-        displayName: name,
-        disabled: false,
-    });
-    await db.doc(`users/${user.uid}`).set({
-        name,
-        email,
-        role,
-        avatar: name.slice(0, 2),
-        color: '#2563EB',
-        active: true,
-        createdAt: firestore_1.FieldValue.serverTimestamp(),
-        updatedAt: firestore_1.FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return { uid: user.uid };
+    if (/weak-password|password/i.test(msg) && /6|length/i.test(msg)) {
+        return new https_1.HttpsError('invalid-argument', 'הסיסמה חלשה מדי או קצרה מדי');
+    }
+    return null;
+}
+exports.createManagedUser = (0, https_1.onCall)(callableGen2Base, async (request) => {
+    try {
+        const callerUid = requireAuthUid(request.auth?.uid);
+        await assertSuperadmin(callerUid);
+        const data = request.data;
+        const email = String(data.email ?? '').trim().toLowerCase();
+        const password = String(data.password ?? '').trim();
+        const name = String(data.name ?? '').trim();
+        const role = ensureRole(data.role);
+        const isAgent = Boolean(data.isAgent);
+        if (!email || !password || !name) {
+            throw new https_1.HttpsError('invalid-argument', 'יש למלא שם, אימייל וסיסמה');
+        }
+        if (password.length < 6) {
+            throw new https_1.HttpsError('invalid-argument', 'הסיסמה חייבת לפחות 6 תווים');
+        }
+        const user = await adminAuth.createUser({
+            email,
+            password,
+            displayName: name,
+            disabled: false,
+        });
+        await db.doc(`users/${user.uid}`).set({
+            name,
+            email,
+            role,
+            avatar: name.slice(0, 2),
+            color: '#2563EB',
+            active: true,
+            isAgent,
+            createdAt: firestore_1.FieldValue.serverTimestamp(),
+            updatedAt: firestore_1.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return { uid: user.uid };
+    }
+    catch (e) {
+        if (e instanceof https_1.HttpsError)
+            throw e;
+        const mapped = mapAuthCreateUserError(e);
+        if (mapped)
+            throw mapped;
+        console.error('createManagedUser', e);
+        const detail = e instanceof Error ? e.message : String(e);
+        throw new https_1.HttpsError('internal', detail || 'יצירת משתמש נכשלה');
+    }
 });
-exports.updateManagedUserEmail = (0, https_1.onCall)(async (request) => {
+exports.updateManagedUserEmail = (0, https_1.onCall)(callableGen2Base, async (request) => {
     const callerUid = requireAuthUid(request.auth?.uid);
     await assertSuperadmin(callerUid);
     const data = request.data;
@@ -141,7 +173,7 @@ exports.updateManagedUserEmail = (0, https_1.onCall)(async (request) => {
     }, { merge: true });
     return { ok: true };
 });
-exports.updateManagedUserPassword = (0, https_1.onCall)(async (request) => {
+exports.updateManagedUserPassword = (0, https_1.onCall)(callableGen2Base, async (request) => {
     const callerUid = requireAuthUid(request.auth?.uid);
     await assertSuperadmin(callerUid);
     const data = request.data;
@@ -227,6 +259,7 @@ exports.sendAssigneeTaskNotification = (0, https_1.onCall)({
         const dueDate = String(t.dueDate ?? '').trim() || '—';
         const appBase = (0, taskAssignmentMail_js_1.defaultPublicAppUrl)().replace(/\/$/, '');
         const tasksUrl = `${appBase}/tasks`;
+        const mode = data.kind === 'transfer' ? 'transfer' : 'new';
         const html = (0, taskAssignmentMail_js_1.buildTaskAssignedHtml)({
             assigneeGreeting,
             creatorName,
@@ -235,10 +268,15 @@ exports.sendAssigneeTaskNotification = (0, https_1.onCall)({
             dueDateLabel: dueDate,
             tasksUrl,
             appBaseUrl: appBase,
+            mode,
         });
+        const creatorForSubject = creatorName.length > 32 ? `${creatorName.slice(0, 29)}…` : creatorName;
+        const subjectPrefix = mode === 'transfer'
+            ? `הועברה אליך משימה מאת ${creatorForSubject}`
+            : 'נפתחה לך משימה חדשה';
         const subject = taskTitle.length > 55
-            ? `נפתחה לך משימה חדשה — ${taskTitle.slice(0, 52)}…`
-            : `נפתחה לך משימה חדשה — ${taskTitle}`;
+            ? `${subjectPrefix} — ${taskTitle.slice(0, 52)}…`
+            : `${subjectPrefix} — ${taskTitle}`;
         const resendKey = readResendApiKey();
         const mailFromEnv = readMailFrom();
         if (resendKey) {

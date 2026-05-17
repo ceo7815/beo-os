@@ -125,7 +125,8 @@ export function Calendar() {
     }
     if (!qq) return list
     return list.filter((m) => {
-      const hay = `${m.title} ${m.purpose} ${m.agenda}`.toLowerCase()
+      const hay =
+        `${m.title} ${m.purpose} ${m.agenda} ${m.completionSummary ?? ''}`.toLowerCase()
       return hay.includes(qq)
     })
   }, [meetings, scopeUid, q])
@@ -630,11 +631,25 @@ function MeetingChip({
           onOpen()
         }
       }}
-      className={`cursor-pointer rounded-md border border-[#7DD3FC]/80 bg-[#F0F9FF] px-1 py-0.5 text-start shadow-sm hover:brightness-[1.03] ${
-        compact ? 'text-[9px]' : 'text-[10px]'
-      }`}
+      className={`cursor-pointer rounded-md border px-1 py-0.5 text-start shadow-sm hover:brightness-[1.03] ${
+        m.completed
+          ? 'border-emerald-400/80 bg-emerald-50/95'
+          : 'border-[#7DD3FC]/80 bg-[#F0F9FF]'
+      } ${compact ? 'text-[9px]' : 'text-[10px]'}`}
     >
-      <div className="truncate font-bold text-[var(--text-dark)]">{m.title}</div>
+      <div className="flex items-start justify-between gap-1">
+        <div className="min-w-0 flex-1 truncate font-bold text-[var(--text-dark)]">
+          {m.title}
+        </div>
+        {m.completed ? (
+          <span
+            className="shrink-0 rounded bg-emerald-700 px-1 py-0 text-[7px] font-bold text-white"
+            title="הסתיימה"
+          >
+            ✓
+          </span>
+        ) : null}
+      </div>
       {!compact ? (
         <div className="truncate text-[9px] text-[var(--text-mid)]">
           {formatTaskDueDisplay(m.startDate, m.startTime)}

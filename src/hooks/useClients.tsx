@@ -11,6 +11,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDocsFromServer,
   onSnapshot,
@@ -32,7 +33,7 @@ type ClientsContextValue = {
   clients: Client[]
   loading: boolean
   error: Error | null
-  addClient: (data: Omit<Client, 'id' | 'createdAt'>) => Promise<void>
+  addClient: (data: Omit<Client, 'id' | 'createdAt'>) => Promise<string | undefined>
   updateClient: (id: string, data: Partial<Client>) => Promise<void>
   deleteClient: (id: string) => Promise<void>
 }
@@ -77,10 +78,10 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
   }, [user?.uid])
 
   const addClient = useCallback(
-    async (data: Omit<Client, 'id' | 'createdAt'>) => {
+    async (data: Omit<Client, 'id' | 'createdAt'>): Promise<string | undefined> => {
       if (!user) {
         toastFsError('יש להתחבר להוספת לקוח', new Error('no user'), 'addClient')
-        return
+        return undefined
       }
       try {
         const uname = displayName()
@@ -105,8 +106,10 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
           return [...prev, optimistic]
         })
         toastFsSuccess('הלקוח נוסף בהצלחה')
+        return ref.id
       } catch (e) {
         toastFsError('שגיאה בשמירת הלקוח', e, 'addClient')
+        return undefined
       }
     },
     [user, displayName],
@@ -120,13 +123,28 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
       }
       try {
         const uname = displayName()
+        const patch: Record<string, unknown> = {
+          ...data,
+          lastActorUserId: user.uid,
+          lastActorUserName: uname,
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(data, 'salesAgentUserId') &&
+          (data.salesAgentUserId === '' || data.salesAgentUserId == null)
+        ) {
+          patch.salesAgentUserId = deleteField()
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'assignedEmployeeUserIds')) {
+          const arr = data.assignedEmployeeUserIds
+          if (!Array.isArray(arr) || arr.length === 0) {
+            patch.assignedEmployeeUserIds = deleteField()
+          } else {
+            patch.assignedEmployeeUserIds = arr.map((id) => String(id).trim()).filter(Boolean)
+          }
+        }
         await updateDoc(
           doc(db, 'clients', id),
-          stripUndefined({
-            ...data,
-            lastActorUserId: user.uid,
-            lastActorUserName: uname,
-          } as Record<string, unknown>),
+          stripUndefined(patch),
         )
         setClients((prev) =>
           prev.map((c) =>
@@ -134,6 +152,16 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
               ? {
                   ...c,
                   ...data,
+                  salesAgentUserId:
+                    data.salesAgentUserId && String(data.salesAgentUserId).trim()
+                      ? String(data.salesAgentUserId).trim()
+                      : undefined,
+                  assignedEmployeeUserIds:
+                    data.assignedEmployeeUserIds !== undefined
+                      ? data.assignedEmployeeUserIds.length
+                        ? [...data.assignedEmployeeUserIds]
+                        : undefined
+                      : c.assignedEmployeeUserIds,
                 }
               : c,
           ),
@@ -148,6 +176,18 @@ export function ClientsProvider({ children }: { children: ReactNode }) {
 
   const deleteClient = useCallback(async (id: string) => {
     try {
+      const invSnap = await getDocsFromServer(
+        query(collection(db, 'invoices'), where('clientId', '==', id)),
+      )
+      for (const inv of invSnap.docs) {
+        await deleteDoc(inv.ref)
+      }
+      const dealSnap = await getDocsFromServer(
+        query(collection(db, 'deals'), where('clientId', '==', id)),
+      )
+      for (const d of dealSnap.docs) {
+        await deleteDoc(d.ref)
+      }
       const pSnap = await getDocsFromServer(
         query(collection(db, 'projects'), where('clientId', '==', id)),
       )

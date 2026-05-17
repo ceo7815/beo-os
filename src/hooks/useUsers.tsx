@@ -30,6 +30,11 @@ type UsersContextValue = {
     uid: string,
     schedule: { dayStart: string; dayEnd: string; breakMinutes: number } | null,
   ) => Promise<void>
+  updateUserIsAgent: (uid: string, isAgent: boolean) => Promise<void>
+  /** עדכון מסמך users — role (admin/employee) + דגל סוכן בקריאה אחת */
+  setUserRoleAndAgent: (uid: string, role: TeamRole, isAgent: boolean) => Promise<void>
+  /** אחוז עמלה לחישובי כספים בפורטל הסוכן (0–100). null = ברירת מחדל מהמערכת */
+  updateUserAgentCommissionPercent: (uid: string, percent: number | null) => Promise<void>
 }
 
 const UsersContext = createContext<UsersContextValue | null>(null)
@@ -173,6 +178,51 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const updateUserIsAgent = useCallback(async (uid: string, isAgent: boolean) => {
+    try {
+      await updateDoc(doc(db, 'users', uid), { isAgent })
+      toastFsSuccess(isAgent ? 'המשתמש סומן כסוכן מכירות' : 'הוסר סימון סוכן מכירות')
+    } catch (e) {
+      toastFsError('שגיאה בעדכון סטטוס סוכן', e, 'updateUserIsAgent')
+    }
+  }, [])
+
+  const setUserRoleAndAgent = useCallback(
+    async (uid: string, role: TeamRole, isAgent: boolean) => {
+      try {
+        await updateDoc(doc(db, 'users', uid), {
+          role: role === 'admin' ? 'admin' : 'employee',
+          isAgent,
+        })
+        toastFsSuccess('התפקיד עודכן')
+      } catch (e) {
+        toastFsError('שגיאה בעדכון התפקיד', e, 'setUserRoleAndAgent')
+      }
+    },
+    [],
+  )
+
+  const updateUserAgentCommissionPercent = useCallback(
+    async (uid: string, percent: number | null) => {
+      try {
+        if (percent == null) {
+          await updateDoc(doc(db, 'users', uid), { agentCommissionPercent: deleteField() })
+        } else {
+          const n = Math.round(Number(percent))
+          if (!Number.isFinite(n) || n < 0 || n > 100) {
+            toastFsError('אחוז עמלה חייב להיות בין 0 ל־100', new Error('agentCommissionPercent'), 'updateUserAgentCommissionPercent')
+            return
+          }
+          await updateDoc(doc(db, 'users', uid), { agentCommissionPercent: n })
+        }
+        toastFsSuccess('אחוז עמלה לפורטל הסוכן עודכן')
+      } catch (e) {
+        toastFsError('שגיאה בעדכון אחוז עמלה', e, 'updateUserAgentCommissionPercent')
+      }
+    },
+    [],
+  )
+
   const value = useMemo(
     () => ({
       users,
@@ -183,6 +233,9 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       updateUserProfile,
       updateUserMonthlyWorkHours,
       updateUserDaySchedule,
+      updateUserIsAgent,
+      setUserRoleAndAgent,
+      updateUserAgentCommissionPercent,
     }),
     [
       users,
@@ -193,6 +246,9 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       updateUserProfile,
       updateUserMonthlyWorkHours,
       updateUserDaySchedule,
+      updateUserIsAgent,
+      setUserRoleAndAgent,
+      updateUserAgentCommissionPercent,
     ],
   )
 

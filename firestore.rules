@@ -137,6 +137,16 @@ service cloud.firestore {
     match /invoices/{docId} {
       allow read, write: if signedIn();
     }
+
+    /** עסקאות (ריטיינר / חד־פעמי) — תשלומים בפועל נרשמים כ־invoices עם dealId */
+    match /deals/{docId} {
+      allow read, write: if signedIn();
+    }
+
+    /** תשלומי עמלה לסוכנים — אחרי תקבול מהלקוח */
+    match /agentCommissionPayments/{docId} {
+      allow read, write: if signedIn();
+    }
     match /collectionTracking/{docId} {
       allow read, write: if signedIn();
     }

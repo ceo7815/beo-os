@@ -1,7 +1,10 @@
-import { useMemo, type ReactNode } from 'react'
-import { formatDateIL, formatTaskDueDisplay } from '../lib/dates'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useAuth } from '../contexts/AuthContext'
+import { formatDateIL, formatDateTimeIL, formatTaskDueDisplay } from '../lib/dates'
+import { toastFsError } from '../lib/fsToast'
 import { supplierDisplayName } from '../lib/supplierDisplay'
 import { useLeads } from '../hooks/useLeads'
+import { useMeetings } from '../hooks/useMeetings'
 import { Modal } from './shared/Modal'
 import type { Meeting } from '../types'
 
@@ -41,7 +44,18 @@ export function MeetingPreviewModal(props: {
   onDelete: (id: string) => void
 }) {
   const { leads } = useLeads()
+  const { updateMeeting } = useMeetings()
+  const { user } = useAuth()
   const open = Boolean(props.meetingId)
+
+  const [showCompleteForm, setShowCompleteForm] = useState(false)
+  const [completeDraft, setCompleteDraft] = useState('')
+  const [submittingComplete, setSubmittingComplete] = useState(false)
+
+  useEffect(() => {
+    setShowCompleteForm(false)
+    setCompleteDraft('')
+  }, [props.meetingId])
 
   const leadLine = useMemo(() => {
     const m = props.meeting
@@ -134,6 +148,31 @@ export function MeetingPreviewModal(props: {
             </p>
           ) : null}
 
+          {m.completed ? (
+            <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/90 p-4">
+              <p className="text-[11px] font-bold text-emerald-900">
+                סיכום פגישה (הושלמה)
+              </p>
+              <pre
+                dir="auto"
+                className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[13px] font-normal leading-relaxed text-[var(--text-dark)]"
+              >
+                {m.completionSummary?.trim() ? m.completionSummary : '—'}
+              </pre>
+              <p className="text-[11px] text-emerald-900">
+                <span className="font-bold">
+                  {m.completedByName?.trim() || 'משתמש'}
+                </span>
+                {m.completedAt ? (
+                  <span className="text-emerald-800">
+                    {' · '}
+                    {formatDateTimeIL(m.completedAt)}
+                  </span>
+                ) : null}
+              </p>
+            </div>
+          ) : null}
+
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50 p-4">
             <Field label="מטרה">
               <pre
@@ -155,6 +194,81 @@ export function MeetingPreviewModal(props: {
             </Field>
           </div>
 
+          {!m.completed && showCompleteForm ? (
+            <div
+              className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4"
+              dir="rtl"
+            >
+              <p className="text-[12px] font-bold text-emerald-900">
+                הזנת סיכום לפני סגירת הפגישה
+              </p>
+              <textarea
+                value={completeDraft}
+                onChange={(e) => setCompleteDraft(e.target.value)}
+                rows={6}
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-dark)] outline-none"
+                placeholder="סיכום מסודר: החלטות, המשכיות, נקודות לתיעוד…"
+              />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={submittingComplete}
+                  onClick={() => {
+                    setShowCompleteForm(false)
+                    setCompleteDraft('')
+                  }}
+                  className="rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)] disabled:opacity-50"
+                >
+                  ביטול
+                </button>
+                <button
+                  type="button"
+                  disabled={submittingComplete}
+                  onClick={async () => {
+                    const text = completeDraft.trim()
+                    if (!text) {
+                      toastFsError(
+                        'נא להזין את תוכן הסיכום',
+                        new Error('validation'),
+                        'meeting',
+                      )
+                      return
+                    }
+                    if (!props.uid) return
+                    const name =
+                      props.teamMembers.find((x) => x.id === props.uid)?.name
+                        ?.trim() ||
+                      user?.displayName?.trim() ||
+                      'משתמש'
+                    setSubmittingComplete(true)
+                    try {
+                      const ok = await updateMeeting(
+                        m.id,
+                        {
+                          completed: true,
+                          completionSummary: text,
+                          completedAt: new Date().toISOString(),
+                          completedByUserId: props.uid,
+                          completedByName: name,
+                        },
+                        { successMessage: 'הפגישה נסגרה והסיכום נשמר' },
+                      )
+                      if (ok) {
+                        setShowCompleteForm(false)
+                        setCompleteDraft('')
+                      }
+                    } finally {
+                      setSubmittingComplete(false)
+                    }
+                  }}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {submittingComplete ? 'שומר…' : 'שמור סיכום וסגור פגישה'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] pt-4">
             <button
               type="button"
@@ -170,6 +284,16 @@ export function MeetingPreviewModal(props: {
             >
               עריכה
             </button>
+            {!m.completed ? (
+              <button
+                type="button"
+                disabled={showCompleteForm}
+                onClick={() => setShowCompleteForm(true)}
+                className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                סיום וסיכום פגישה
+              </button>
+            ) : null}
             {(m.createdBy === props.uid ||
               m.organizerUserId === props.uid ||
               props.canAdmin) && (

@@ -4,7 +4,7 @@ import { formatFirebaseErrorDetail } from './formatFirebaseError'
 import { useHubStore } from '../store/useStore'
 
 const sendAssigneeTaskNotification = httpsCallable<
-  { taskId: string },
+  { taskId: string; kind?: 'new' | 'transfer' },
   {
     ok: boolean
     skipped?: boolean
@@ -26,8 +26,14 @@ const SKIP_TOAST: Record<string, string> = {
 }
 
 /** נקרא אחרי יצירת משימה / שינוי מוקצה — כישלון לא חוסם את הממשק */
-export function requestAssigneeTaskEmail(taskId: string): void {
-  void sendAssigneeTaskNotification({ taskId })
+export function requestAssigneeTaskEmail(
+  taskId: string,
+  opts?: { kind?: 'new' | 'transfer' },
+): void {
+  void sendAssigneeTaskNotification({
+    taskId,
+    ...(opts?.kind ? { kind: opts.kind } : {}),
+  })
     .then((res) => {
       const d = res.data
       if (d?.sent) {

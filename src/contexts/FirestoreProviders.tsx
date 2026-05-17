@@ -3,6 +3,8 @@ import { FirestoreDocsSync } from '../components/FirestoreDocsSync'
 import { HubRealtimeNotifications } from '../components/HubRealtimeNotifications'
 import { ClientsProvider } from '../hooks/useClients'
 import { CollectionTrackingProvider } from '../hooks/useCollectionTracking'
+import { DealsProvider } from '../hooks/useDeals'
+import { AgentCommissionPaymentsProvider } from '../hooks/useAgentCommissionPayments'
 import { InvoicesProvider } from '../hooks/useInvoices'
 import { ProjectsProvider } from '../hooks/useProjects'
 import { SuppliersProvider } from '../hooks/useSuppliers'
@@ -27,19 +29,23 @@ export function FirestoreProviders() {
           <HostingProvider>
             <CollectionTrackingProvider>
               <InvoicesProvider>
-                <CampaignsProvider>
-                  <LeadsProvider>
-                    <TasksProvider>
-                      <ProjectsProvider>
-                        <MeetingsProvider>
-                          <FirestoreDocsSync />
-                          <HubRealtimeNotifications />
-                          <Outlet />
-                        </MeetingsProvider>
-                      </ProjectsProvider>
-                    </TasksProvider>
-                  </LeadsProvider>
-                </CampaignsProvider>
+                <AgentCommissionPaymentsProvider>
+                  <DealsProvider>
+                    <CampaignsProvider>
+                      <LeadsProvider>
+                        <TasksProvider>
+                          <ProjectsProvider>
+                            <MeetingsProvider>
+                              <FirestoreDocsSync />
+                              <HubRealtimeNotifications />
+                              <Outlet />
+                            </MeetingsProvider>
+                          </ProjectsProvider>
+                        </TasksProvider>
+                      </LeadsProvider>
+                    </CampaignsProvider>
+                  </DealsProvider>
+                </AgentCommissionPaymentsProvider>
               </InvoicesProvider>
             </CollectionTrackingProvider>
           </HostingProvider>

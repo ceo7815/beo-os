@@ -9,13 +9,19 @@ import {
   supplierNameMap,
 } from '../lib/supplierDisplay'
 import { RecurringTaskModal } from '../components/RecurringTaskModal'
+import { TasksBoardTable } from '../components/tasks/TasksBoardTable'
+import {
+  loadTasksBoardViewMode,
+  saveTasksBoardViewMode,
+  type TasksBoardViewMode,
+} from '../lib/tasksBoardView'
 import { Modal } from '../components/shared/Modal'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { useSuppliers } from '../hooks/useSuppliers'
 import { useTasks } from '../hooks/useTasks'
 import { useUsers } from '../hooks/useUsers'
-import type { Project, Task, TaskStatus } from '../types'
+import type { Project, Task, TaskActivity, TaskStatus } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 
 /** תצוגת לוח למנהל מערכת: משימות שלי / כל הצוות / עובד ספציפי */
@@ -78,6 +84,15 @@ function sortInBucket(a: Task, b: Task): number {
   return a.title.localeCompare(b.title, 'he')
 }
 
+/** לפי לוג פעילות: «שייך את המשימה ל־…» — המופע האחרון הוא מי ביצע את העברת האחראי האחרונה */
+function lastAssigneeTransferActorName(activity: TaskActivity[]): string | null {
+  const marker = 'שייך את המשימה'
+  const rows = activity.filter((a) => a.action.includes(marker))
+  if (rows.length === 0) return null
+  rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  const name = rows[rows.length - 1]?.userName?.trim()
+  return name || null
+}
 
 function TaskCard({
   task,
@@ -93,6 +108,9 @@ function TaskCard({
   onDueDateChange,
   onPublishNote,
   canPublishNote,
+  canTransferAssignee,
+  assigneeOptions,
+  onTransferAssignee,
   onDragStart,
   onDragEnd,
 }: {
@@ -101,7 +119,7 @@ function TaskCard({
   supplierName: string | null
   projectName: string | null
   assigneeLabel: string | null
-  /** אם המשימה נוצרה על ידי עובד אחד והוקצתה לאחר — מוצגת מסגרת כחולה + כותרת */
+  /** אם היוצר שונה מהאחראי — שורה «הופנתה על ידי» בכותרת הכחולה */
   delegatorLabel: string | null
   onOpenDrawer: () => void
   onMarkComplete: () => void
@@ -110,6 +128,9 @@ function TaskCard({
   onDueDateChange: (ymd: string) => void
   onPublishNote: (text: string) => Promise<void>
   canPublishNote: boolean
+  canTransferAssignee: boolean
+  assigneeOptions: { id: string; name: string }[]
+  onTransferAssignee: (newAssigneeId: string) => void
   onDragStart: (taskId: string) => void
   onDragEnd: () => void
 }) {
@@ -126,12 +147,25 @@ function TaskCard({
   const [streamFormOpen, setStreamFormOpen] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
   const [noteSending, setNoteSending] = useState(false)
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferPick, setTransferPick] = useState('')
+
+  const hasOtherAssignees = useMemo(
+    () => assigneeOptions.some((o) => o.id !== task.assigneeId),
+    [assigneeOptions, task.assigneeId],
+  )
 
   const desc = (task.description || '').trim()
   const streamNewestFirst = useMemo(
     () => [...task.manualNotes].reverse(),
     [task.manualNotes],
   )
+
+  const transferredByLabel = useMemo(
+    () => lastAssigneeTransferActorName(task.activity),
+    [task.activity],
+  )
+  const showDelegationBanner = Boolean(delegatorLabel || transferredByLabel)
 
   const submitNote = async (e?: FormEvent) => {
     e?.preventDefault()
@@ -215,7 +249,12 @@ function TaskCard({
           ) : null}
           {delegatorLabel ? (
             <p className="rounded-md bg-[#EEF2FF] px-2 py-1.5 text-[12px] font-semibold text-[var(--blue-dark)]">
-              הופנה על ידי: {delegatorLabel}
+              הופנתה על ידי: {delegatorLabel}
+            </p>
+          ) : null}
+          {transferredByLabel ? (
+            <p className="rounded-md bg-[#EFF6FF] px-2 py-1.5 text-[12px] font-semibold text-[var(--text-mid)]">
+              הועברה על ידי: {transferredByLabel}
             </p>
           ) : null}
           <div className="border-t border-[var(--border)] pt-3">
@@ -252,9 +291,68 @@ function TaskCard({
         </div>
       </Modal>
 
+      <Modal
+        isOpen={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        title="העברת משימה לעובד אחר"
+        size="md"
+      >
+        <p className="mb-3 text-[13px] leading-relaxed text-[var(--text-mid)]">
+          האחראי הנוכחי:{' '}
+          <span className="font-bold text-[var(--text-dark)]">
+            {assigneeLabel ?? 'לא צוין'}
+          </span>
+          . נבחר עובד אחר מהארגון — הפעולה תירשם בפעילות המשימה.
+        </p>
+        {hasOtherAssignees ? (
+          <>
+            <label className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
+              העבר אל
+            </label>
+            <select
+              value={transferPick}
+              onChange={(e) => setTransferPick(e.target.value)}
+              className="w-full rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-[13px] text-[var(--text-dark)]"
+            >
+              {assigneeOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                  {o.id === task.assigneeId ? ' (אחראי כיום)' : ''}
+                </option>
+              ))}
+            </select>
+            <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-[var(--border)] pt-4">
+              <button
+                type="button"
+                onClick={() => setTransferOpen(false)}
+                className="rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                disabled={!transferPick || transferPick === task.assigneeId}
+                onClick={() => {
+                  if (!transferPick || transferPick === task.assigneeId) return
+                  onTransferAssignee(transferPick)
+                  setTransferOpen(false)
+                }}
+                className="rounded-[10px] bg-[var(--blue-mid)] px-4 py-2 text-sm font-bold text-white shadow-sm hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                אשר העברה
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-[var(--text-mid)]">
+            אין עובד אחר זמין להעברה (או שאין עובדים פעילים ברשימה).
+          </p>
+        )}
+      </Modal>
+
       <div
         className={`text-start shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition hover:brightness-[1.02] ${
-          delegatorLabel
+          showDelegationBanner
             ? 'overflow-hidden rounded-2xl border-2 border-[#2563EB] ring-1 ring-[#BFDBFE]'
             : 'rounded-2xl border border-black'
         }`}
@@ -272,13 +370,18 @@ function TaskCard({
         }}
         aria-label={`פתח תצוגה מלאה: ${task.title}`}
       >
-        {delegatorLabel ? (
-          <div className="bg-[#2563EB] px-2 py-2 text-center text-[10px] font-bold leading-snug text-white sm:text-[11px]">
-            משימה שהופנה על ידי {delegatorLabel}
+        {showDelegationBanner ? (
+          <div className="space-y-1 bg-[#2563EB] px-2 py-2 text-center text-[10px] font-bold leading-snug sm:text-[11px]">
+            {delegatorLabel ? (
+              <div className="text-white">הופנתה על ידי {delegatorLabel}</div>
+            ) : null}
+            {transferredByLabel ? (
+              <div className="text-[#BFDBFE]">הועברה על ידי {transferredByLabel}</div>
+            ) : null}
           </div>
         ) : null}
         <div
-          className={`bg-[var(--dash-panel-bg)] p-3 ${delegatorLabel ? 'rounded-b-[14px]' : 'rounded-2xl'}`}
+          className={`bg-[var(--dash-panel-bg)] p-3 ${showDelegationBanner ? 'rounded-b-[14px]' : 'rounded-2xl'}`}
           style={{ borderRight: `3px solid ${priorityColor}` }}
         >
         <div className="w-full min-w-0 space-y-1.5 text-start">
@@ -458,6 +561,21 @@ function TaskCard({
         >
           מחק
         </button>
+        {canTransferAssignee && hasOtherAssignees && !isDone ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              const next =
+                assigneeOptions.find((o) => o.id !== task.assigneeId)?.id ?? ''
+              setTransferPick(next)
+              setTransferOpen(true)
+            }}
+            className="rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-1 text-[11px] font-bold text-[#1D4ED8] hover:bg-[#DBEAFE]"
+          >
+            העבר לעובד
+          </button>
+        ) : null}
       </div>
     </div>
     </div>
@@ -546,6 +664,9 @@ export function Tasks() {
   const [adminTeamScope, setAdminTeamScope] = useState<AdminTeamScope>('mine')
   /** תאריך ייחוס לעמודות היום / מחר / באיחור / אחר כך (ברירת מחדל: היום האמיתי) */
   const [boardAnchor, setBoardAnchor] = useState(() => todayYmd())
+  const [boardViewMode, setBoardViewMode] = useState<TasksBoardViewMode>(() =>
+    loadTasksBoardViewMode(),
+  )
 
   useEffect(() => {
     const focus = searchParams.get('focus')?.trim().toLowerCase()
@@ -724,11 +845,38 @@ export function Tasks() {
     [teamMembers],
   )
 
+  const transferMemberOptions = useMemo(
+    () =>
+      sortedMembers
+        .filter((m) => m.active !== false)
+        .map((m) => ({ id: m.id, name: m.name })),
+    [sortedMembers],
+  )
+
+  const bucketLabelForTask = useCallback(
+    (t: Task) => {
+      const key = bucketFor(t, boardAnchor, anchorTomorrow, anchorDayAfterTomorrow)
+      return TIME_COLUMNS.find((c) => c.key === key)?.label ?? '—'
+    },
+    [boardAnchor, anchorTomorrow, anchorDayAfterTomorrow],
+  )
+
+  const setBoardView = useCallback((mode: TasksBoardViewMode) => {
+    setBoardViewMode(mode)
+    saveTasksBoardViewMode(mode)
+  }, [])
+
   const boardSubtitle = canViewAsOthers
     ? adminTeamScope === 'all'
-      ? `${openCount} פתוחות · תצוגת מנהל: כל הצוות · לפי תאריך יעד ביחס לתאריך הייחוס`
-      : `${openCount} פתוחות · תצוגת עובד: ${adminBoardLabel} · לפי תאריך יעד ביחס לתאריך הייחוס`
-    : `${openCount} פתוחות · התצוגה הפרטית שלך · לפי תאריך יעד ביחס לתאריך הייחוס`
+      ? `${openCount} פתוחות · תצוגת מנהל: כל הצוות · ${
+          boardViewMode === 'table' ? 'טבלה מסודרת' : 'לוח לפי תאריך יעד'
+        }`
+      : `${openCount} פתוחות · תצוגת עובד: ${adminBoardLabel} · ${
+          boardViewMode === 'table' ? 'טבלה מסודרת' : 'לוח לפי תאריך יעד'
+        }`
+    : `${openCount} פתוחות · התצוגה הפרטית שלך · ${
+        boardViewMode === 'table' ? 'טבלה מסודרת' : 'לוח לפי תאריך יעד'
+      }`
 
   const sentTasks = useMemo(
     () =>
@@ -770,6 +918,34 @@ export function Tasks() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="inline-flex rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] p-0.5 shadow-sm"
+            role="group"
+            aria-label="מצב תצוגת לוח משימות"
+          >
+            <button
+              type="button"
+              onClick={() => setBoardView('kanban')}
+              className={`rounded-[8px] px-3 py-2 text-[12px] font-bold transition ${
+                boardViewMode === 'kanban'
+                  ? 'bg-white text-[var(--orange)] shadow-sm'
+                  : 'text-[var(--text-mid)] hover:text-[var(--text-dark)]'
+              }`}
+            >
+              לוח לפי תאריך
+            </button>
+            <button
+              type="button"
+              onClick={() => setBoardView('table')}
+              className={`rounded-[8px] px-3 py-2 text-[12px] font-bold transition ${
+                boardViewMode === 'table'
+                  ? 'bg-white text-[var(--orange)] shadow-sm'
+                  : 'text-[var(--text-mid)] hover:text-[var(--text-dark)]'
+              }`}
+            >
+              טבלה (אקסל)
+            </button>
+          </div>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -939,6 +1115,24 @@ export function Tasks() {
 
       {loading ? (
         <div className="text-[13px] text-[var(--text-mid)]">טוען משימות…</div>
+      ) : boardViewMode === 'table' ? (
+        <TasksBoardTable
+          tasks={openOnlyFiltered}
+          bucketLabelFor={bucketLabelForTask}
+          clientById={clientById}
+          projectById={projectById}
+          projectRowById={projectRowById}
+          memberById={memberById}
+          supplierById={supplierById}
+          taskOpts={taskOpts}
+          userUid={user?.uid ?? ''}
+          canViewAsOthers={canViewAsOthers}
+          transferMemberOptions={transferMemberOptions}
+          onOpenDrawer={setDrawerTaskId}
+          onUpdateTask={updateTask}
+          onDeleteTask={deleteTask}
+          onAddNote={addTaskNote}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           {TIME_COLUMNS.map((col, colIdx) => {
@@ -1020,6 +1214,13 @@ export function Tasks() {
                     task.assigneeId !== task.createdBy
                       ? memberById.get(task.createdBy) ?? 'עובד'
                       : null
+                  const uid = user?.uid ?? ''
+                  const canTransferThis =
+                    Boolean(uid) &&
+                    task.status !== 'done' &&
+                    (uid === task.assigneeId ||
+                      uid === task.createdBy ||
+                      canViewAsOthers)
                   return (
                     <div key={task.id} className="w-full">
                       <TaskCard
@@ -1064,6 +1265,16 @@ export function Tasks() {
                         }}
                         canPublishNote={Boolean(user?.uid)}
                         onPublishNote={(text) => addTaskNote(task.id, text)}
+                        canTransferAssignee={canTransferThis}
+                        assigneeOptions={transferMemberOptions}
+                        onTransferAssignee={(newAssigneeId) => {
+                          if (newAssigneeId === task.assigneeId) return
+                          void updateTask(
+                            task.id,
+                            { assigneeId: newAssigneeId },
+                            taskOpts,
+                          )
+                        }}
                         onDragStart={(taskId) => {
                           setDragTaskId(taskId)
                           setDragOverCol(col.key)

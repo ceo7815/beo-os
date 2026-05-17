@@ -104,7 +104,10 @@ export function buildTaskAssignedHtml(args: {
   tasksUrl: string
   /** בסיס האפליקציה (למשל https://….web.app) — ללוגו מ-/public/logo-hub-pos.png */
   appBaseUrl: string
+  /** העברת מוקצה — ניסוח מייל שונה ממשימה חדשה */
+  mode?: 'new' | 'transfer'
 }): string {
+  const mode = args.mode ?? 'new'
   const title = escapeHtml(args.taskTitle)
   const creator = escapeHtml(args.creatorName)
   const greeting = escapeHtml(args.assigneeGreeting)
@@ -127,12 +130,22 @@ export function buildTaskAssignedHtml(args: {
   const BORDER_ORANGE_SOFT = 'rgba(249, 115, 22, 0.55)'
   const BLUE_MID = '#2563eb'
 
+  const pageTitle = mode === 'transfer' ? 'העברת משימה' : 'משימה חדשה'
+  const h1 =
+    mode === 'transfer'
+      ? 'המשימה הועברה אליך לטיפול'
+      : 'נפתחה לך משימה חדשה'
+  const leadPara =
+    mode === 'transfer'
+      ? `<p style="margin:0 0 20px;font-size:14px;color:${TEXT_MID};line-height:1.7;">המשימה הועברה אליך <strong style="color:${TEXT_DARK};">מאת ${creator}</strong> לטיפולך במערכת — נא לעדכן סטטוס ולשמור על רצף העבודה.</p>`
+      : `<p style="margin:0 0 20px;font-size:14px;color:${TEXT_MID};line-height:1.7;"><strong style="color:${TEXT_DARK};">${creator}</strong> יצר/ה עבורך משימה חדשה במערכת.</p>`
+
   return `<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>משימה חדשה</title>
+  <title>${escapeHtml(pageTitle)}</title>
 </head>
 <body style="margin:0;padding:0;background:${BG_MAIN};font-family:'Rubik','Segoe UI',Tahoma,Arial,sans-serif;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${BG_MAIN};padding:28px 16px;">
@@ -146,10 +159,10 @@ export function buildTaskAssignedHtml(args: {
           </tr>
           <tr>
             <td style="background:${WHITE};padding:26px 24px 10px;text-align:right;direction:rtl;">
-              <h1 style="margin:0 0 8px;padding:0;font-size:22px;font-weight:800;color:${TEXT_DARK};line-height:1.35;letter-spacing:-0.02em;text-align:right;">נפתחה לך משימה חדשה</h1>
+              <h1 style="margin:0 0 8px;padding:0;font-size:22px;font-weight:800;color:${TEXT_DARK};line-height:1.35;letter-spacing:-0.02em;text-align:right;">${h1}</h1>
               <p style="margin:0 0 20px;font-size:12px;font-weight:600;color:${TEXT_LIGHT};text-align:right;">האב · ניהול סוכנות</p>
               <p style="margin:0 0 14px;font-size:15px;color:${TEXT_DARK};line-height:1.65;">שלום ${greeting},</p>
-              <p style="margin:0 0 20px;font-size:14px;color:${TEXT_MID};line-height:1.7;"><strong style="color:${TEXT_DARK};">${creator}</strong> יצר/ה עבורך משימה חדשה במערכת.</p>
+              ${leadPara}
               <div style="border-radius:14px;border:2px dashed ${BORDER_ORANGE_SOFT};background:${ORANGE_LIGHT};padding:18px 20px;margin-bottom:22px;text-align:right;">
                 <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:${TEXT_LIGHT};letter-spacing:0.06em;">כותרת</p>
                 <p style="margin:0 0 16px;font-size:18px;font-weight:800;color:${TEXT_DARK};line-height:1.35;">${title}</p>

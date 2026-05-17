@@ -3,13 +3,36 @@ export type InvoiceStatus = 'pending' | 'paid' | 'overdue'
 export interface Invoice {
   id: string
   clientId: string
+  /** מספר חשבונית מס (חובה במסלול תשלומי עסקה) */
   invoiceNumber: string
+  /** סכום כולל מע״מ (₪) */
   amount: number
   dueDate: string
   paidDate?: string
   status: InvoiceStatus
   note?: string
   createdAt: string
+  /** קישור לעסקה במסלול ניהול עסקאות — לדוחות אדמין */
+  dealId?: string
+  /**
+   * אחוז עמלה לסוכן על חשבונית זו בלבד (0–100).
+   * כשחסר — משתמשים באחוז מפרופיל המשתמש בפורטל הסוכן.
+   */
+  agentCommissionPercent?: number
+}
+
+/** תשלום עמלה לסוכן — אחרי תקבול מהלקוח (נפרד מרישום תקבול ב־invoices) */
+export interface AgentCommissionPayment {
+  id: string
+  agentUserId: string
+  amount: number
+  /** YYYY-MM-DD */
+  paidDate: string
+  note?: string
+  clientId?: string
+  dealId?: string
+  createdAt: string
+  createdBy: string
 }
 
 /** מעקב גבייה ללקוח (מקור: חשבונית ירוקה חיצונית — כאן רק מעקב) */
@@ -194,6 +217,14 @@ export interface Meeting {
   excludeCreatorFromAttendees?: boolean
   createdBy: string
   createdAt: string
+  /** סגירת פגישה — כל משתמש מחובר יכול לסמן הסתיימה ולהזין סיכום */
+  completed?: boolean
+  /** טקסט סיכום לאחר סגירה */
+  completionSummary?: string
+  /** מועד סגירה (ISO) */
+  completedAt?: string
+  completedByUserId?: string
+  completedByName?: string
 }
 
 /** תאימות למודול Kanban */
@@ -235,6 +266,10 @@ export interface TeamMember {
   role: string
   email?: string
   active?: boolean
+  /** סוכן מכירות — פורטל לקוחות משויכים (לא חל על אדמין) */
+  isAgent?: boolean
+  /** אחוז עמלה 0–100 על הכנסות חודשיות מחשבוניות ששולמו (אופציונלי ב־Firestore) */
+  agentCommissionPercent?: number
   /** יעד שעות עבודה בחודש קלנדרי — מוגדר ע״י אדמין (לשכר / תכנון) */
   monthlyWorkHours?: number | null
   /** מועדי יום עבודה מקובלים (שעון מקומי HH:mm) — לאימות כניסה/יציאה */
@@ -251,6 +286,8 @@ export interface Lead {
   email?: string
   /** שיוך אופציונלי לכרטיס לקוח קיים במערכת (לא נשמר אם ריק) */
   clientId?: string
+  /** סוכן שקיבל/מלווה את ההצעה — מוצג בפורטל סוכן */
+  salesAgentUserId?: string
   source?: string
   status: LeadStatus
   ownerId: string
@@ -328,6 +365,65 @@ export interface Client {
   department?: string | null
   status: ClientStatus
   createdAt: string
+  /** סוכן מכירות אחראי על הלקוח — לפורטל סוכנים ולעמלות */
+  salesAgentUserId?: string
+  /** עובדים (uids ב־`users`) המשויכים ללקוח — מוצג בפורטל סוכן ובטופס לקוח */
+  assignedEmployeeUserIds?: string[]
+  /** שם חברה רשמי / מותג — אופציונלי (אשף עסק חדש) */
+  legalName?: string
+  /** ח.פ / עוסק מורשה */
+  taxId?: string
+  addressLine?: string
+  city?: string
+  /** הערות פנימיות על העסק */
+  businessNotes?: string
+}
+
+/** סוג עסקה במסלול ניהול אדמין — `deals` */
+export type DealKind = 'retainer_monthly' | 'retainer_yearly' | 'one_time'
+
+export type DealStatus = 'active' | 'completed' | 'cancelled'
+
+/** תשלום מתוכנן בעסקה — צפי תאריך + סכום (מקור לחישוב הכנסה משוערת לפי חודש) */
+export interface DealScheduledPayment {
+  id: string
+  /** YYYY-MM-DD */
+  expectedPaymentYmd: string
+  amount: number
+  label?: string
+}
+
+export interface Deal {
+  id: string
+  clientId: string
+  /** ליד מקורי — לסנכרון מסלול מכירות */
+  leadId?: string
+  /** עותק לשאילתות; בדרך כלל זהה ל־clients.salesAgentUserId */
+  salesAgentUserId?: string
+  dealKind: DealKind
+  /** כותרת פנימית לעסקה */
+  title: string
+  /**
+   * סכום מוסכם בש״ח: חודשי לריטיינר חודשי, שנתי לריטיינר שנתי, סכום כולל לחד־פעמי.
+   */
+  agreedAmount?: number
+  /** חד־פעמי: תאריך משוער לתשלום/סיום — ההכנסה המשוערת תופיע בחודש זה בלבד */
+  expectedPaymentYmd?: string
+  /** ריטיינר שנתי: תאריך חיוב שנתי קבוע (חודש+יום חוזרים כל שנה) */
+  annualBillingYmd?: string
+  /** ריטיינר חודשי: תאריך ראשון לתשלום — ההכנסה המשוערת מחודש זה ואילך */
+  firstPaymentYmd?: string
+  /** עסקת אחסון (אתר/שרת) — חובה תאריך תשלום ראשון לחישוב הכנסה ועמלה */
+  isHostingDeal?: boolean
+  /** לוח תשלומים — כל שורה נספרת בחודש של תאריך הצפי */
+  scheduledPayments?: DealScheduledPayment[]
+  /** אחוז עמלת סוכן על תשלומים הקשורים לעסקה (מועתק לחשבונית בעת רישום תשלום) */
+  commissionPercent: number
+  status: DealStatus
+  notes?: string
+  createdAt: string
+  updatedAt?: string
+  createdByUserId?: string
 }
 
 /** רשומה במאגר אחסון — מידע בלבד (ללא תשלומים) */

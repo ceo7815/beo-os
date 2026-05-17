@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { Modal } from '../components/shared/Modal'
 import { formatDateIL } from '../lib/dates'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
+import { useUsers } from '../hooks/useUsers'
+import { isAdminRole } from '../components/RequireAdmin'
 import { useHubStore } from '../store/useStore'
 import type { Client, ClientStatus } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { memberIsSalesAgentFlag } from '../lib/salesAgent'
 import { ClientActivityModal } from '../components/ClientActivityModal'
 
 function isValidEmail(email: string): boolean {
@@ -22,6 +26,8 @@ interface ClientFormState {
   email: string
   department: string
   status: ClientStatus
+  salesAgentUserId: string
+  assignedEmployeeUserIds: string[]
 }
 
 const emptyForm: ClientFormState = {
@@ -31,6 +37,8 @@ const emptyForm: ClientFormState = {
   email: '',
   department: '',
   status: 'active',
+  salesAgentUserId: '',
+  assignedEmployeeUserIds: [],
 }
 
 const NEW_CLIENT_DAYS = 60
@@ -57,8 +65,10 @@ function ClientKpiCard(props: {
 export function Clients() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuth()
   const { clients, addClient, updateClient, deleteClient } = useClients()
   const { projects } = useProjects()
+  const { users: teamMembers } = useUsers()
   const setSelectedClient = useHubStore((s) => s.setSelectedClient)
   const pushToast = useHubStore((s) => s.pushToast)
 
@@ -69,6 +79,25 @@ export function Clients() {
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({})
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [activityClient, setActivityClient] = useState<Client | null>(null)
+
+  const myMember = useMemo(
+    () => teamMembers.find((m) => m.id === (user?.uid ?? '')),
+    [teamMembers, user?.uid],
+  )
+  const canSetSalesAgent = Boolean(myMember && isAdminRole(myMember.role))
+  const agentOptions = useMemo(
+    () => teamMembers.filter((u) => memberIsSalesAgentFlag(u) && u.active !== false),
+    [teamMembers],
+  )
+
+  const employeeAssignOptions = useMemo(
+    () =>
+      teamMembers
+        .filter((u) => u.role === 'employee' && u.active !== false)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'he')),
+    [teamMembers],
+  )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -117,6 +146,10 @@ export function Clients() {
       email: c.email,
       department: c.department ?? '',
       status: c.status,
+      salesAgentUserId: c.salesAgentUserId ?? '',
+      assignedEmployeeUserIds: c.assignedEmployeeUserIds?.length
+        ? [...c.assignedEmployeeUserIds]
+        : [],
     })
     setErrors({})
     setModalOpen(true)
@@ -133,14 +166,21 @@ export function Clients() {
     }
     const departmentTrim = form.department.trim()
     if (editingId) {
-      updateClient(editingId, {
+      const patch: Parameters<typeof updateClient>[1] = {
         name: form.name.trim(),
         contact: form.contact.trim(),
         phone: form.phone.trim(),
         email: form.email.trim(),
         department: departmentTrim ? departmentTrim : null,
         status: form.status,
-      })
+      }
+      if (canSetSalesAgent) {
+        patch.salesAgentUserId = form.salesAgentUserId.trim()
+          ? form.salesAgentUserId.trim()
+          : ''
+      }
+      patch.assignedEmployeeUserIds = form.assignedEmployeeUserIds
+      updateClient(editingId, patch)
     } else {
       addClient({
         name: form.name.trim(),
@@ -149,6 +189,12 @@ export function Clients() {
         email: form.email.trim(),
         ...(departmentTrim ? { department: departmentTrim } : {}),
         status: form.status,
+        ...(canSetSalesAgent && form.salesAgentUserId.trim()
+          ? { salesAgentUserId: form.salesAgentUserId.trim() }
+          : {}),
+        ...(form.assignedEmployeeUserIds.length
+          ? { assignedEmployeeUserIds: form.assignedEmployeeUserIds }
+          : {}),
       })
     }
     setModalOpen(false)
@@ -156,6 +202,14 @@ export function Clients() {
 
   const projectCount = (clientId: string) =>
     projects.filter((p) => p.clientId === clientId).length
+
+  const formatAssignedNames = (c: Client) => {
+    const ids = c.assignedEmployeeUserIds
+    if (!ids?.length) return '—'
+    return ids
+      .map((id) => teamMembers.find((m) => m.id === id)?.name ?? id)
+      .join(' · ')
+  }
 
   function ClientMobileCard({ c }: { c: Client }) {
     const statusLabel = c.status === 'active' ? 'פעיל' : 'לא פעיל'
@@ -220,6 +274,7 @@ export function Clients() {
               <span className="text-[var(--text-light)]">—</span>
             ),
           )}
+          {mobField('עובדים משויכים', formatAssignedNames(c))}
           {mobField('תאריך כניסה', formatDateIL(c.createdAt))}
         </div>
 
@@ -321,6 +376,7 @@ export function Clients() {
                 <th className="px-3 py-3">מחלקה</th>
                 <th className="px-3 py-3">סטטוס</th>
                 <th className="px-3 py-3">תאריך כניסה</th>
+                <th className="px-3 py-3">עובדים משויכים</th>
                 <th className="px-3 py-3">פרויקטים</th>
                 <th className="px-3 py-3">פעולות</th>
               </tr>
@@ -376,6 +432,9 @@ export function Clients() {
                     </td>
                     <td className="px-3 py-3 text-xs text-[var(--text-mid)]">
                       {formatDateIL(c.createdAt)}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-[var(--text-mid)] break-words">
+                      {formatAssignedNames(c)}
                     </td>
                     <td className="px-3 py-3">
                       <button
@@ -496,6 +555,56 @@ export function Clients() {
               <option value="inactive">לא פעיל</option>
             </select>
           </div>
+          {canSetSalesAgent ? (
+            <div>
+              <label className="mb-1 block text-xs text-[var(--text-mid)]">
+                סוכן מכירות (פורטל סוכן)
+              </label>
+              <select
+                value={form.salesAgentUserId}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, salesAgentUserId: e.target.value }))
+                }
+                className="w-full max-w-md rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-sm"
+              >
+                <option value="">ללא סוכן</option>
+                {agentOptions.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              עובדים משויכים ללקוח (מוצג בפורטל הסוכן)
+            </label>
+            <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] p-2 text-sm">
+              {employeeAssignOptions.length === 0 ? (
+                <p className="text-xs text-[var(--text-mid)]">אין עובדים פעילים ברשימה.</p>
+              ) : (
+                employeeAssignOptions.map((u) => (
+                  <label key={u.id} className="flex cursor-pointer items-center gap-2 py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={form.assignedEmployeeUserIds.includes(u.id)}
+                      onChange={() => {
+                        setForm((f) => {
+                          const next = new Set(f.assignedEmployeeUserIds)
+                          if (next.has(u.id)) next.delete(u.id)
+                          else next.add(u.id)
+                          return { ...f, assignedEmployeeUserIds: [...next] }
+                        })
+                      }}
+                      className="rounded border-[var(--border)]"
+                    />
+                    <span>{u.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -517,7 +626,7 @@ export function Clients() {
         onConfirm={() => {
           if (deleteId) deleteClient(deleteId)
         }}
-        message="למחוק לקוח זה? יימחקו גם כל הפרויקטים, המשימות והמסמכים הקשורים אליו."
+        message="למחוק לקוח זה? יימחקו גם עסקאות, תקבולים, פרויקטים, משימות ומסמכים הקשורים אליו."
       />
 
       <ClientActivityModal

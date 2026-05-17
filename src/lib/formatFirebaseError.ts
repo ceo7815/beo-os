@@ -3,7 +3,7 @@ import { FirebaseError } from 'firebase/app'
 /** הסבר קצר בעברית לפי קוד — ליד המקור מ-Firebase */
 const FIRESTORE_HINT_HE: Record<string, string> = {
   'already-exists':
-    'כפילות זמנית בלקוח Firestore (לרוב Web + מטמון). רעננו את הדף — הזריעה משתמשת ב־batch כדי למנוע זאת.',
+    'כפילות: אימייל כבר רשום ב-Firebase Authentication, או כפילות זמנית ב-Firestore (ריענון לעיתים פותר).',
   'permission-denied':
     'אין הרשאה: התחברו לחשבון ובדקו את חוקי האבטחה של Firestore לפרויקט.',
   'failed-precondition':
@@ -14,8 +14,10 @@ const FIRESTORE_HINT_HE: Record<string, string> = {
   'not-found': 'המסמך או האוסף לא נמצאו.',
   'functions/not-found':
     'הפונקציה בערוץ ה-Cloud Functions לא נמצאה — בדקו אזור (region) או שם פונקציה.',
+  'functions/already-exists':
+    'כבר קיים משתמש עם אימייל זה ב-Firebase Authentication.',
   'functions/internal':
-    'שגיאה פנימית בפונקציה — לעיתים תליית SMTP (פורט חסום), timeout בשרת, או שהפונקציה לא עודכנה. העדף RESEND_API_KEY ב־HTTPS; בדוק לוגים.',
+    'שגיאה פנימית בשרת (Cloud Function). נפוצות: הפונקציה לא פורסמה/אזור שגוי, אימייל כבר קיים ב-Auth, או בעיית הרשאות. ההסבר על SMTP כאן רלוונטי בעיקר לפונקציות מייל — בדקו לוגים ב-Firebase Console.',
 }
 
 function messageSuggestsPrematureSend(msg: string): boolean {

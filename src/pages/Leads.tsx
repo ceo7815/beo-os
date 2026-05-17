@@ -16,6 +16,7 @@ import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/
 import { LeadScheduleDateEditorModal } from '../components/leads/LeadScheduleDateEditorModal'
 import { Modal } from '../components/shared/Modal'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { memberIsSalesAgentFlag } from '../lib/salesAgent'
 
 /** ערך נשמר ב־Firestore בשדה `source` כשבוחרים מהרשימה הקבועה */
 const LEAD_SOURCE_BEO_SYSTEMS = 'Beo systems'
@@ -198,6 +199,7 @@ export function Leads() {
   /** שיוך לכרטיס לקוח קיים — אופציונלי; ריק = לא נשמר בליד */
   const [linkedClientId, setLinkedClientId] = useState('')
   const [linkedClientText, setLinkedClientText] = useState('')
+  const [salesAgentUserId, setSalesAgentUserId] = useState('')
   const [linkSuggestOpen, setLinkSuggestOpen] = useState(false)
   const linkClientWrapRef = useRef<HTMLDivElement | null>(null)
   const [openActionLeadId, setOpenActionLeadId] = useState<string | null>(null)
@@ -225,6 +227,7 @@ export function Leads() {
   const [sourcePickerManual, setSourcePickerManual] = useState('')
   const [leadDetailsLeadId, setLeadDetailsLeadId] = useState<string | null>(null)
   const [quoteModalLeadId, setQuoteModalLeadId] = useState<string | null>(null)
+  const [quoteSalesAgentDraft, setQuoteSalesAgentDraft] = useState('')
   const [quoteChannelDraft, setQuoteChannelDraft] = useState<LeadQuoteChannel | ''>('')
   const [quoteVisualUrlDraft, setQuoteVisualUrlDraft] = useState('')
   const [quotePdfFile, setQuotePdfFile] = useState<File | null>(null)
@@ -280,14 +283,16 @@ export function Leads() {
 
   useEffect(() => {
     if (!quoteModalLeadId) return
+    const lead = leads.find((x) => x.id === quoteModalLeadId)
     setQuoteChannelDraft('')
     setQuoteVisualUrlDraft('')
     setQuotePdfFile(null)
     setQuoteReturnByDraft('')
+    setQuoteSalesAgentDraft(lead?.salesAgentUserId?.trim() ?? '')
     setQuoteModalError('')
     setQuoteSubmitting(false)
     setQuoteSubmitPhase('idle')
-  }, [quoteModalLeadId])
+  }, [quoteModalLeadId, leads])
 
   const quoteModalLead = useMemo(
     () => leads.find((x) => x.id === quoteModalLeadId) ?? null,
@@ -341,6 +346,23 @@ export function Leads() {
     () => [...clients].sort((a, b) => a.name.localeCompare(b.name, 'he')),
     [clients],
   )
+
+  const salesAgentSelectOptions = useMemo(
+    () =>
+      users
+        .filter((u) => memberIsSalesAgentFlag(u) && u.active !== false)
+        .sort((a, b) => a.name.localeCompare(b.name, 'he')),
+    [users],
+  )
+
+  const patchLeadSalesAgent = async (leadId: string, agentUserId: string) => {
+    const uid = agentUserId.trim()
+    if (uid) {
+      await updateLead(leadId, { salesAgentUserId: uid })
+    } else {
+      await updateLead(leadId, { salesAgentUserId: deleteField() as unknown as string })
+    }
+  }
 
   const clientLinkMatches = useMemo(() => {
     const q = linkedClientText.trim().toLowerCase()
@@ -488,6 +510,7 @@ export function Leads() {
         if (exact.length === 1) clientIdFromSource = exact[0].id
       }
     }
+    const agentUid = salesAgentUserId.trim()
     await addLead({
       name: name.trim(),
       company: company.trim() || undefined,
@@ -498,6 +521,7 @@ export function Leads() {
       status: 'new',
       ownerId,
       clientNeeds: clientNeeds.trim() || undefined,
+      ...(agentUid ? { salesAgentUserId: agentUid } : {}),
     })
     setName('')
     setCompany('')
@@ -510,6 +534,7 @@ export function Leads() {
     setClientNeeds('')
     setLinkedClientId('')
     setLinkedClientText('')
+    setSalesAgentUserId('')
     setLinkSuggestOpen(false)
     setFormOpen(false)
   }
@@ -633,6 +658,7 @@ export function Leads() {
     channel: LeadQuoteChannel,
     quoteReturnByDate: string,
     opts: { pdfUrl?: string; pdfName?: string; visualUrl?: string },
+    salesAgentUserId?: string,
   ) => {
     const lead = leads.find((x) => x.id === leadId)
     if (!lead) {
@@ -662,6 +688,12 @@ export function Leads() {
       activityLog: nextLog,
       lastActivityText: statusText,
       lastActivityAt: nowIso,
+    }
+    const agentUid = salesAgentUserId?.trim()
+    if (agentUid) {
+      base.salesAgentUserId = agentUid
+    } else {
+      base.salesAgentUserId = deleteField()
     }
     if (channel === 'green_invoice') {
       base.quotePdfUrl = deleteField()
@@ -706,7 +738,7 @@ export function Leads() {
         await applyQuoteSentWithLog(quoteModalLeadId, 'pdf_file', returnBy, {
           pdfUrl: url,
           pdfName: fileName,
-        })
+        }, quoteSalesAgentDraft.trim() || undefined)
       } catch (e) {
         setQuoteModalError(formatFirebaseErrorDetail(e))
       } finally {
@@ -723,7 +755,7 @@ export function Leads() {
       }
       setQuoteSubmitting(true)
       try {
-        await applyQuoteSentWithLog(quoteModalLeadId, 'visual_link', returnBy, { visualUrl: u })
+        await applyQuoteSentWithLog(quoteModalLeadId, 'visual_link', returnBy, { visualUrl: u }, quoteSalesAgentDraft.trim() || undefined)
       } catch (e) {
         setQuoteModalError(formatFirebaseErrorDetail(e))
       } finally {
@@ -733,7 +765,7 @@ export function Leads() {
     }
     setQuoteSubmitting(true)
     try {
-      await applyQuoteSentWithLog(quoteModalLeadId, 'green_invoice', returnBy, {})
+      await applyQuoteSentWithLog(quoteModalLeadId, 'green_invoice', returnBy, {}, quoteSalesAgentDraft.trim() || undefined)
     } catch (e) {
       setQuoteModalError(formatFirebaseErrorDetail(e))
     } finally {
@@ -991,7 +1023,21 @@ export function Leads() {
               </button>
             ),
           )}
-          {mobField('מנהל תיק לקוח', ownerNameById.get(l.ownerId) ?? 'לא משויך')}
+          {mobField(
+            'סוכן מכירות',
+            <select
+              className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-[11px]"
+              value={l.salesAgentUserId ?? ''}
+              onChange={(e) => void patchLeadSalesAgent(l.id, e.target.value)}
+            >
+              <option value="">ללא</option>
+              {salesAgentSelectOptions.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>,
+          )}
           {mobField(
             'צרכי לקוח',
             l.clientNeeds ? (
@@ -1341,6 +1387,23 @@ export function Leads() {
               />
             )}
           </div>
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-[11px] font-semibold text-[var(--text-mid)]">
+              סוכן מכירות (יוצג בפורטל הסוכן)
+            </label>
+            <select
+              value={salesAgentUserId}
+              onChange={(e) => setSalesAgentUserId(e.target.value)}
+              className="w-full max-w-md rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm"
+            >
+              <option value="">ללא שיוך</option>
+              {salesAgentSelectOptions.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <input placeholder="צרכי לקוח" value={clientNeeds} onChange={(e) => setClientNeeds(e.target.value)} />
           <div className="md:col-span-2 flex justify-end gap-2">
             <button type="button" className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-5 py-2 text-sm font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]" onClick={() => setFormOpen(false)}>
@@ -1422,7 +1485,7 @@ export function Leads() {
                 <th className="px-3 py-3">טלפון</th>
                 <th className="px-3 py-3">אימייל</th>
                 <th className="px-3 py-3">מקור</th>
-                <th className="px-3 py-3">מנהל תיק לקוח</th>
+                <th className="px-3 py-3">סוכן מכירות</th>
                 <th className="px-3 py-3">סטטוס</th>
                 <th className="px-3 py-3">צרכי לקוח</th>
                 <th className="px-3 py-3">דחיפות</th>
@@ -1526,7 +1589,18 @@ export function Leads() {
                     )}
                   </td>
                   <td className="px-3 py-3 text-[var(--text-mid)]">
-                    {ownerNameById.get(l.ownerId) ?? 'לא משויך'}
+                    <select
+                      className="w-full max-w-[11rem] rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-[11px]"
+                      value={l.salesAgentUserId ?? ''}
+                      onChange={(e) => void patchLeadSalesAgent(l.id, e.target.value)}
+                    >
+                      <option value="">ללא</option>
+                      {salesAgentSelectOptions.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-3 py-3">
                     <div className="min-w-0 space-y-1">
@@ -1769,6 +1843,23 @@ export function Leads() {
               </div>
             ) : null}
             <p className="mb-1 text-[10px] font-bold text-[var(--text-light)]">
+              סוכן מכירות (פורטל סוכן)
+            </p>
+            <select
+              className="w-full"
+              value={actionMenuLead.salesAgentUserId ?? ''}
+              onChange={(e) => {
+                void patchLeadSalesAgent(actionMenuLead.id, e.target.value).catch(() => {})
+              }}
+            >
+              <option value="">ללא</option>
+              {salesAgentSelectOptions.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+            <p className="mb-1 mt-3 text-[10px] font-bold text-[var(--text-light)]">
               מנהל לקוח (עובד מהמערכת)
             </p>
             <select
@@ -1871,6 +1962,26 @@ export function Leads() {
                 setQuoteModalError('')
               }}
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold text-[var(--text-mid)]">
+              סוכן מכירות (יוצג בפורטל הסוכן)
+            </label>
+            <select
+              value={quoteSalesAgentDraft}
+              onChange={(e) => {
+                setQuoteSalesAgentDraft(e.target.value)
+                setQuoteModalError('')
+              }}
+              className="max-w-full rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-dark)]"
+            >
+              <option value="">ללא</option>
+              {salesAgentSelectOptions.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-3">
             <label className="flex w-full min-w-0 cursor-pointer items-start gap-3 rounded-[10px] border border-[var(--border)] p-3 has-[:checked]:border-[var(--orange)] has-[:checked]:bg-[var(--orange-light)]">
@@ -2178,7 +2289,23 @@ export function Leads() {
                     '—'
                   )}
                 </LeadDetailRow>
-                <LeadDetailRow label="מנהל תיק לקוח">
+                <LeadDetailRow label="סוכן מכירות">
+                  <select
+                    className="max-w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-white px-2 py-1 text-[12px]"
+                    value={leadDetailsLead.salesAgentUserId ?? ''}
+                    onChange={(e) => {
+                      void patchLeadSalesAgent(leadDetailsLead.id, e.target.value)
+                    }}
+                  >
+                    <option value="">ללא</option>
+                    {salesAgentSelectOptions.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </LeadDetailRow>
+                <LeadDetailRow label="מנהל תיק לקוח (עובד)">
                   {ownerNameById.get(leadDetailsLead.ownerId) ?? 'לא משויך'}
                 </LeadDetailRow>
                 <LeadDetailRow label="סטטוס">

@@ -5,17 +5,144 @@ import { useUsers } from '../hooks/useUsers'
 import { functionsClient } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { TeamMember } from '../types'
+import { AGENT_COMMISSION_PERCENT_FALLBACK } from '../lib/agentRevenue'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { Modal } from './shared/Modal'
 
 type TeamRole = 'admin' | 'employee'
 
-const roleLabels: Record<TeamRole, string> = {
+/** תפקיד כפי שמוצג בממשק — סוכן = עובד + isAgent ב-Firestore */
+type UiUserRole = 'admin' | 'employee' | 'sales_agent'
+
+type RoleFilter = 'all' | 'admin' | 'sales_agent' | 'employee'
+
+const roleLabels: Record<UiUserRole, string> = {
   admin: 'מנהל מערכת',
   employee: 'עובד',
+  sales_agent: 'סוכן מכירות',
 }
 
-function toTeamRole(role: string): TeamRole {
+function baseStoredRole(role: string): TeamRole {
   return role === 'admin' || role === 'superadmin' ? 'admin' : 'employee'
+}
+
+function memberUiRole(u: TeamMember): UiUserRole {
+  if (baseStoredRole(u.role) === 'admin') return 'admin'
+  if (u.isAgent === true) return 'sales_agent'
+  return 'employee'
+}
+
+function scheduleCaption(u: TeamMember): string {
+  const a = u.scheduleDayStart?.trim()
+  const b = u.scheduleDayEnd?.trim()
+  const br = u.scheduleBreakMinutes
+  if (a && b && typeof br === 'number' && Number.isFinite(br)) return `${a}–${b} · ${br} דק׳`
+  if (a && b) return `${a}–${b}`
+  return 'לא הוגדר'
+}
+
+function UserDayScheduleModal({
+  user,
+  isOpen,
+  onClose,
+  updateUserDaySchedule,
+}: {
+  user: TeamMember | null
+  isOpen: boolean
+  onClose: () => void
+  updateUserDaySchedule: (
+    uid: string,
+    schedule: { dayStart: string; dayEnd: string; breakMinutes: number } | null,
+  ) => Promise<void>
+}) {
+  if (!isOpen || !user) return null
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`מועדי יום עבודה — ${user.name}`}
+      size="md"
+      bodyClassName="max-h-none overflow-visible"
+    >
+      <form
+        className="space-y-4"
+        key={`sched-modal-${user.id}-${user.scheduleDayStart ?? ''}-${user.scheduleDayEnd ?? ''}-${String(user.scheduleBreakMinutes ?? '')}`}
+        onSubmit={(e) => {
+          e.preventDefault()
+          const fd = new FormData(e.currentTarget)
+          const ds = String(fd.get('dayStart') ?? '')
+          const de = String(fd.get('dayEnd') ?? '')
+          const brRaw = String(fd.get('breakMin') ?? '30')
+          const br = Number(brRaw)
+          if (!ds || !de) return
+          if (!Number.isFinite(br) || br < 0) return
+          void (async () => {
+            await updateUserDaySchedule(user.id, {
+              dayStart: ds,
+              dayEnd: de,
+              breakMinutes: br,
+            })
+            onClose()
+          })()
+        }}
+      >
+        <p className="text-[12px] leading-relaxed text-[var(--text-mid)]">
+          בדוח נוכחות יוצג האם העובד נכנס עד שעת ההתחלה (עם סבלנות קצרה) ויצא לא לפני שעת הסיום.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-[var(--text-mid)]">מ־</span>
+          <input
+            name="dayStart"
+            type="time"
+            defaultValue={user.scheduleDayStart ?? '09:00'}
+            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-2 text-sm font-semibold text-[var(--text-dark)]"
+          />
+          <span className="text-xs font-semibold text-[var(--text-mid)]">עד</span>
+          <input
+            name="dayEnd"
+            type="time"
+            defaultValue={user.scheduleDayEnd ?? '17:00'}
+            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-2 text-sm font-semibold text-[var(--text-dark)]"
+          />
+          <span className="text-xs font-semibold text-[var(--text-mid)]">הפסקה (דק׳)</span>
+          <input
+            name="breakMin"
+            type="number"
+            min={0}
+            max={180}
+            step={5}
+            defaultValue={user.scheduleBreakMinutes ?? 30}
+            className="w-20 rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-2 text-sm font-semibold text-[var(--text-dark)]"
+          />
+        </div>
+        <div className="flex flex-wrap gap-2 pt-2">
+          <button type="submit" className="rounded-lg px-4 py-2 text-sm hub-btn-primary">
+            שמור מועדים
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]"
+            onClick={() => {
+              void (async () => {
+                await updateUserDaySchedule(user.id, null)
+                onClose()
+              })()
+            }}
+          >
+            נקה מועדים
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]"
+            onClick={onClose}
+          >
+            סגור
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
 }
 
 /** תוכן ניהול משתמשים — לשימוש בדף מלא */
@@ -23,17 +150,21 @@ export function UserManagementContent() {
   const { user } = useAuth()
   const {
     users: teamMembers,
-    updateUserRole,
     toggleUserActive,
     updateUserProfile,
     updateUserMonthlyWorkHours,
     updateUserDaySchedule,
+    setUserRoleAndAgent,
+    updateUserAgentCommissionPercent,
   } = useUsers()
   const myRole =
     teamMembers.find((m) => m.id === (user?.uid ?? ''))?.role ?? 'employee'
   const canManageAuth = myRole === 'admin' || myRole === 'superadmin'
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'role' | 'status'>('status')
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
+  const [createOpen, setCreateOpen] = useState(true)
+  const [scheduleUserId, setScheduleUserId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
   const [draftAvatar, setDraftAvatar] = useState('')
@@ -41,10 +172,39 @@ export function UserManagementContent() {
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newName, setNewName] = useState('')
-  const [newRole, setNewRole] = useState<TeamRole>('employee')
+  const [newRole, setNewRole] = useState<UiUserRole>('employee')
 
-  const updateRole = async (u: TeamMember, role: TeamRole) => {
-    await updateUserRole(u.id, role)
+  const roleStats = useMemo(() => {
+    let admins = 0
+    let salesAgents = 0
+    let employees = 0
+    for (const m of teamMembers) {
+      const r = memberUiRole(m)
+      if (r === 'admin') admins += 1
+      else if (r === 'sales_agent') salesAgents += 1
+      else employees += 1
+    }
+    return {
+      total: teamMembers.length,
+      admins,
+      salesAgents,
+      employees,
+    }
+  }, [teamMembers])
+
+  const scheduleModalUser = useMemo(
+    () => teamMembers.find((m) => m.id === scheduleUserId) ?? null,
+    [teamMembers, scheduleUserId],
+  )
+
+  const applyUiRole = async (u: TeamMember, ui: UiUserRole) => {
+    if (ui === 'admin') {
+      await setUserRoleAndAgent(u.id, 'admin', false)
+    } else if (ui === 'sales_agent') {
+      await setUserRoleAndAgent(u.id, 'employee', true)
+    } else {
+      await setUserRoleAndAgent(u.id, 'employee', false)
+    }
   }
 
   const toggleActive = async (u: TeamMember, active: boolean) => {
@@ -78,7 +238,7 @@ export function UserManagementContent() {
   }
 
   const createManagedUser = httpsCallable<
-    { email: string; password: string; name: string; role: TeamRole },
+    { email: string; password: string; name: string; role: TeamRole; isAgent?: boolean },
     { uid: string }
   >(functionsClient, 'createManagedUser')
   const updateManagedUserEmail = httpsCallable<
@@ -96,7 +256,13 @@ export function UserManagementContent() {
     const name = newName.trim()
     if (!email || !password || !name) return
     try {
-      await createManagedUser({ email, password, name, role: newRole })
+      await createManagedUser({
+        email,
+        password,
+        name,
+        role: newRole === 'admin' ? 'admin' : 'employee',
+        isAgent: newRole === 'sales_agent',
+      })
       toastFsSuccess('משתמש חדש נוצר בהצלחה')
       setNewEmail('')
       setNewPassword('')
@@ -133,17 +299,19 @@ export function UserManagementContent() {
   const visibleMembers = useMemo(() => {
     const q = search.trim().toLowerCase()
     const filtered = teamMembers.filter((u) => {
+      if (roleFilter !== 'all' && memberUiRole(u) !== roleFilter) return false
       if (!q) return true
       return (
         u.name.toLowerCase().includes(q) ||
         (u.email ?? '').toLowerCase().includes(q) ||
-        toTeamRole(u.role).includes(q)
+        roleLabels[memberUiRole(u)].toLowerCase().includes(q)
       )
     })
-    const rankByRole = (role: TeamRole) => (role === 'admin' ? 0 : 1)
+    const rankByRole = (ui: UiUserRole) =>
+      ui === 'admin' ? 0 : ui === 'sales_agent' ? 1 : 2
     return filtered.sort((a, b) => {
-      const ar = toTeamRole(a.role)
-      const br = toTeamRole(b.role)
+      const ar = memberUiRole(a)
+      const br = memberUiRole(b)
       const aa = a.active !== false
       const ba = b.active !== false
       if (sortBy === 'status') {
@@ -157,14 +325,81 @@ export function UserManagementContent() {
       }
       return a.name.localeCompare(b.name, 'he')
     })
-  }, [teamMembers, search, sortBy])
+  }, [teamMembers, search, sortBy, roleFilter])
+
+  const kpiBtn = (sel: boolean) =>
+    `flex flex-col items-stretch gap-1 rounded-[12px] border px-3 py-2.5 text-right transition ${
+      sel
+        ? 'border-[var(--orange)] bg-[var(--orange-light)] shadow-[0_1px_4px_rgba(249,115,22,0.18)]'
+        : 'border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] hover:bg-[var(--surface-muted)]'
+    }`
 
   return (
-    <div className="space-y-4" style={{ fontFamily: 'Rubik, sans-serif' }}>
+    <div className="space-y-5" style={{ fontFamily: 'Rubik, sans-serif' }}>
+      {teamMembers.length > 0 ? (
+        <section
+          className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+          aria-label="סיכום משתמשים לפי תפקיד"
+        >
+          <button
+            type="button"
+            className={kpiBtn(roleFilter === 'all')}
+            onClick={() => setRoleFilter('all')}
+          >
+            <span className="text-[11px] font-semibold text-[var(--text-mid)]">סה״כ במערכת</span>
+            <span className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+              {roleStats.total}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={kpiBtn(roleFilter === 'admin')}
+            onClick={() => setRoleFilter('admin')}
+          >
+            <span className="text-[11px] font-semibold text-[var(--text-mid)]">מנהלי מערכת</span>
+            <span className="text-[22px] font-extrabold tabular-nums text-[#2563EB]">
+              {roleStats.admins}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={kpiBtn(roleFilter === 'sales_agent')}
+            onClick={() => setRoleFilter('sales_agent')}
+          >
+            <span className="text-[11px] font-semibold text-[var(--text-mid)]">סוכני מכירות</span>
+            <span className="text-[22px] font-extrabold tabular-nums text-[var(--orange)]">
+              {roleStats.salesAgents}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={kpiBtn(roleFilter === 'employee')}
+            onClick={() => setRoleFilter('employee')}
+          >
+            <span className="text-[11px] font-semibold text-[var(--text-mid)]">עובדים</span>
+            <span className="text-[22px] font-extrabold tabular-nums text-[#64748B]">
+              {roleStats.employees}
+            </span>
+          </button>
+        </section>
+      ) : null}
+
       {canManageAuth ? (
-        <div className={`${hubSectionClass(0)} space-y-2 rounded-2xl p-4`}>
-          <div className="text-sm font-bold text-[var(--text-dark)]">יצירת משתמש חדש</div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <button
+            type="button"
+            className="hub-btn-orange text-sm"
+            onClick={() => setCreateOpen((v) => !v)}
+          >
+            {createOpen ? 'סגירת טופס משתמש חדש' : '+ משתמש חדש'}
+          </button>
+        </div>
+      ) : null}
+
+      {canManageAuth && createOpen ? (
+        <div className={`${hubSectionClass(0)} space-y-3 rounded-2xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:p-5`}>
+          <div className="text-sm font-extrabold text-[var(--text-dark)]">יצירת משתמש חדש</div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -190,11 +425,12 @@ export function UserManagementContent() {
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={newRole}
-              onChange={(e) => setNewRole(e.target.value as TeamRole)}
-              className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] py-2 pl-2 pr-2 text-xs font-semibold text-[var(--text-dark)]"
+              onChange={(e) => setNewRole(e.target.value as UiUserRole)}
+              className="min-w-[10rem] rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] py-2 ps-2 pe-2 text-xs font-semibold text-[var(--text-dark)]"
             >
               <option value="admin">{roleLabels.admin}</option>
               <option value="employee">{roleLabels.employee}</option>
+              <option value="sales_agent">{roleLabels.sales_agent}</option>
             </select>
             <button
               type="button"
@@ -207,24 +443,35 @@ export function UserManagementContent() {
         </div>
       ) : null}
 
-      <div className={`${hubSectionClass(1)} space-y-2 rounded-2xl p-4`}>
+      <div
+        className={`${hubSectionClass(canManageAuth && createOpen ? 1 : 0)} flex flex-col gap-3 rounded-2xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:flex-row md:items-center md:justify-between`}
+      >
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="חיפוש לפי שם, מייל או הרשאה"
-          className="w-full rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-sm outline-none ring-0 focus:border-[var(--orange)]"
+          className="min-w-0 flex-1 rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-sm outline-none ring-0 focus:border-[var(--orange)] md:max-w-md"
         />
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-[var(--text-mid)]">סידור:</span>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as 'name' | 'role' | 'status')}
-            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] py-1.5 pl-2 pr-2 text-xs font-semibold text-[var(--text-dark)]"
+            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] py-1.5 ps-2 pe-2 text-xs font-semibold text-[var(--text-dark)]"
           >
             <option value="status">פעילים קודם</option>
             <option value="role">לפי הרשאה</option>
             <option value="name">לפי שם</option>
           </select>
+          {roleFilter !== 'all' ? (
+            <button
+              type="button"
+              className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--orange)] hover:bg-[var(--surface-muted)]"
+              onClick={() => setRoleFilter('all')}
+            >
+              ביטול סינון תפקיד
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -233,64 +480,194 @@ export function UserManagementContent() {
           אין משתמשים ב-Firestore. לאחר התחברות ראשונה נוצר פרופיל אוטומטית.
         </p>
       ) : visibleMembers.length === 0 ? (
-        <p className="text-center text-sm text-[var(--text-mid)]">לא נמצאו משתמשים לפי החיפוש.</p>
+        <p className="rounded-2xl border border-dashed border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-10 text-center text-sm text-[var(--text-mid)]">
+          {search.trim()
+            ? 'לא נמצאו משתמשים לפי החיפוש.'
+            : roleFilter !== 'all'
+              ? 'אין משתמשים בסינון התפקיד הזה.'
+              : 'לא נמצאו משתמשים.'}
+        </p>
       ) : (
-        <ul className="space-y-3">
-          {visibleMembers.map((u, memberIdx) => {
-            const r = toTeamRole(u.role)
-            const active = u.active !== false
-            const isEditing = editingId === u.id
-            return (
-              <li
-                key={u.id}
-                className={`${hubSectionClass(2 + memberIdx)} rounded-2xl p-4`}
-              >
-                <div className="flex items-start gap-3">
-                  <span
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold leading-tight text-white"
-                    style={{ backgroundColor: u.color }}
-                  >
-                    {isEditing ? draftAvatar.slice(0, 2) || '??' : u.avatar}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    {isEditing ? (
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                        <input
-                          value={draftName}
-                          onChange={(e) => setDraftName(e.target.value)}
-                          placeholder="שם משתמש"
-                          className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1.5 text-xs sm:col-span-2"
-                        />
-                        <input
-                          value={draftAvatar}
-                          onChange={(e) => setDraftAvatar(e.target.value.slice(0, 2))}
-                          placeholder="ראשי תיבות"
-                          className="rounded-lg border border-[#E2E8F0] bg-white px-2 py-1.5 text-xs"
-                        />
-                      </div>
-                    ) : (
-                      <div className="font-semibold text-[var(--text-dark)]">{u.name}</div>
-                    )}
-                    <div
-                      className="truncate text-xs text-[var(--text-mid)] ltr text-left"
-                      dir="ltr"
+        <section
+          className={`rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${hubSectionClass(canManageAuth && createOpen ? 2 : 1)}`}
+        >
+          <div className="hidden min-w-0 overflow-x-auto md:block">
+            <table className="w-full min-w-[1060px] table-fixed border-collapse text-sm" dir="rtl">
+              <thead className="bg-[var(--surface-muted)]">
+                <tr className="text-right text-[11px] font-bold text-[var(--text-light)]">
+                  <th className="px-3 py-3">משתמש</th>
+                  <th className="w-[190px] px-3 py-3">אימייל</th>
+                  <th className="w-[132px] px-3 py-3">תפקיד</th>
+                  {canManageAuth ? (
+                    <th
+                      className="w-[104px] px-2 py-3"
+                      title="אחוז מסכום ששולם ללקוחות — לחישובי עמלה בפורטל «כספים». ריק = ברירת מחדל מהמערכת."
                     >
-                      {u.email ?? '—'}
-                    </div>
-                    {canManageAuth ? (
-                      <div className="hub-dash-inset mt-2 rounded-lg border-dashed px-2.5 py-2">
-                        <label className="mb-1 block text-[10px] font-bold text-[var(--text-mid)]">
-                          יעד שעות עבודה בחודש (קלנדרי)
-                        </label>
-                        <div className="flex flex-wrap items-center gap-2">
+                      עמלה % (כספים)
+                    </th>
+                  ) : null}
+                  <th className="w-[108px] px-3 py-3">סטטוס</th>
+                  {canManageAuth ? (
+                    <th className="w-[88px] px-3 py-3">יעד ש׳/חודש</th>
+                  ) : null}
+                  {canManageAuth ? (
+                    <th className="w-[140px] px-3 py-3">יום עבודה</th>
+                  ) : null}
+                  <th className="w-[9.5rem] min-w-[9.5rem] max-w-[9.5rem] px-2 py-3">פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleMembers.map((u) => {
+                  const uiRole = memberUiRole(u)
+                  const active = u.active !== false
+                  const isEditing = editingId === u.id
+                  return (
+                    <tr key={u.id} className="border-t border-[var(--border)] align-top">
+                      <td className="px-3 py-3">
+                        <div className="flex items-start gap-2">
+                          <span
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                            style={{ backgroundColor: isEditing ? draftColor : u.color }}
+                          >
+                            {isEditing ? draftAvatar.slice(0, 2) || '??' : u.avatar}
+                          </span>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            {isEditing ? (
+                              <>
+                                <input
+                                  value={draftName}
+                                  onChange={(e) => setDraftName(e.target.value)}
+                                  placeholder="שם"
+                                  className="w-full rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-xs"
+                                />
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <input
+                                    value={draftAvatar}
+                                    onChange={(e) =>
+                                      setDraftAvatar(e.target.value.slice(0, 2))
+                                    }
+                                    placeholder="ר״ת"
+                                    className="w-12 rounded border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1 py-0.5 text-[10px]"
+                                  />
+                                  <input
+                                    type="color"
+                                    value={draftColor}
+                                    onChange={(e) => setDraftColor(e.target.value)}
+                                    className="h-6 w-8 cursor-pointer rounded border border-[var(--border-orange-soft)] p-0"
+                                    aria-label="צבע"
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="font-semibold leading-snug text-[var(--text-dark)]">
+                                {u.name}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div
+                          className="line-clamp-2 break-all text-xs text-[var(--text-mid)] ltr text-left"
+                          dir="ltr"
+                          title={u.email ?? ''}
+                        >
+                          {u.email ?? '—'}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <select
+                          value={uiRole}
+                          onChange={(e) => {
+                            void applyUiRole(u, e.target.value as UiUserRole)
+                          }}
+                          className="w-full rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] py-1 ps-1 pe-1 text-[11px] font-semibold text-[var(--text-dark)]"
+                        >
+                          <option value="admin">{roleLabels.admin}</option>
+                          <option value="employee">{roleLabels.employee}</option>
+                          <option value="sales_agent">{roleLabels.sales_agent}</option>
+                        </select>
+                      </td>
+                      {canManageAuth ? (
+                        <td className="px-2 py-3 align-top">
+                          {u.isAgent === true ? (
+                            <div className="space-y-0.5">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={1}
+                                dir="ltr"
+                                title="שמירה ביציאה מהשדה · ריק = ברירת מחדל"
+                                placeholder={String(AGENT_COMMISSION_PERCENT_FALLBACK)}
+                                className="w-full rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1.5 py-1 text-center text-xs font-semibold text-[var(--text-dark)]"
+                                defaultValue={
+                                  typeof u.agentCommissionPercent === 'number' &&
+                                  Number.isFinite(u.agentCommissionPercent)
+                                    ? u.agentCommissionPercent
+                                    : ''
+                                }
+                                key={`ac-${u.id}-${String(u.agentCommissionPercent ?? '')}-${String(u.isAgent)}`}
+                                onBlur={(e) => {
+                                  const raw = e.target.value.trim().replace(',', '.')
+                                  const prev =
+                                    typeof u.agentCommissionPercent === 'number' &&
+                                    Number.isFinite(u.agentCommissionPercent)
+                                      ? Math.round(u.agentCommissionPercent)
+                                      : null
+                                  if (raw === '') {
+                                    if (prev !== null)
+                                      void updateUserAgentCommissionPercent(u.id, null)
+                                    return
+                                  }
+                                  const n = Math.round(Number(raw))
+                                  if (!Number.isFinite(n) || n < 0 || n > 100) return
+                                  if (prev !== null && prev === n) return
+                                  void updateUserAgentCommissionPercent(u.id, n)
+                                }}
+                              />
+                              <p className="text-[9px] leading-tight text-[var(--text-mid)]">
+                                פורטל סוכן
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[var(--text-mid)]">—</span>
+                          )}
+                        </td>
+                      ) : null}
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col items-end gap-1" dir="ltr">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={active}
+                            onClick={() => void toggleActive(u, !active)}
+                            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                              active ? 'bg-[#10B981]' : 'bg-[#CBD5E1]'
+                            }`}
+                          >
+                            <span
+                              className={`absolute left-0.5 top-0.5 block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+                                active ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span className="text-[10px] font-medium text-[var(--text-mid)]" dir="rtl">
+                            {active ? 'פעיל' : 'מושהה'}
+                          </span>
+                        </div>
+                      </td>
+                      {canManageAuth ? (
+                        <td className="px-3 py-3">
                           <input
                             type="number"
                             min={0}
                             max={400}
                             step={0.5}
-                            placeholder="למשל 182"
+                            placeholder="—"
                             dir="ltr"
-                            className="w-[88px] rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-xs font-semibold text-[var(--text-dark)]"
+                            title="שעות · ריק = ללא יעד · שמירה ביציאה מהשדה"
+                            className="w-full rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1.5 py-1 text-center text-xs font-semibold text-[var(--text-dark)]"
                             defaultValue={
                               u.monthlyWorkHours != null && u.monthlyWorkHours !== undefined
                                 ? u.monthlyWorkHours
@@ -310,182 +687,295 @@ export function UserManagementContent() {
                               void updateUserMonthlyWorkHours(u.id, n)
                             }}
                           />
-                          <span className="text-[10px] leading-snug text-[var(--text-light)]">
-                            שעות. ריק = ללא יעד. נשמר בלחיצה מחוץ לשדה.
-                          </span>
-                        </div>
-                      </div>
-                    ) : null}
-                    {canManageAuth ? (
-                      <form
-                        className="hub-dash-inset mt-2 rounded-lg border-dashed px-2.5 py-2"
-                        key={`sched-${u.id}-${u.scheduleDayStart ?? ''}-${u.scheduleDayEnd ?? ''}-${u.scheduleBreakMinutes ?? ''}`}
-                        onSubmit={(e) => {
-                          e.preventDefault()
-                          const fd = new FormData(e.currentTarget)
-                          const ds = String(fd.get('dayStart') ?? '')
-                          const de = String(fd.get('dayEnd') ?? '')
-                          const brRaw = String(fd.get('breakMin') ?? '30')
-                          const br = Number(brRaw)
-                          if (!ds || !de) return
-                          if (!Number.isFinite(br) || br < 0) return
-                          void updateUserDaySchedule(u.id, {
-                            dayStart: ds,
-                            dayEnd: de,
-                            breakMinutes: br,
-                          })
-                        }}
-                      >
-                        <div className="mb-1 text-[10px] font-bold text-[var(--text-dark)]">
-                          יום עבודה מקובל (כניסה/יציאה בזמן)
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[10px] text-[var(--text-mid)]">מ־</span>
-                          <input
-                            name="dayStart"
-                            type="time"
-                            defaultValue={u.scheduleDayStart ?? '09:00'}
-                            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1.5 py-1 text-xs font-semibold text-[var(--text-dark)]"
-                          />
-                          <span className="text-[10px] text-[var(--text-mid)]">עד</span>
-                          <input
-                            name="dayEnd"
-                            type="time"
-                            defaultValue={u.scheduleDayEnd ?? '17:00'}
-                            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1.5 py-1 text-xs font-semibold text-[var(--text-dark)]"
-                          />
-                          <span className="text-[10px] text-[var(--text-mid)]">הפסקה</span>
-                          <input
-                            name="breakMin"
-                            type="number"
-                            min={0}
-                            max={180}
-                            step={5}
-                            defaultValue={u.scheduleBreakMinutes ?? 30}
-                            className="w-14 rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1.5 py-1 text-xs font-semibold text-[var(--text-dark)]"
-                          />
-                          <span className="text-[10px] text-[var(--text-mid)]">דק׳</span>
-                          <button
-                            type="submit"
-                            className="rounded-lg bg-[var(--orange)] px-2 py-1 text-[10px] font-bold text-white hover:brightness-105"
-                          >
-                            שמור מועדים
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]"
-                            onClick={() => void updateUserDaySchedule(u.id, null)}
-                          >
-                            נקה
-                          </button>
-                        </div>
-                        <p className="mt-1 text-[9px] leading-snug text-[var(--text-light)]">
-                          בדוח נוכחות יוצג האם העובד נכנס עד שעת ההתחלה (עם סבלנות קצרה) ויצא לא
-                          לפני שעת הסיום.
-                        </p>
-                      </form>
-                    ) : null}
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {isEditing ? (
-                        <input
-                          type="color"
-                          value={draftColor}
-                          onChange={(e) => setDraftColor(e.target.value)}
-                          className="h-8 w-10 cursor-pointer rounded border border-[var(--border-orange-soft)] bg-[var(--bg-input)] p-0.5"
-                          aria-label="צבע אווטאר"
-                        />
+                        </td>
                       ) : null}
-                      <select
-                        value={r}
-                        onChange={(e) => {
-                          void updateRole(u, e.target.value as TeamRole)
-                        }}
-                        className="max-w-[140px] rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] py-1.5 pl-2 pr-2 text-xs font-semibold text-[var(--text-dark)]"
-                      >
-                        <option value="admin">{roleLabels.admin}</option>
-                        <option value="employee">{roleLabels.employee}</option>
-                      </select>
-                      <div className="flex items-center gap-2" dir="ltr">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={active}
-                          onClick={() => void toggleActive(u, !active)}
-                          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                            active ? 'bg-[#10B981]' : 'bg-[#CBD5E1]'
-                          }`}
-                        >
-                          <span
-                            className={`absolute left-0.5 top-0.5 block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
-                              active ? 'translate-x-5' : 'translate-x-0'
-                            }`}
-                          />
-                        </button>
-                        <span className="text-xs font-medium text-[var(--text-mid)]" dir="rtl">
-                          {active ? 'פעיל' : 'מושהה'}
-                        </span>
-                      </div>
-                      {isEditing ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void saveEdit(u)}
-                            disabled={!draftName.trim()}
-                            className="rounded-lg px-2.5 py-1.5 text-xs hub-btn-primary disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            שמור
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]"
-                          >
-                            ביטול
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => startEdit(u)}
-                          className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-dark)] hover:bg-[var(--surface-muted)]"
-                        >
-                          עריכה
-                        </button>
-                      )}
                       {canManageAuth ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void changeUserEmail(u)}
-                            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-2.5 py-1.5 text-xs font-semibold text-[var(--blue-mid)] hover:bg-[var(--surface-muted)]"
-                          >
-                            אימייל
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void changeUserPassword(u)}
-                            className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-2.5 py-1.5 text-xs font-semibold text-[var(--danger)] hover:bg-[var(--surface-muted)]"
-                          >
-                            סיסמה
-                          </button>
-                        </>
+                        <td className="px-3 py-3">
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] leading-snug text-[var(--text-mid)]" dir="ltr">
+                              {scheduleCaption(u)}
+                            </p>
+                            <button
+                              type="button"
+                              className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1 text-[10px] font-semibold text-[var(--orange)]"
+                              onClick={() => setScheduleUserId(u.id)}
+                            >
+                              מועדים
+                            </button>
+                          </div>
+                        </td>
                       ) : null}
+                      <td className="px-2 py-3">
+                        <div className="flex min-w-0 flex-col gap-1.5">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void saveEdit(u)}
+                                disabled={!draftName.trim()}
+                                className="w-full rounded-[8px] px-2 py-1.5 text-[11px] hub-btn-primary disabled:opacity-50"
+                              >
+                                שמור
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]"
+                              >
+                                ביטול
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEdit(u)}
+                              className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] py-1.5 text-[11px] font-semibold text-[var(--orange)]"
+                            >
+                              עריכת פרופיל
+                            </button>
+                          )}
+                          {canManageAuth ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void changeUserEmail(u)}
+                                className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-1.5 text-[11px] font-semibold text-[var(--blue-mid)] hover:bg-[var(--surface-muted)]"
+                              >
+                                אימייל
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void changeUserPassword(u)}
+                                className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-1.5 text-[11px] font-semibold text-[var(--danger)] hover:bg-[var(--surface-muted)]"
+                              >
+                                סיסמה
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="space-y-3 p-3 md:hidden">
+            {visibleMembers.map((u) => {
+              const uiRole = memberUiRole(u)
+              const active = u.active !== false
+              const isEditing = editingId === u.id
+              return (
+                <article
+                  key={u.id}
+                  className="rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-3 shadow-sm"
+                >
+                  <div className="flex items-start gap-2">
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                      style={{ backgroundColor: isEditing ? draftColor : u.color }}
+                    >
+                      {isEditing ? draftAvatar.slice(0, 2) || '??' : u.avatar}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <input
+                            value={draftName}
+                            onChange={(e) => setDraftName(e.target.value)}
+                            className="w-full rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              value={draftAvatar}
+                              onChange={(e) => setDraftAvatar(e.target.value.slice(0, 2))}
+                              className="w-14 rounded border bg-[var(--bg-input)] px-1 text-xs"
+                            />
+                            <input
+                              type="color"
+                              value={draftColor}
+                              onChange={(e) => setDraftColor(e.target.value)}
+                              className="h-8 w-10 rounded border p-0"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="font-bold text-[var(--text-dark)]">{u.name}</div>
+                      )}
+                      <div className="mt-0.5 break-all text-xs text-[var(--text-mid)]" dir="ltr">
+                        {u.email ?? '—'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <select
+                      value={uiRole}
+                      onChange={(e) => void applyUiRole(u, e.target.value as UiUserRole)}
+                      className="rounded-lg border bg-[var(--bg-input)] px-2 py-1 text-xs font-semibold"
+                    >
+                      <option value="admin">{roleLabels.admin}</option>
+                      <option value="employee">{roleLabels.employee}</option>
+                      <option value="sales_agent">{roleLabels.sales_agent}</option>
+                    </select>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={active}
+                      onClick={() => void toggleActive(u, !active)}
+                      className={`relative h-6 w-11 rounded-full ${active ? 'bg-[#10B981]' : 'bg-[#CBD5E1]'}`}
+                      dir="ltr"
+                    >
+                      <span
+                        className={`absolute left-0.5 top-0.5 block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          active ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  {canManageAuth && u.isAgent === true ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-semibold text-[var(--text-mid)]">עמלה % (כספים):</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        dir="ltr"
+                        title="שמירה ביציאה · ריק = ברירת מחדל"
+                        placeholder={String(AGENT_COMMISSION_PERCENT_FALLBACK)}
+                        className="w-20 rounded border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-xs"
+                        defaultValue={
+                          typeof u.agentCommissionPercent === 'number' &&
+                          Number.isFinite(u.agentCommissionPercent)
+                            ? u.agentCommissionPercent
+                            : ''
+                        }
+                        key={`ac-m-${u.id}-${String(u.agentCommissionPercent ?? '')}`}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim().replace(',', '.')
+                          const prev =
+                            typeof u.agentCommissionPercent === 'number' &&
+                            Number.isFinite(u.agentCommissionPercent)
+                              ? Math.round(u.agentCommissionPercent)
+                              : null
+                          if (raw === '') {
+                            if (prev !== null) void updateUserAgentCommissionPercent(u.id, null)
+                            return
+                          }
+                          const n = Math.round(Number(raw))
+                          if (!Number.isFinite(n) || n < 0 || n > 100) return
+                          if (prev !== null && prev === n) return
+                          void updateUserAgentCommissionPercent(u.id, n)
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  {canManageAuth ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-semibold text-[var(--text-mid)]">יעד ש׳/חודש:</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={400}
+                        step={0.5}
+                        dir="ltr"
+                        className="w-20 rounded border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-xs"
+                        defaultValue={
+                          u.monthlyWorkHours != null && u.monthlyWorkHours !== undefined
+                            ? u.monthlyWorkHours
+                            : ''
+                        }
+                        key={`mh-m-${u.id}-${String(u.monthlyWorkHours ?? '')}`}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim().replace(',', '.')
+                          const prev = u.monthlyWorkHours ?? null
+                          if (raw === '') {
+                            if (prev !== null) void updateUserMonthlyWorkHours(u.id, null)
+                            return
+                          }
+                          const n = Number(raw)
+                          if (!Number.isFinite(n) || n < 0) return
+                          if (prev !== null && Math.abs(prev - n) < 0.0001) return
+                          void updateUserMonthlyWorkHours(u.id, n)
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  {canManageAuth ? (
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      <span className="text-[var(--text-mid)]">{scheduleCaption(u)}</span>
+                      <button
+                        type="button"
+                        className="rounded-md bg-[var(--orange-light)] px-2 py-1 font-semibold text-[var(--orange)]"
+                        onClick={() => setScheduleUserId(u.id)}
+                      >
+                        מועדים
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {isEditing ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={!draftName.trim()}
+                          className="hub-btn-primary rounded-lg px-3 py-1.5 text-xs disabled:opacity-50"
+                          onClick={() => void saveEdit(u)}
+                        >
+                          שמור
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border px-3 py-1.5 text-xs"
+                          onClick={cancelEdit}
+                        >
+                          ביטול
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="rounded-lg border px-3 py-1.5 text-xs font-semibold"
+                        onClick={() => startEdit(u)}
+                      >
+                        עריכה
+                      </button>
+                    )}
+                    {canManageAuth ? (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded-lg border px-3 py-1.5 text-xs text-[var(--blue-mid)]"
+                          onClick={() => void changeUserEmail(u)}
+                        >
+                          אימייל
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border px-3 py-1.5 text-xs text-[var(--danger)]"
+                          onClick={() => void changeUserPassword(u)}
+                        >
+                          סיסמה
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
       )}
 
-      <footer
-        className={`${hubSectionClass(
-          teamMembers.length === 0 || visibleMembers.length === 0
-            ? 2
-            : 2 + visibleMembers.length,
-        )} rounded-2xl px-4 py-3`}
-      >
+      <UserDayScheduleModal
+        user={scheduleModalUser}
+        isOpen={scheduleUserId !== null}
+        onClose={() => setScheduleUserId(null)}
+        updateUserDaySchedule={updateUserDaySchedule}
+      />
+
+      <footer className={`${hubSectionClass(4)} rounded-2xl px-4 py-3`}>
         <p className="text-center text-xs leading-relaxed text-[var(--text-mid)]">
           ניהול משתמשים מלא (כולל יצירה/אימייל/סיסמה) דורש Cloud Functions עם הרשאות Admin.
         </p>

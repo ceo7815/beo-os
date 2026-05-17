@@ -11,6 +11,9 @@ type Props = {
   disabledClientHint?: string
   /** מסגרת ורשימה בסגנון hub-select (למשל בקמפיינים) */
   hubPanel?: boolean
+  /** שורת מטא נוספת (למשל שיוך סוכן) */
+  extraMeta?: (client: Client) => string | undefined
+  placeholder?: string
 }
 
 function haystack(c: Client): string {
@@ -25,6 +28,8 @@ export function ClientQuickSelect({
   disabledClientIds,
   disabledClientHint = 'לא ניתן לבחור',
   hubPanel,
+  extraMeta,
+  placeholder = 'הקלד לזיהוי מהיר — שם, אימייל או טלפון…',
 }: Props) {
   const selected = useMemo(
     () => clients.find((c) => c.id === value),
@@ -119,7 +124,7 @@ export function ClientQuickSelect({
           onChange={(e) => onInputChange(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="הקלד לזיהוי מהיר — שם, אימייל או טלפון…"
+          placeholder={placeholder}
           className="min-w-0 flex-1 bg-transparent py-0.5 text-sm text-[var(--text-dark)] outline-none placeholder:text-[var(--text-mid)]"
           aria-autocomplete="list"
           aria-expanded={open}
@@ -182,6 +187,11 @@ export function ClientQuickSelect({
                       .filter(Boolean)
                       .join(' · ') || '—'}
                   </span>
+                  {extraMeta?.(c) ? (
+                    <span className="text-[10px] font-semibold text-[var(--orange)]">
+                      {extraMeta(c)}
+                    </span>
+                  ) : null}
                   {blocked ? (
                     <span className="text-[10px] font-semibold text-[#B45309]">
                       {disabledClientHint}

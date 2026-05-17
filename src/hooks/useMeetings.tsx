@@ -29,6 +29,7 @@ import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { useHubStore } from '../store/useStore'
 import type { Meeting } from '../types'
+import { useUsers } from './useUsers'
 
 type MeetingsContextValue = {
   meetings: Meeting[]
@@ -44,7 +45,11 @@ type MeetingsContextValue = {
     data: Omit<Meeting, 'id' | 'createdAt' | 'createdBy' | 'attendeeUserIds'>,
     options?: { quiet?: boolean; sendInvites?: boolean },
   ) => Promise<string | null>
-  updateMeeting: (id: string, patch: Partial<Meeting>) => Promise<void>
+  updateMeeting: (
+    id: string,
+    patch: Partial<Meeting>,
+    opts?: { successMessage?: string },
+  ) => Promise<boolean>
   deleteMeeting: (id: string) => Promise<void>
 }
 
@@ -73,11 +78,21 @@ function meetingToFirestoreWrite(
   if (data.leadId?.trim()) o.leadId = data.leadId.trim()
   if (data.location?.trim()) o.location = data.location.trim()
   o.excludeCreatorFromAttendees = data.excludeCreatorFromAttendees === true
+  if (data.completed === true) {
+    o.completed = true
+    o.completionSummary = String(data.completionSummary ?? '')
+    if (data.completedAt?.trim()) o.completedAt = data.completedAt.trim()
+    if (data.completedByUserId?.trim())
+      o.completedByUserId = data.completedByUserId.trim()
+    if (data.completedByName?.trim())
+      o.completedByName = data.completedByName.trim()
+  }
   return stripUndefined(o)
 }
 
 export function MeetingsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
+  const { users: teamMembers } = useUsers()
   const currentUser = useHubStore((s) => s.currentUser)
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
@@ -106,12 +121,18 @@ export function MeetingsProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     let cancelled = false
     const uid = user?.uid ?? ''
-    const role =
+    /** כמו ביומן — עדיפות ל־role מתוך אוסף users (נטען לעיתים אחרי currentUser בזיכרון) */
+    const fromTeam = teamMembers.find((m) => m.id === uid)?.role
+    const fromStore =
       currentUser?.uid === uid && typeof currentUser.role === 'string'
         ? currentUser.role
-        : currentUser?.uid === uid
-          ? 'employee'
-          : ''
+        : ''
+    const roleRaw =
+      typeof fromTeam === 'string' && fromTeam.trim()
+        ? fromTeam.trim()
+        : fromStore.trim() || (currentUser?.uid === uid ? 'employee' : '')
+    const role = roleRaw.toLowerCase()
+
     const profileReady =
       Boolean(uid) &&
       currentUser?.uid === uid &&
@@ -138,7 +159,13 @@ export function MeetingsProvider({ children }: { children: ReactNode }) {
         setError(null)
         return
       }
-      if (!meetingsQuery) return
+      if (!meetingsQuery) {
+        if (cancelled) return
+        setMeetings([])
+        setLoading(false)
+        setError(null)
+        return
+      }
       try {
         const snap = await getDocsFromServer(meetingsQuery)
         if (cancelled) return
@@ -165,7 +192,7 @@ export function MeetingsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [user, currentUser])
+  }, [user, currentUser, teamMembers])
 
   const addMeeting = useCallback(
     async (
@@ -245,12 +272,16 @@ export function MeetingsProvider({ children }: { children: ReactNode }) {
   )
 
   const updateMeeting = useCallback(
-    async (id: string, patch: Partial<Meeting>) => {
-      if (!user) return
+    async (
+      id: string,
+      patch: Partial<Meeting>,
+      opts?: { successMessage?: string },
+    ) => {
+      if (!user) return false
       const prev = meetings.find((m) => m.id === id)
       if (!prev) {
         toastFsError('הפגישה לא נמצאה', new Error('missing'), 'updateMeeting')
-        return
+        return false
       }
       const merged: Meeting = {
         ...prev,
@@ -275,7 +306,7 @@ export function MeetingsProvider({ children }: { children: ReactNode }) {
           new Error('validation'),
           'updateMeeting',
         )
-        return
+        return false
       }
       try {
         const { id: _i, createdAt: _c, ...rest } = merged
@@ -294,9 +325,11 @@ export function MeetingsProvider({ children }: { children: ReactNode }) {
               return (a.startTime ?? '').localeCompare(b.startTime ?? '')
             }),
         )
-        toastFsSuccess('הפגישה עודכנה')
+        toastFsSuccess(opts?.successMessage ?? 'הפגישה עודכנה')
+        return true
       } catch (e) {
         toastFsError('שגיאה בעדכון פגישה', e, 'updateMeeting')
+        return false
       }
     },
     [user, meetings],

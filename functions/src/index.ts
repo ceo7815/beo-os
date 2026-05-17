@@ -107,54 +107,86 @@ function requireAuthUid(authUid: string | undefined): string {
   return authUid
 }
 
-export const createManagedUser = onCall(async (request) => {
-  const callerUid = requireAuthUid(request.auth?.uid)
-  await assertSuperadmin(callerUid)
+const callableGen2Base = {
+  region: 'us-central1' as const,
+  /** Gen2 + Cloud Run: ה-Callable שולח Bearer דרך Firebase; invoker public נדרש לרוב הפריסות */
+  invoker: 'public' as const,
+}
 
-  const data = request.data as {
-    email?: string
-    password?: string
-    name?: string
-    role?: TeamRole
+function mapAuthCreateUserError(e: unknown): HttpsError | null {
+  const msg = e instanceof Error ? e.message : String(e)
+  if (/email-already-exists|EMAIL_EXISTS/i.test(msg)) {
+    return new HttpsError('already-exists', 'כבר קיים משתמש Auth עם אימייל זה')
   }
-
-  const email = String(data.email ?? '').trim().toLowerCase()
-  const password = String(data.password ?? '').trim()
-  const name = String(data.name ?? '').trim()
-  const role = ensureRole(data.role)
-
-  if (!email || !password || !name) {
-    throw new HttpsError('invalid-argument', 'יש למלא שם, אימייל וסיסמה')
+  if (/invalid-email/i.test(msg)) {
+    return new HttpsError('invalid-argument', 'כתובת אימייל לא תקינה')
   }
-  if (password.length < 6) {
-    throw new HttpsError('invalid-argument', 'הסיסמה חייבת לפחות 6 תווים')
+  if (/weak-password|password/i.test(msg) && /6|length/i.test(msg)) {
+    return new HttpsError('invalid-argument', 'הסיסמה חלשה מדי או קצרה מדי')
   }
+  return null
+}
 
-  const user = await adminAuth.createUser({
-    email,
-    password,
-    displayName: name,
-    disabled: false,
-  })
+export const createManagedUser = onCall(callableGen2Base, async (request) => {
+  try {
+    const callerUid = requireAuthUid(request.auth?.uid)
+    await assertSuperadmin(callerUid)
 
-  await db.doc(`users/${user.uid}`).set(
-    {
-      name,
+    const data = request.data as {
+      email?: string
+      password?: string
+      name?: string
+      role?: TeamRole
+      isAgent?: boolean
+    }
+
+    const email = String(data.email ?? '').trim().toLowerCase()
+    const password = String(data.password ?? '').trim()
+    const name = String(data.name ?? '').trim()
+    const role = ensureRole(data.role)
+    const isAgent = Boolean(data.isAgent)
+
+    if (!email || !password || !name) {
+      throw new HttpsError('invalid-argument', 'יש למלא שם, אימייל וסיסמה')
+    }
+    if (password.length < 6) {
+      throw new HttpsError('invalid-argument', 'הסיסמה חייבת לפחות 6 תווים')
+    }
+
+    const user = await adminAuth.createUser({
       email,
-      role,
-      avatar: name.slice(0, 2),
-      color: '#2563EB',
-      active: true,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  )
+      password,
+      displayName: name,
+      disabled: false,
+    })
 
-  return { uid: user.uid }
+    await db.doc(`users/${user.uid}`).set(
+      {
+        name,
+        email,
+        role,
+        avatar: name.slice(0, 2),
+        color: '#2563EB',
+        active: true,
+        isAgent,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    )
+
+    return { uid: user.uid }
+  } catch (e) {
+    if (e instanceof HttpsError) throw e
+    const mapped = mapAuthCreateUserError(e)
+    if (mapped) throw mapped
+    console.error('createManagedUser', e)
+    const detail = e instanceof Error ? e.message : String(e)
+    throw new HttpsError('internal', detail || 'יצירת משתמש נכשלה')
+  }
 })
 
-export const updateManagedUserEmail = onCall(async (request) => {
+export const updateManagedUserEmail = onCall(callableGen2Base, async (request) => {
   const callerUid = requireAuthUid(request.auth?.uid)
   await assertSuperadmin(callerUid)
 
@@ -176,7 +208,7 @@ export const updateManagedUserEmail = onCall(async (request) => {
   return { ok: true as const }
 })
 
-export const updateManagedUserPassword = onCall(async (request) => {
+export const updateManagedUserPassword = onCall(callableGen2Base, async (request) => {
   const callerUid = requireAuthUid(request.auth?.uid)
   await assertSuperadmin(callerUid)
 
@@ -225,7 +257,7 @@ export const sendAssigneeTaskNotification = onCall(
   async (request) => {
   try {
     const callerUid = requireAuthUid(request.auth?.uid)
-    const data = request.data as { taskId?: string }
+    const data = request.data as { taskId?: string; kind?: string }
     const taskId = String(data.taskId ?? '').trim()
     if (!taskId) {
       throw new HttpsError('invalid-argument', 'חסר מזהה משימה')
@@ -275,6 +307,8 @@ export const sendAssigneeTaskNotification = onCall(
     const appBase = defaultPublicAppUrl().replace(/\/$/, '')
     const tasksUrl = `${appBase}/tasks`
 
+    const mode = data.kind === 'transfer' ? ('transfer' as const) : ('new' as const)
+
     const html = buildTaskAssignedHtml({
       assigneeGreeting,
       creatorName,
@@ -283,12 +317,19 @@ export const sendAssigneeTaskNotification = onCall(
       dueDateLabel: dueDate,
       tasksUrl,
       appBaseUrl: appBase,
+      mode,
     })
 
+    const creatorForSubject =
+      creatorName.length > 32 ? `${creatorName.slice(0, 29)}…` : creatorName
+    const subjectPrefix =
+      mode === 'transfer'
+        ? `הועברה אליך משימה מאת ${creatorForSubject}`
+        : 'נפתחה לך משימה חדשה'
     const subject =
       taskTitle.length > 55
-        ? `נפתחה לך משימה חדשה — ${taskTitle.slice(0, 52)}…`
-        : `נפתחה לך משימה חדשה — ${taskTitle}`
+        ? `${subjectPrefix} — ${taskTitle.slice(0, 52)}…`
+        : `${subjectPrefix} — ${taskTitle}`
 
     const resendKey = readResendApiKey()
     const mailFromEnv = readMailFrom()

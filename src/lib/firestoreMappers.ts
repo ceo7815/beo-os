@@ -2,6 +2,10 @@ import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore'
 import { Timestamp } from 'firebase/firestore'
 import type {
   Client,
+  Deal,
+  DealKind,
+  DealScheduledPayment,
+  DealStatus,
   Campaign,
   CampaignPlatform,
   CampaignStatus,
@@ -9,6 +13,7 @@ import type {
   Doc,
   DocType,
   HostingRecord,
+  AgentCommissionPayment,
   Invoice,
   InvoiceStatus,
   Lead,
@@ -62,6 +67,15 @@ export function docToInvoice(d: QueryDocumentSnapshot<DocumentData>): Invoice {
     ? (raw as InvoiceStatus)
     : 'pending'
   const pd = x.paidDate
+  const dealIdRaw = x.dealId
+  const dealId =
+    typeof dealIdRaw === 'string' && dealIdRaw.trim() ? dealIdRaw.trim() : undefined
+  const acp = x.agentCommissionPercent
+  let agentCommissionPercent: number | undefined
+  if (typeof acp === 'number' && Number.isFinite(acp)) {
+    const p = Math.round(acp)
+    if (p >= 0 && p <= 100) agentCommissionPercent = p
+  }
   return {
     id: d.id,
     clientId: String(x.clientId ?? ''),
@@ -73,6 +87,33 @@ export function docToInvoice(d: QueryDocumentSnapshot<DocumentData>): Invoice {
     status,
     note: typeof x.note === 'string' && x.note.trim() ? String(x.note) : undefined,
     createdAt: timestampToIso(x.createdAt),
+    ...(dealId ? { dealId } : {}),
+    ...(agentCommissionPercent !== undefined ? { agentCommissionPercent } : {}),
+  }
+}
+
+export function docToAgentCommissionPayment(
+  d: QueryDocumentSnapshot<DocumentData>,
+): AgentCommissionPayment {
+  const x = d.data()
+  const pd = x.paidDate
+  const paidDate =
+    typeof pd === 'string' && /^\d{4}-\d{2}-\d{2}/.test(pd.trim())
+      ? pd.trim().slice(0, 10)
+      : ''
+  const clientIdRaw = x.clientId
+  const dealIdRaw = x.dealId
+  return {
+    id: d.id,
+    agentUserId: String(x.agentUserId ?? ''),
+    amount: typeof x.amount === 'number' && Number.isFinite(x.amount) ? x.amount : 0,
+    paidDate,
+    note: typeof x.note === 'string' && x.note.trim() ? String(x.note) : undefined,
+    clientId:
+      typeof clientIdRaw === 'string' && clientIdRaw.trim() ? clientIdRaw.trim() : undefined,
+    dealId: typeof dealIdRaw === 'string' && dealIdRaw.trim() ? dealIdRaw.trim() : undefined,
+    createdAt: timestampToIso(x.createdAt),
+    createdBy: String(x.createdBy ?? ''),
   }
 }
 
@@ -110,6 +151,30 @@ export function docToClient(d: QueryDocumentSnapshot<DocumentData>): Client {
   const deptRaw = x.department
   const department =
     typeof deptRaw === 'string' && deptRaw.trim() ? deptRaw.trim() : undefined
+  const sa = x.salesAgentUserId
+  const salesAgentUserId =
+    typeof sa === 'string' && sa.trim() ? sa.trim() : undefined
+  const rawEmp = x.assignedEmployeeUserIds
+  let assignedEmployeeUserIds: string[] | undefined
+  if (Array.isArray(rawEmp)) {
+    const ids = rawEmp
+      .map((id) => (typeof id === 'string' && id.trim() ? id.trim() : ''))
+      .filter(Boolean)
+    if (ids.length) assignedEmployeeUserIds = ids
+  }
+  const legalName =
+    typeof x.legalName === 'string' && x.legalName.trim() ? String(x.legalName).trim() : undefined
+  const taxId =
+    typeof x.taxId === 'string' && x.taxId.trim() ? String(x.taxId).trim() : undefined
+  const addressLine =
+    typeof x.addressLine === 'string' && x.addressLine.trim()
+      ? String(x.addressLine).trim()
+      : undefined
+  const city = typeof x.city === 'string' && x.city.trim() ? String(x.city).trim() : undefined
+  const businessNotes =
+    typeof x.businessNotes === 'string' && x.businessNotes.trim()
+      ? String(x.businessNotes).trim()
+      : undefined
   return {
     id: d.id,
     name: String(x.name ?? ''),
@@ -119,6 +184,110 @@ export function docToClient(d: QueryDocumentSnapshot<DocumentData>): Client {
     department,
     status: (x.status === 'inactive' ? 'inactive' : 'active') as Client['status'],
     createdAt: timestampToIso(x.createdAt),
+    ...(salesAgentUserId ? { salesAgentUserId } : {}),
+    ...(assignedEmployeeUserIds ? { assignedEmployeeUserIds } : {}),
+    ...(legalName ? { legalName } : {}),
+    ...(taxId ? { taxId } : {}),
+    ...(addressLine ? { addressLine } : {}),
+    ...(city ? { city } : {}),
+    ...(businessNotes ? { businessNotes } : {}),
+  }
+}
+
+function normalizeDealKind(raw: unknown): DealKind {
+  const s = String(raw ?? '').trim()
+  if (s === 'retainer_yearly') return 'retainer_yearly'
+  if (s === 'one_time') return 'one_time'
+  return 'retainer_monthly'
+}
+
+function parseScheduledPayments(value: unknown): DealScheduledPayment[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const out: DealScheduledPayment[] = []
+  for (let i = 0; i < value.length; i++) {
+    const item = value[i]
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const ymdRaw = o.expectedPaymentYmd
+    const ymd =
+      typeof ymdRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ymdRaw.trim().slice(0, 10))
+        ? ymdRaw.trim().slice(0, 10)
+        : undefined
+    const amtRaw = o.amount
+    const amount =
+      typeof amtRaw === 'number' && Number.isFinite(amtRaw) && amtRaw >= 0 ? amtRaw : undefined
+    if (!ymd || amount === undefined || amount <= 0) continue
+    const idRaw = o.id
+    const id = typeof idRaw === 'string' && idRaw.trim() ? idRaw.trim() : `sp-${i}-${ymd}`
+    const labelRaw = o.label
+    const label = typeof labelRaw === 'string' && labelRaw.trim() ? labelRaw.trim() : undefined
+    out.push({ id, expectedPaymentYmd: ymd, amount, ...(label ? { label } : {}) })
+  }
+  return out.length > 0 ? out : undefined
+}
+
+function normalizeDealStatus(raw: unknown): DealStatus {
+  const s = String(raw ?? '').trim()
+  if (s === 'completed') return 'completed'
+  if (s === 'cancelled') return 'cancelled'
+  return 'active'
+}
+
+export function docToDeal(d: QueryDocumentSnapshot<DocumentData>): Deal {
+  const x = d.data()
+  const sa = x.salesAgentUserId
+  const salesAgentUserId =
+    typeof sa === 'string' && sa.trim() ? sa.trim() : undefined
+  const lid = x.leadId
+  const leadId = typeof lid === 'string' && lid.trim() ? lid.trim() : undefined
+  const rawComm = x.commissionPercent
+  let commissionPercent = 8
+  if (typeof rawComm === 'number' && Number.isFinite(rawComm)) {
+    commissionPercent = Math.min(100, Math.max(0, Math.round(rawComm)))
+  }
+  const rawAmt = x.agreedAmount
+  const agreedAmount =
+    typeof rawAmt === 'number' && Number.isFinite(rawAmt) && rawAmt >= 0 ? rawAmt : undefined
+  const notes = typeof x.notes === 'string' && x.notes.trim() ? String(x.notes).trim() : undefined
+  const ep = x.expectedPaymentYmd
+  const expectedPaymentYmd =
+    typeof ep === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ep.trim().slice(0, 10))
+      ? ep.trim().slice(0, 10)
+      : undefined
+  const ab = x.annualBillingYmd
+  const annualBillingYmd =
+    typeof ab === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ab.trim().slice(0, 10))
+      ? ab.trim().slice(0, 10)
+      : undefined
+  const fp = x.firstPaymentYmd
+  const firstPaymentYmd =
+    typeof fp === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fp.trim().slice(0, 10))
+      ? fp.trim().slice(0, 10)
+      : undefined
+  const isHostingDeal = x.isHostingDeal === true
+  const scheduledPayments = parseScheduledPayments(x.scheduledPayments)
+  const cb = x.createdByUserId
+  const createdByUserId =
+    typeof cb === 'string' && cb.trim() ? cb.trim() : undefined
+  return {
+    id: d.id,
+    clientId: String(x.clientId ?? '').trim(),
+    dealKind: normalizeDealKind(x.dealKind),
+    title: String(x.title ?? '').trim() || 'ללא כותרת',
+    commissionPercent,
+    status: normalizeDealStatus(x.status),
+    createdAt: timestampToIso(x.createdAt),
+    updatedAt: timestampToIso(x.updatedAt ?? x.createdAt),
+    ...(leadId ? { leadId } : {}),
+    ...(salesAgentUserId ? { salesAgentUserId } : {}),
+    ...(agreedAmount !== undefined ? { agreedAmount } : {}),
+    ...(expectedPaymentYmd ? { expectedPaymentYmd } : {}),
+    ...(annualBillingYmd ? { annualBillingYmd } : {}),
+    ...(firstPaymentYmd ? { firstPaymentYmd } : {}),
+    ...(isHostingDeal ? { isHostingDeal: true } : {}),
+    ...(scheduledPayments ? { scheduledPayments } : {}),
+    ...(notes ? { notes } : {}),
+    ...(createdByUserId ? { createdByUserId } : {}),
   }
 }
 
@@ -290,6 +459,12 @@ function parseUserIdList(value: unknown): string[] {
   return value.map((id) => String(id)).filter(Boolean)
 }
 
+function parseOptionalMeetingIso(value: unknown): string | undefined {
+  if (value instanceof Timestamp) return value.toDate().toISOString()
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return undefined
+}
+
 export function docToMeeting(d: QueryDocumentSnapshot<DocumentData>): Meeting {
   const x = d.data()
   const cid = x.clientId
@@ -340,6 +515,23 @@ export function docToMeeting(d: QueryDocumentSnapshot<DocumentData>): Meeting {
     excludeCreatorFromAttendees: x.excludeCreatorFromAttendees === true,
     createdAt: timestampToIso(x.createdAt),
     createdBy: String(x.createdBy ?? ''),
+    ...(x.completed === true
+      ? {
+          completed: true as const,
+          completionSummary:
+            typeof x.completionSummary === 'string' ? x.completionSummary : '',
+          completedAt: parseOptionalMeetingIso(x.completedAt),
+          completedByUserId:
+            typeof x.completedByUserId === 'string' &&
+            x.completedByUserId.trim()
+              ? x.completedByUserId.trim()
+              : undefined,
+          completedByName:
+            typeof x.completedByName === 'string' && x.completedByName.trim()
+              ? x.completedByName.trim()
+              : undefined,
+        }
+      : {}),
   }
 }
 
@@ -432,6 +624,9 @@ export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
   const cid = x.clientId
   const clientId =
     typeof cid === 'string' && cid.trim() ? cid.trim() : undefined
+  const saLead = x.salesAgentUserId
+  const salesAgentUserId =
+    typeof saLead === 'string' && saLead.trim() ? saLead.trim() : undefined
   return {
     id: d.id,
     name: String(x.name ?? ''),
@@ -439,6 +634,7 @@ export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
     phone: typeof x.phone === 'string' && x.phone.trim() ? x.phone.trim() : undefined,
     email: typeof x.email === 'string' && x.email.trim() ? x.email.trim() : undefined,
     clientId,
+    ...(salesAgentUserId ? { salesAgentUserId } : {}),
     source: typeof x.source === 'string' && x.source.trim() ? x.source.trim() : undefined,
     status,
     ownerId: String(x.ownerId ?? ''),
@@ -604,6 +800,12 @@ export function docToTeamMember(
     scheduleBreakMinutes = undefined
   }
 
+  let agentCommissionPercent: number | undefined
+  if (typeof x.agentCommissionPercent === 'number' && Number.isFinite(x.agentCommissionPercent)) {
+    const p = Math.round(x.agentCommissionPercent)
+    if (p >= 0 && p <= 100) agentCommissionPercent = p
+  }
+
   return {
     id: d.id,
     name: String(x.name ?? ''),
@@ -612,6 +814,8 @@ export function docToTeamMember(
     role,
     email: typeof x.email === 'string' ? x.email : undefined,
     active: typeof x.active === 'boolean' ? x.active : true,
+    isAgent: x.isAgent === true,
+    ...(agentCommissionPercent !== undefined ? { agentCommissionPercent } : {}),
     monthlyWorkHours,
     scheduleDayStart,
     scheduleDayEnd,

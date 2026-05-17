@@ -57,6 +57,8 @@ export function Layout() {
   const overdueInvoiceCount = invoices.filter((i) => i.status === 'overdue').length
   const { user, signOutUser } = useAuth()
 
+  const calendarNavActive = location.pathname.startsWith('/calendar')
+
   useEffect(() => {
     setMobileNavOpen(false)
   }, [location.pathname])
@@ -358,22 +360,54 @@ export function Layout() {
                 </NavGlyph>
                 משימות
               </NavLink>
-              <NavLink
-                to="/calendar"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
+              <div
+                className={`flex flex-col overflow-hidden rounded-lg transition-[background] duration-200 ${
+                  calendarNavActive ? 'bg-white/[0.07]' : ''
+                }`}
               >
-                <NavGlyph>
-                  <rect x="3" y="5" width="18" height="16" rx="2" />
-                  <path d="M3 10h18M8 3v4M16 3v4" />
-                </NavGlyph>
-                יומן
-              </NavLink>
+                <NavLink
+                  to="/calendar"
+                  className={({ isActive }) =>
+                    `${navBase} ${
+                      isActive
+                        ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                        : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                    }`
+                  }
+                >
+                  <NavGlyph>
+                    <rect x="3" y="5" width="18" height="16" rx="2" />
+                    <path d="M3 10h18M8 3v4M16 3v4" />
+                  </NavGlyph>
+                  יומן
+                </NavLink>
+                {calendarNavActive ? (
+                  <div className="flex border-t border-white/[0.06] pb-1.5 pt-1">
+                    <div
+                      className="ms-6 me-2 mt-1 w-px shrink-0 self-stretch bg-white/20"
+                      aria-hidden
+                    />
+                    <NavLink
+                      to="/calendar/summaries"
+                      className={({ isActive }) =>
+                        `min-w-0 flex-1 rounded-lg py-2 ps-1 pe-3 text-[13px] leading-snug transition ${
+                          isActive
+                            ? 'bg-black/25 font-bold text-[#F97316]'
+                            : 'font-medium text-white/50 hover:bg-white/[0.06] hover:text-white/85'
+                        }`
+                      }
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <span
+                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70"
+                          aria-hidden
+                        />
+                        סיכומי פגישות
+                      </span>
+                    </NavLink>
+                  </div>
+                ) : null}
+              </div>
               <NavLink
                 to="/prompts"
                 className={({ isActive }) =>
@@ -444,6 +478,23 @@ export function Layout() {
                       <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
                     </NavGlyph>
                     משתמשים
+                  </NavLink>
+                  <NavLink
+                    to="/agents"
+                    className={({ isActive }) =>
+                      `${navBase} ${
+                        isActive
+                          ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                          : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                      }`
+                    }
+                  >
+                    <NavGlyph>
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                    </NavGlyph>
+                    סוכני מכירות
                   </NavLink>
                 </>
               ) : null}
