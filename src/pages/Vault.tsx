@@ -215,7 +215,7 @@ export function Vault() {
         <p className="max-w-2xl text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
           {vaultAdmin
             ? 'ניהול מרכזי של סיסמאות ופרטי גישה — בחר מי ברשימת המשתמשים חשוף לכל רשומה. הסיסמה מוסתרת עד לחיצה על «הצג».'
-            : 'אפשר להוסיף פריט חדש ולבחור מי יראה אותו. תראה כאן פריטים שמנהל שיתף איתך, ששיתפת עם הצוות, או שבהם «שם משתמש / אימייל» תואם לאימייל ההתחברות שלך. פריט שמוגבל לרשימת משתמשים — לא יופיע אם לא נכללת ברשימה וגם האימייל בשדה שם המשתמש אינו שלך. הסיסמה מוסתרת עד לחיצה על «הצג».'}
+            : 'אפשר להוסיף ולערוך פריטים שאתה רואה, ולבחור מי יראה אותם. תראה כאן פריטים שמנהל שיתף איתך, ששיתפת עם הצוות, או שבהם «שם משתמש / אימייל» תואם לאימייל ההתחברות שלך. פריט שמוגבל לרשימת משתמשים — לא יופיע אם לא נכללת ברשימה וגם האימייל בשדה שם המשתמש אינו שלך. הסיסמה מוסתרת עד לחיצה על «הצג».'}
         </p>
       </header>
 
@@ -303,15 +303,15 @@ export function Vault() {
                     </p>
                   ) : null}
                 </div>
-                {vaultAdmin ? (
-                  <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:shrink-0 sm:flex-row sm:gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(row.id)}
-                      className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--bg-input)] sm:w-auto sm:py-1.5"
-                    >
-                      עריכה
-                    </button>
+                <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:shrink-0 sm:flex-row sm:gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(row.id)}
+                    className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--bg-input)] sm:w-auto sm:py-1.5"
+                  >
+                    עריכה
+                  </button>
+                  {vaultAdmin ? (
                     <button
                       type="button"
                       onClick={() => setDeleteId(row.id)}
@@ -319,8 +319,8 @@ export function Vault() {
                     >
                       מחק
                     </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
 
               {vaultAdmin ? (
@@ -424,7 +424,7 @@ export function Vault() {
         </ul>
       )}
 
-      {modalOpen && (vaultAdmin || !editingId) ? (
+      {modalOpen ? (
         <VaultEntryModal
           key={editingId ?? 'create'}
           isOpen={modalOpen}

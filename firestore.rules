@@ -167,6 +167,8 @@ service cloud.firestore {
      * כספת סיסמאות (passwords_vault)
      *
      * קריאה: כל משתמש מחובר — מונע כשלי permission-denied עם שאילתות מורכבות / isAdmin + get().
+     * עדכון: כל משתמש מחובר (updatedBy חייב להיות ה-UID שלו).
+     * מחיקה: מנהלים בלבד.
      * סינון מי רואה מה נשאר באפליקציה: עובדים משתמשים ב-array-contains על visibleUserIds;
      * מנהלים טוענים את כל האוסף. חשוב: משתמש טכני יכול לקרוא את כל המסמכים דרך ה-SDK — פרויקט פנימי בלבד.
      */
@@ -180,7 +182,8 @@ service cloud.firestore {
           request.auth.uid in request.resource.data.visibleUserIds
         )
       );
-      allow update, delete: if signedIn() && isAdmin();
+      allow update: if signedIn() && request.resource.data.updatedBy == me();
+      allow delete: if signedIn() && isAdmin();
     }
 
     /**
