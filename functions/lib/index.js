@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.clockifyProxy = exports.sendMeetingInviteNotifications = exports.sendAssigneeTaskNotification = exports.updateManagedUserPassword = exports.updateManagedUserEmail = exports.createManagedUser = void 0;
+exports.difyHubData = exports.clockifyProxy = exports.sendMeetingInviteNotifications = exports.sendAssigneeTaskNotification = exports.updateManagedUserPassword = exports.updateManagedUserEmail = exports.createManagedUser = void 0;
 require("./loadEnv.js");
 const app_1 = require("firebase-admin/app");
 const auth_1 = require("firebase-admin/auth");
@@ -545,3 +545,5 @@ exports.sendMeetingInviteNotifications = (0, https_1.onCall)({
 });
 var clockifyProxy_js_1 = require("./clockifyProxy.js");
 Object.defineProperty(exports, "clockifyProxy", { enumerable: true, get: function () { return clockifyProxy_js_1.clockifyProxy; } });
+var difyHubData_js_1 = require("./difyHubData.js");
+Object.defineProperty(exports, "difyHubData", { enumerable: true, get: function () { return difyHubData_js_1.difyHubData; } });

@@ -15,6 +15,7 @@ import { AgentsAdmin } from './pages/AgentsAdmin'
 import { Clients } from './pages/Clients'
 import { Collections } from './pages/Collections'
 import { Dashboard } from './pages/Dashboard'
+import { Finance } from './pages/Finance'
 import { Hosting } from './pages/Hosting'
 import { Campaigns } from './pages/Campaigns'
 import { Leads } from './pages/Leads'
@@ -62,6 +63,14 @@ export default function App() {
                   <Route index element={<Dashboard />} />
                   <Route path="clients" element={<Clients />} />
                   <Route path="collections" element={<Collections />} />
+                  <Route
+                    path="finance"
+                    element={
+                      <RequireAdmin>
+                        <Finance />
+                      </RequireAdmin>
+                    }
+                  />
                   <Route path="suppliers" element={<Suppliers />} />
                   <Route path="hosting" element={<Hosting />} />
                   <Route path="campaigns" element={<Campaigns />} />

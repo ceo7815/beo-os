@@ -1,5 +1,7 @@
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore'
 import { Timestamp } from 'firebase/firestore'
+import { parseIncomePaymentRecords } from './financeIncomePayment'
+import { isFinanceHostingType } from './financeHostingTypes'
 import type {
   Client,
   Deal,
@@ -14,6 +16,13 @@ import type {
   DocType,
   HostingRecord,
   AgentCommissionPayment,
+  FinanceExpense,
+  FinanceExpenseFieldMode,
+  FinanceExpensePnlCategory,
+  FinanceExpenseTypeDef,
+  FinanceIncome,
+  FinanceIncomeStatus,
+  FinancePaymentMethod,
   Invoice,
   InvoiceStatus,
   Lead,
@@ -59,6 +68,208 @@ function parseReminders(value: unknown): TaskReminderEntry[] {
 }
 
 const INVOICE_STATUSES: InvoiceStatus[] = ['pending', 'paid', 'overdue']
+const FINANCE_INCOME_STATUSES: FinanceIncomeStatus[] = [
+  'pending',
+  'paid',
+  'overdue',
+  'partial',
+]
+const FINANCE_EXPENSE_FIELD_MODES: FinanceExpenseFieldMode[] = [
+  'none',
+  'supplier',
+  'platform',
+  'salary',
+]
+const FINANCE_EXPENSE_PNL: FinanceExpensePnlCategory[] = [
+  'fixed',
+  'supplier',
+  'platform',
+]
+
+function normalizeFinanceExpenseTypeId(raw: unknown): string {
+  const s = String(raw ?? '').trim()
+  return s || 'fixed'
+}
+
+function normalizeExpenseFieldMode(raw: unknown): FinanceExpenseFieldMode {
+  const s = String(raw ?? '').trim()
+  if (FINANCE_EXPENSE_FIELD_MODES.includes(s as FinanceExpenseFieldMode)) {
+    return s as FinanceExpenseFieldMode
+  }
+  return 'none'
+}
+
+function normalizeExpensePnlCategory(raw: unknown): FinanceExpensePnlCategory {
+  const s = String(raw ?? '').trim()
+  if (FINANCE_EXPENSE_PNL.includes(s as FinanceExpensePnlCategory)) {
+    return s as FinanceExpensePnlCategory
+  }
+  return 'fixed'
+}
+
+export function docToFinanceExpenseType(
+  d: QueryDocumentSnapshot<DocumentData>,
+): FinanceExpenseTypeDef {
+  const x = d.data()
+  return {
+    id: d.id,
+    label: String(x.label ?? '').trim() || 'סוג הוצאה',
+    color: String(x.color ?? '#F97316'),
+    fieldMode: normalizeExpenseFieldMode(x.fieldMode),
+    autoRecurring: x.autoRecurring === true,
+    pnlCategory: normalizeExpensePnlCategory(x.pnlCategory),
+    createdAt: timestampToIso(x.createdAt),
+  }
+}
+
+function normalizeFinanceIncomeStatus(raw: unknown): FinanceIncomeStatus {
+  const s = String(raw ?? '').trim().toLowerCase()
+  if (FINANCE_INCOME_STATUSES.includes(s as FinanceIncomeStatus)) {
+    return s as FinanceIncomeStatus
+  }
+  return 'pending'
+}
+
+export function docToFinanceIncome(
+  d: QueryDocumentSnapshot<DocumentData>,
+): FinanceIncome {
+  const x = d.data()
+  const invoiceDate =
+    typeof x.invoiceDate === 'string' && x.invoiceDate.trim()
+      ? x.invoiceDate.slice(0, 10)
+      : ''
+  const description =
+    typeof x.description === 'string' && x.description.trim()
+      ? x.description.trim()
+      : undefined
+  const amountIncludesVat = x.amountIncludesVat !== false
+  const vatAmount =
+    typeof x.vatAmount === 'number' && !Number.isNaN(x.vatAmount)
+      ? x.vatAmount
+      : undefined
+  const amountBeforeVat =
+    typeof x.amountBeforeVat === 'number' && !Number.isNaN(x.amountBeforeVat)
+      ? x.amountBeforeVat
+      : undefined
+  const paidAmount =
+    typeof x.paidAmount === 'number' && !Number.isNaN(x.paidAmount)
+      ? x.paidAmount
+      : undefined
+  const paymentMethodRaw = String(x.paymentMethod ?? '').trim()
+  const paymentMethod: FinancePaymentMethod | undefined =
+    paymentMethodRaw === 'bank_transfer' || paymentMethodRaw === 'credit_card'
+      ? paymentMethodRaw
+      : undefined
+  const paidDate =
+    typeof x.paidDate === 'string' && x.paidDate.trim()
+      ? x.paidDate.slice(0, 10)
+      : undefined
+  const payments = parseIncomePaymentRecords(x.payments)
+  return {
+    id: d.id,
+    projectId: String(x.projectId ?? ''),
+    clientId: String(x.clientId ?? ''),
+    amount:
+      typeof x.amount === 'number' && !Number.isNaN(x.amount) ? x.amount : 0,
+    amountIncludesVat,
+    ...(vatAmount !== undefined ? { vatAmount } : {}),
+    ...(amountBeforeVat !== undefined ? { amountBeforeVat } : {}),
+    invoiceNumber: String(x.invoiceNumber ?? ''),
+    invoiceDate,
+    description,
+    status: normalizeFinanceIncomeStatus(x.status),
+    ...(paidAmount !== undefined ? { paidAmount } : {}),
+    ...(paymentMethod ? { paymentMethod } : {}),
+    ...(paidDate ? { paidDate } : {}),
+    ...(payments.length ? { payments } : {}),
+    monthlyRetainer: x.monthlyRetainer === true,
+    hostingClient: x.hostingClient === true,
+    ...(isFinanceHostingType(x.hostingType) ? { hostingType: x.hostingType } : {}),
+    createdAt: timestampToIso(x.createdAt),
+  }
+}
+
+export function docToFinanceExpense(
+  d: QueryDocumentSnapshot<DocumentData>,
+): FinanceExpense {
+  const x = d.data()
+  const rawPid = x.projectId
+  const projectIdStr =
+    rawPid !== undefined && rawPid !== null ? String(rawPid).trim() : ''
+  const supplierName =
+    typeof x.supplierName === 'string' && x.supplierName.trim()
+      ? x.supplierName.trim()
+      : undefined
+  const rawSid = x.supplierId
+  const supplierId =
+    rawSid !== undefined && rawSid !== null && String(rawSid).trim()
+      ? String(rawSid).trim()
+      : undefined
+  const platformName =
+    typeof x.platformName === 'string' && x.platformName.trim()
+      ? x.platformName.trim()
+      : undefined
+  const name =
+    typeof x.name === 'string' && x.name.trim() ? x.name.trim() : undefined
+  const employeeName =
+    typeof x.employeeName === 'string' && x.employeeName.trim()
+      ? x.employeeName.trim()
+      : undefined
+  const amountIncludesVat = x.amountIncludesVat !== false
+  const vatAmount =
+    typeof x.vatAmount === 'number' && !Number.isNaN(x.vatAmount)
+      ? x.vatAmount
+      : undefined
+  const amountBeforeVat =
+    typeof x.amountBeforeVat === 'number' && !Number.isNaN(x.amountBeforeVat)
+      ? x.amountBeforeVat
+      : undefined
+  const description =
+    typeof x.description === 'string' && x.description.trim()
+      ? x.description.trim()
+      : undefined
+  const billingMonth =
+    typeof x.billingMonth === 'string' && x.billingMonth.trim()
+      ? x.billingMonth.slice(0, 7)
+      : ''
+  const pnlMonth =
+    typeof x.pnlMonth === 'string' && x.pnlMonth.trim()
+      ? x.pnlMonth.slice(0, 7)
+      : undefined
+  const linkedIncomeId =
+    typeof x.linkedIncomeId === 'string' && x.linkedIncomeId.trim()
+      ? x.linkedIncomeId.trim()
+      : undefined
+  const rawCid = x.clientId
+  const clientId =
+    rawCid !== undefined && rawCid !== null && String(rawCid).trim()
+      ? String(rawCid).trim()
+      : undefined
+  return {
+    id: d.id,
+    ...(clientId ? { clientId } : {}),
+    projectId: projectIdStr ? projectIdStr : undefined,
+    type: normalizeFinanceExpenseTypeId(x.type),
+    supplierId,
+    supplierName,
+    platformName,
+    amount:
+      typeof x.amount === 'number' && !Number.isNaN(x.amount) ? x.amount : 0,
+    name,
+    ...(employeeName ? { employeeName } : {}),
+    amountIncludesVat,
+    ...(vatAmount !== undefined ? { vatAmount } : {}),
+    ...(amountBeforeVat !== undefined ? { amountBeforeVat } : {}),
+    description,
+    recurring: x.recurring === true,
+    billingMonth,
+    vatLiable: x.vatLiable === false ? false : x.vatLiable === true ? true : undefined,
+    ...(pnlMonth ? { pnlMonth } : {}),
+    ...(linkedIncomeId ? { linkedIncomeId } : {}),
+    supplierInvoiceReceived: x.supplierInvoiceReceived === true,
+    createdAt: timestampToIso(x.createdAt),
+  }
+}
 
 export function docToInvoice(d: QueryDocumentSnapshot<DocumentData>): Invoice {
   const x = d.data()
@@ -175,6 +386,10 @@ export function docToClient(d: QueryDocumentSnapshot<DocumentData>): Client {
     typeof x.businessNotes === 'string' && x.businessNotes.trim()
       ? String(x.businessNotes).trim()
       : undefined
+  const financeBalance =
+    typeof x.financeBalance === 'number' && !Number.isNaN(x.financeBalance)
+      ? x.financeBalance
+      : undefined
   return {
     id: d.id,
     name: String(x.name ?? ''),
@@ -191,6 +406,7 @@ export function docToClient(d: QueryDocumentSnapshot<DocumentData>): Client {
     ...(addressLine ? { addressLine } : {}),
     ...(city ? { city } : {}),
     ...(businessNotes ? { businessNotes } : {}),
+    ...(financeBalance !== undefined ? { financeBalance } : {}),
   }
 }
 
@@ -356,6 +572,15 @@ export function docToProject(d: QueryDocumentSnapshot<DocumentData>): Project {
     typeof x.description === 'string' && x.description.trim()
       ? x.description.trim()
       : undefined
+  const budgetTotal =
+    typeof x.budgetTotal === 'number' && !Number.isNaN(x.budgetTotal)
+      ? x.budgetTotal
+      : undefined
+  let budgetUsedPercent: number | undefined
+  const rawBudgetUsed = x.budgetUsedPercent
+  if (typeof rawBudgetUsed === 'number' && !Number.isNaN(rawBudgetUsed)) {
+    budgetUsedPercent = Math.min(100, Math.max(0, Math.round(rawBudgetUsed)))
+  }
   return {
     id: d.id,
     name: String(x.name ?? ''),
@@ -380,6 +605,8 @@ export function docToProject(d: QueryDocumentSnapshot<DocumentData>): Project {
     ...(manualProgressPercent !== undefined
       ? { manualProgressPercent }
       : {}),
+    ...(budgetTotal !== undefined ? { budgetTotal } : {}),
+    ...(budgetUsedPercent !== undefined ? { budgetUsedPercent } : {}),
     createdAt: timestampToIso(x.createdAt),
   }
 }

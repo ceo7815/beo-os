@@ -52,7 +52,7 @@ export function Layout() {
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const setSelectedClient = useHubStore((s) => s.setSelectedClient)
-  const { users: teamMembers } = useUsers()
+  const { users: teamMembers, loading: usersLoading } = useUsers()
   const { invoices } = useInvoices()
   const overdueInvoiceCount = invoices.filter((i) => i.status === 'overdue').length
   const { user, signOutUser } = useAuth()
@@ -109,7 +109,9 @@ export function Layout() {
     }
   }, [user, teamMembers])
 
-  const showUsersNav = isAdminRole(mainUser.role)
+  const adminRole = teamMembers.find((m) => m.id === user?.uid)?.role ?? ''
+  const showAdminNav = !usersLoading && isAdminRole(adminRole)
+  const showFinanceNav = showAdminNav
 
   return (
     <>
@@ -458,9 +460,28 @@ export function Layout() {
                 כספת סיסמאות
               </NavLink>
 
-              {showUsersNav ? (
+              {showAdminNav ? (
                 <>
                   <div className="my-2 border-t border-[rgba(255,255,255,0.1)]" />
+
+                  {showFinanceNav ? (
+                    <NavLink
+                      to="/finance"
+                      className={({ isActive }) =>
+                        `${navBase} ${
+                          isActive
+                            ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                            : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                        }`
+                      }
+                    >
+                      <NavGlyph>
+                        <path d="M21.21 15.89A10 10 0 118 2.83" />
+                        <path d="M22 12A10 10 0 0012 2v10z" />
+                      </NavGlyph>
+                      פיננסים
+                    </NavLink>
+                  ) : null}
 
                   <NavLink
                     to="/users"

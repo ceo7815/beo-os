@@ -150,6 +150,15 @@ service cloud.firestore {
     match /collectionTracking/{docId} {
       allow read, write: if signedIn();
     }
+    match /financeIncomes/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeExpenses/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeExpenseTypes/{docId} {
+      allow read, write: if isAdmin();
+    }
     match /hostingRecords/{docId} {
       allow read, write: if signedIn();
     }

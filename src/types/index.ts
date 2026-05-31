@@ -1,5 +1,124 @@
 export type InvoiceStatus = 'pending' | 'paid' | 'overdue'
 
+/** סטטוס הכנסה במודול פיננסים */
+export type FinanceIncomeStatus = 'paid' | 'pending' | 'overdue' | 'partial'
+
+export type FinancePaymentMethod = 'bank_transfer' | 'credit_card'
+
+/** תשלום בודד על הכנסה */
+export interface FinanceIncomePaymentRecord {
+  id: string
+  amount: number
+  paymentMethod: FinancePaymentMethod
+  /** YYYY-MM-DD */
+  paidDate: string
+  createdAt?: string
+}
+
+/** סוג הכנסה ללא פרויקט — אחסון / פורטל */
+export type FinanceHostingType = 'monthly' | 'yearly' | 'portal_monthly'
+
+/** הכנסה במודול פיננסים — אדמין בלבד (חשבון עסקה, לא חשבונית מס) */
+export interface FinanceIncome {
+  id: string
+  /** ריק כש־hostingClient — הכנסת אחסון ללא פרויקט */
+  projectId: string
+  clientId: string
+  amount: number
+  /** true = הסכום שנשמר כולל מע״מ (ברירת מחדל) */
+  amountIncludesVat?: boolean
+  /** סכום מע״מ ₪ */
+  vatAmount?: number
+  /** לפני מע״מ ₪ */
+  amountBeforeVat?: number
+  /** מספר חשבון עסקה — לא חשבונית מס */
+  invoiceNumber: string
+  /** YYYY-MM-DD — תאריך חשבון עסקה */
+  invoiceDate: string
+  description?: string
+  status: FinanceIncomeStatus
+  /** סכום ששולם בפועל (כולל מע״מ) — רלוונטי ל־paid / partial */
+  paidAmount?: number
+  paymentMethod?: FinancePaymentMethod
+  /** YYYY-MM-DD — מתי התקבל התשלום */
+  paidDate?: string
+  /** היסטוריית תשלומים (תשלום ראשון + תשלומים נוספים) */
+  payments?: FinanceIncomePaymentRecord[]
+  /** ריטיינר חודשי — חוזר בכל חודש מהתחלה ועד סוף אותה שנה */
+  monthlyRetainer?: boolean
+  /** הכנסה מלקוח אחסון — ללא פרויקט מקושר */
+  hostingClient?: boolean
+  /** monthly = חוזר כל חודש · yearly = חד־פעמי לשנה */
+  hostingType?: FinanceHostingType
+  createdAt: string
+  /** הרחבה לתצוגה — מופע חודשי של ריטיינר */
+  isAutoOccurrence?: boolean
+  sourceInvoiceDate?: string
+}
+
+export type FinanceExpenseFieldMode = 'none' | 'supplier' | 'platform' | 'salary'
+export type FinanceExpensePnlCategory = 'fixed' | 'supplier' | 'platform'
+
+/** הגדרת סוג הוצאה — מובנים + מותאמים אישית ב-Firestore */
+export interface FinanceExpenseTypeDef {
+  id: string
+  label: string
+  color: string
+  fieldMode: FinanceExpenseFieldMode
+  /** חוזר אוטומטית בכל חודש מהתחלה ועד סוף אותה שנה */
+  autoRecurring: boolean
+  pnlCategory: FinanceExpensePnlCategory
+  builtIn?: boolean
+  createdAt?: string
+}
+
+/** מזהה סוג — מובנה (fixed/supplier/platform) או מזהה מסמך מותאם */
+export type FinanceExpenseTypeId = string
+
+/** הוצאה במודול פיננסים — אדמין בלבד */
+export interface FinanceExpense {
+  id: string
+  /** אופציונלי — שיוך ישיר ללקוח */
+  clientId?: string
+  /** אופציונלי — הוצאה כללית ללא פרויקט */
+  projectId?: string
+  type: FinanceExpenseTypeId
+  /** קישור לספק רשמי במערכת */
+  supplierId?: string
+  /** שם מסונכרן — לתצוגה / רשומות ישנות */
+  supplierName?: string
+  platformName?: string
+  /** שם ההוצאה — לזיהוי מהיר (למשל שכירות, Google Ads) */
+  name?: string
+  /** שם העובד — רלוונטי להוצאות משכורת */
+  employeeName?: string
+  amount: number
+  /** false = פטור ממע״מ (משכורות וכד׳) — ברירת מחדל חייב */
+  vatLiable?: boolean
+  /** true = הסכום שהוזן/נשמר כולל מע״מ (ברירת מחדל) */
+  amountIncludesVat?: boolean
+  /** סכום מע״מ ₪ */
+  vatAmount?: number
+  /** לפני מע״מ ₪ */
+  amountBeforeVat?: number
+  description?: string
+  recurring: boolean
+  /** YYYY-MM — חודש תשלום בפועל */
+  billingMonth: string
+  /** YYYY-MM — חודש לרווח והפסד (כשמקושר לפרויקט/עסקה) */
+  pnlMonth?: string
+  /** הכנסה/עסקה שאליה משויכת ההוצאה לצורכי רווח והפסד */
+  linkedIncomeId?: string
+  /** האם התקבלה חשבונית (כל סוגי ההוצאות) */
+  supplierInvoiceReceived?: boolean
+  createdAt: string
+  /** הרחבה לתצוגה — הוצאה קבועה/חוזרת לחודש אחר */
+  isAutoOccurrence?: boolean
+  sourceBillingMonth?: string
+  /** הרחבה לתצוגה — מוצגת בחודש רווח והפסד שונה מתשלום */
+  isPnlAttribution?: boolean
+}
+
 export interface Invoice {
   id: string
   clientId: string
@@ -377,6 +496,8 @@ export interface Client {
   city?: string
   /** הערות פנימיות על העסק */
   businessNotes?: string
+  /** יתרת חוב פתוחה מהכנסות (תשלום חלקי) — ₪ */
+  financeBalance?: number
 }
 
 /** סוג עסקה במסלול ניהול אדמין — `deals` */
@@ -476,6 +597,10 @@ export interface Project {
    * כשלא מוגדר — האחוז מחושב ממשימות (בוצעו/סה״כ).
    */
   manualProgressPercent?: number
+  /** תקציב כולל לפרויקט (₪) — מודול פיננסים */
+  budgetTotal?: number
+  /** אחוז ניצול תקציב 0–100 — מודול פיננסים */
+  budgetUsedPercent?: number
   createdAt: string
 }
 

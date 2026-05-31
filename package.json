@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "storage:cors": "gsutil cors set storage-cors.json gs://hub-pos-f399c.appspot.com"
+    "storage:cors": "gsutil cors set storage-cors.json gs://hub-pos-f399c.appspot.com",
+    "firebase:login": "firebase login --reauth",
+    "firebase:deploy:rules": "firebase deploy --only firestore:rules --project hub-pos-f399c"
   },
   "dependencies": {
     "firebase": "^12.12.0",
@@ -27,6 +29,7 @@
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "firebase-tools": "^15.19.0",
     "globals": "^17.4.0",
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
