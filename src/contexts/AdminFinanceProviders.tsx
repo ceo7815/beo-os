@@ -1,8 +1,9 @@
 import { type ReactNode } from 'react'
-import { isAdminRole } from '../components/RequireAdmin'
+import { userIsAdmin } from '../components/RequireAdmin'
 import { FinanceExpenseTypesProvider } from '../hooks/useFinanceExpenseTypes'
 import { FinanceExpensesProvider } from '../hooks/useFinanceExpenses'
 import { FinanceIncomesProvider } from '../hooks/useFinanceIncomes'
+import { useHubStore } from '../store/useStore'
 import { useAuth } from './AuthContext'
 import { useUsers } from '../hooks/useUsers'
 
@@ -10,8 +11,9 @@ import { useUsers } from '../hooks/useUsers'
 export function AdminFinanceProviders({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { users, loading } = useUsers()
-  const role = users.find((m) => m.id === user?.uid)?.role ?? ''
-  const isAdmin = Boolean(user) && !loading && isAdminRole(role)
+  const hubUser = useHubStore((s) => s.currentUser)
+  const isAdmin =
+    Boolean(user) && !loading && userIsAdmin(user?.uid, users, hubUser)
 
   if (!isAdmin) {
     return children

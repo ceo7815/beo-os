@@ -12,7 +12,7 @@ import { QuickCalendarSlider } from './QuickCalendarSlider'
 import { QuickTasksSlider } from './QuickTasksSlider'
 import { MeetingDrawer } from './MeetingDrawer'
 import { TaskDrawer } from './TaskDrawer'
-import { isAdminRole } from './RequireAdmin'
+import { userIsAdmin } from './RequireAdmin'
 
 const workspaceLinks = [
   { label: 'Drive', href: 'https://drive.google.com', dot: '#FCD34D' },
@@ -52,7 +52,8 @@ export function Layout() {
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const setSelectedClient = useHubStore((s) => s.setSelectedClient)
-  const { users: teamMembers, loading: usersLoading } = useUsers()
+  const { users: teamMembers } = useUsers()
+  const hubUser = useHubStore((s) => s.currentUser)
   const { invoices } = useInvoices()
   const overdueInvoiceCount = invoices.filter((i) => i.status === 'overdue').length
   const { user, signOutUser } = useAuth()
@@ -109,8 +110,7 @@ export function Layout() {
     }
   }, [user, teamMembers])
 
-  const adminRole = teamMembers.find((m) => m.id === user?.uid)?.role ?? ''
-  const showAdminNav = !usersLoading && isAdminRole(adminRole)
+  const showAdminNav = userIsAdmin(user?.uid, teamMembers, hubUser)
   const showFinanceNav = showAdminNav
 
   return (
@@ -314,6 +314,24 @@ export function Layout() {
                   ) : null}
                 </span>
               </NavLink>
+              {showFinanceNav ? (
+                <NavLink
+                  to="/finance"
+                  className={({ isActive }) =>
+                    `${navBase} ${
+                      isActive
+                        ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
+                        : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                    }`
+                  }
+                >
+                  <NavGlyph>
+                    <path d="M21.21 15.89A10 10 0 118 2.83" />
+                    <path d="M22 12A10 10 0 0012 2v10z" />
+                  </NavGlyph>
+                  פיננסים
+                </NavLink>
+              ) : null}
               <NavLink
                 to="/suppliers"
                 className={({ isActive }) =>
@@ -463,25 +481,6 @@ export function Layout() {
               {showAdminNav ? (
                 <>
                   <div className="my-2 border-t border-[rgba(255,255,255,0.1)]" />
-
-                  {showFinanceNav ? (
-                    <NavLink
-                      to="/finance"
-                      className={({ isActive }) =>
-                        `${navBase} ${
-                          isActive
-                            ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                            : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                        }`
-                      }
-                    >
-                      <NavGlyph>
-                        <path d="M21.21 15.89A10 10 0 118 2.83" />
-                        <path d="M22 12A10 10 0 0012 2v10z" />
-                      </NavGlyph>
-                      פיננסים
-                    </NavLink>
-                  ) : null}
 
                   <NavLink
                     to="/users"
