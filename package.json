@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "storage:cors": "gsutil cors set storage-cors.json gs://hub-pos-f399c.appspot.com",
     "firebase:login": "firebase login --reauth",
-    "firebase:deploy:rules": "firebase deploy --only firestore:rules --project hub-pos-f399c"
+    "firebase:deploy:rules": "firebase deploy --only firestore:rules --project hub-pos-f399c",
+    "grant-admin": "node functions/scripts/grant-admin.mjs"
   },
   "dependencies": {
     "firebase": "^12.12.0",
