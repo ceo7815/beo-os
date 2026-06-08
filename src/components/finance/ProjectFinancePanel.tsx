@@ -1,6 +1,12 @@
 import { useMemo, type ReactNode } from 'react'
 import { formatDateIL } from '../../lib/dates'
-import { monthLabelHe } from '../../lib/financeCalc'
+import { monthLabelHe, formatNis, computeCollectionBalance, INCOME_STATUS_LABEL, INCOME_STATUS_STYLE } from '../../lib/financeCalc'
+import {
+  FINANCE_INCOME_DOCUMENT_SHORT,
+  incomeDocumentKind,
+  isTaxReceiptIncome,
+} from '../../lib/financeIncomeDocument'
+import { incomePaymentDate } from '../../lib/financeIncomePayment'
 import {
   expenseTypeMap,
   expenseTypeStyle,
@@ -44,7 +50,15 @@ export function ProjectFinancePanel({
     () =>
       incomes
         .filter((i) => i.projectId === project.id)
-        .sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate)),
+        .sort((a, b) => {
+          const da = isTaxReceiptIncome(a)
+            ? incomePaymentDate(a)
+            : a.invoiceDate
+          const db = isTaxReceiptIncome(b)
+            ? incomePaymentDate(b)
+            : b.invoiceDate
+          return db.localeCompare(da)
+        }),
     [incomes, project.id],
   )
 
@@ -57,6 +71,14 @@ export function ProjectFinancePanel({
   )
 
   const totalInvoiced = projectIncomes.reduce((s, i) => s + i.amount, 0)
+  const totalTaxReceipts = projectIncomes
+    .filter((i) => isTaxReceiptIncome(i))
+    .reduce((s, i) => s + i.amount, 0)
+  const collectionBalance = useMemo(
+    () =>
+      computeCollectionBalance(incomes, { projectId: project.id, clientId: '' }, new Set()),
+    [incomes, project.id],
+  )
   const totalSpent = projectExpenses.reduce((s, e) => s + e.amount, 0)
   const budgetTotal = project.budgetTotal ?? 0
   const balanceRemaining = budgetTotal - totalSpent
@@ -101,7 +123,9 @@ export function ProjectFinancePanel({
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <div className="grid grid-cols-2 gap-3">
             <StatCard label="תקציב כולל" value={formatNis(budgetTotal)} />
-            <StatCard label="סה״כ חשבוניות" value={formatNis(totalInvoiced)} />
+            <StatCard label="מס קבלה (בפועל)" value={formatNis(totalTaxReceipts)} />
+            <StatCard label="יתרה לגבייה" value={formatNis(collectionBalance)} />
+            <StatCard label="סה״כ מסמכים" value={formatNis(totalInvoiced)} />
             <StatCard label="סה״כ הוצאות" value={formatNis(totalSpent)} />
             <StatCard
               label="יתרה לניצול"
@@ -137,7 +161,7 @@ export function ProjectFinancePanel({
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="text-[10px] font-bold text-[var(--text-mid)]">
-                            חשבון עסקה
+                            {FINANCE_INCOME_DOCUMENT_SHORT[incomeDocumentKind(row)]}
                           </div>
                           <div className="font-semibold text-[var(--text-dark)]">
                             {row.invoiceNumber || '—'}
@@ -148,7 +172,11 @@ export function ProjectFinancePanel({
                             ) : null}
                           </div>
                           <div className="text-xs text-[var(--text-mid)]">
-                            {formatDateIL(row.invoiceDate)}
+                            {formatDateIL(
+                              isTaxReceiptIncome(row)
+                                ? incomePaymentDate(row)
+                                : row.invoiceDate,
+                            )}
                           </div>
                         </div>
                         <div className="text-left">
@@ -251,24 +279,6 @@ export function ProjectFinancePanel({
     </>
   )
 }
-
-function formatNis(amount: number): string {
-  return `₪${Math.round(amount).toLocaleString('he-IL')}`
-}
-
-const INCOME_STATUS_LABEL = {
-  paid: 'שולם',
-  pending: 'ממתין',
-  overdue: 'באיחור',
-  partial: 'שולם חלקית',
-} as const
-
-const INCOME_STATUS_STYLE = {
-  paid: { bg: '#10B981', color: '#fff' },
-  pending: { bg: '#F59E0B', color: '#fff' },
-  overdue: { bg: '#EF4444', color: '#fff' },
-  partial: { bg: '#3B82F6', color: '#fff' },
-} as const
 
 function StatCard(props: {
   label: string

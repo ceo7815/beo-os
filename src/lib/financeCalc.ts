@@ -1,13 +1,19 @@
 import { todayYmd } from './dates'
 import {
+  isTaxReceiptIncome,
+  isTransactionInvoiceIncome,
+} from './financeIncomeDocument'
+import {
   monthsInRange,
   normalizeYmRange,
 } from './financeMonthRange'
 import {
+  incomeFilterAnchorDate,
   incomeOutstandingAmount,
   incomeRecognizedPaid,
 } from './financeIncomePayment'
-import { resolveExpenseRowVat, resolveIncomeVat, prorateVatBreakdown } from './israeliVat'
+import { resolveExpenseRowVat, resolveIncomeVat } from './israeliVat'
+import { resolveExpenseVatClass } from './financeExpenseVat'
 import {
   expandExpensesForFilters,
   expenseAppliesToMonth,
@@ -89,12 +95,59 @@ export type FinanceFilters = {
   clientId: string
 }
 
+/** יתרה לגבייה — סכום שלא נגבה, על כל החודשים (לא לפי פילטר תאריך) */
+export function computeCollectionBalance(
+  incomes: FinanceIncome[],
+  filters: Pick<FinanceFilters, 'projectId' | 'clientId'>,
+  projectIdsForClient: Set<string>,
+): number {
+  let total = 0
+  for (const row of incomes) {
+    if (!isTransactionInvoiceIncome(row)) continue
+    if (filters.projectId && row.projectId !== filters.projectId) continue
+    if (filters.clientId) {
+      const matchClient =
+        row.clientId === filters.clientId ||
+        (row.projectId && projectIdsForClient.has(row.projectId))
+      if (!matchClient) continue
+    }
+    total += incomeOutstandingAmount(row)
+  }
+  return Math.round(total * 100) / 100
+}
+
 export function filterIncomes(
   incomes: FinanceIncome[],
   filters: FinanceFilters,
   today = todayYmd(),
 ): FinanceIncome[] {
   return expandIncomesForFilters(incomes, filters, today)
+}
+
+/** מס קבלה — סינון לפי תאריך תשלום */
+export function filterTaxReceiptIncomes(
+  incomes: FinanceIncome[],
+  filters: FinanceFilters,
+  today = todayYmd(),
+): FinanceIncome[] {
+  return filterIncomes(
+    incomes.filter(isTaxReceiptIncome),
+    filters,
+    today,
+  )
+}
+
+/** יתרה לגבייה — סינון לפי תאריך מסמך */
+export function filterCollectionIncomes(
+  incomes: FinanceIncome[],
+  filters: FinanceFilters,
+  today = todayYmd(),
+): FinanceIncome[] {
+  return filterIncomes(
+    incomes.filter(isTransactionInvoiceIncome),
+    filters,
+    today,
+  )
 }
 
 function parseYm(ym: string): { y: number; m: number } | null {
@@ -114,28 +167,26 @@ export function formatYmRangeLabel(from: string, to: string): string {
   return `${monthLabelHe(f)} – ${monthLabelHe(t)}`
 }
 
-function incomePortionBreakdown(
-  inc: FinanceIncome,
-  portionGross: number,
-): ReturnType<typeof resolveIncomeVat> {
-  return prorateVatBreakdown(resolveIncomeVat(inc), portionGross, inc.amount)
+/** מע״מ על הכנסה — סכום מלא של מס קבלה בלבד (לא חלקי, לא חשבונית עסקה) */
+export function incomeVatForDocument(inc: FinanceIncome): number {
+  if (!isTaxReceiptIncome(inc)) return 0
+  return resolveIncomeVat(inc).vat
 }
 
-/** מע״מ על סכום ששולם בפועל בלבד — יתרה ממתינה לא נכנסת למשוואה */
+/** @deprecated השתמשו ב-incomeVatForDocument — נשמר לתאימות */
 export function incomeVatOnPaid(inc: FinanceIncome): number {
-  const paid = incomeRecognizedPaid(inc)
-  if (paid <= 0) return 0
-  return incomePortionBreakdown(inc, paid).vat
+  return incomeVatForDocument(inc)
 }
 
 export function incomeAppliesToMonth(
   inc: FinanceIncome,
   targetYm: string,
 ): boolean {
-  if (ymFromDate(inc.invoiceDate) === targetYm) return true
+  const anchor = incomeFilterAnchorDate(inc)
+  if (ymFromDate(anchor) === targetYm) return true
   if (!inc.monthlyRetainer) return false
 
-  const start = parseYm(ymFromDate(inc.invoiceDate))
+  const start = parseYm(ymFromDate(anchor))
   const target = parseYm(targetYm)
   if (!start || !target) return false
   if (target.y !== start.y) return false
@@ -144,7 +195,8 @@ export function incomeAppliesToMonth(
 }
 
 function incomeDateForMonth(inc: FinanceIncome, targetYm: string): string {
-  const day = inc.invoiceDate.slice(8, 10)
+  const anchor = incomeFilterAnchorDate(inc)
+  const day = anchor.slice(8, 10)
   const safeDay =
     /^\d{2}$/.test(day) && Number(day) >= 1 && Number(day) <= 28
       ? day
@@ -177,7 +229,8 @@ function expandIncomesForMonth(
     if (filters.clientId && inc.clientId !== filters.clientId) continue
     if (!incomeAppliesToMonth(inc, ym)) continue
 
-    if (ymFromDate(inc.invoiceDate) === ym) {
+    const anchor = incomeFilterAnchorDate(inc)
+    if (ymFromDate(anchor) === ym) {
       out.push(applyOverdueToIncome(inc, today))
       continue
     }
@@ -187,7 +240,7 @@ function expandIncomesForMonth(
         {
           ...inc,
           invoiceDate: incomeDateForMonth(inc, ym),
-          sourceInvoiceDate: inc.invoiceDate,
+          sourceInvoiceDate: anchor,
           isAutoOccurrence: true,
         },
         today,
@@ -241,23 +294,61 @@ export function filterExpensesByClient(
 }
 
 export type FinanceSummary = {
-  /** סכום כל חשבונות העסקה בחודש (כולל ממתין) */
-  totalTransactions: number
-  /** סכום שהתקבל בפועל (שולם + חלקי) */
-  totalPaidIncome: number
-  totalExpenses: number
-  /** עסקאות פחות הוצאות (לא לפי תשלום בפועל) */
-  netProfit: number
-  /** סכום שלא נגבה עדיין */
-  pendingCollection: number
-  /** מע״מ על הכנסות — רק מסכום ששולם בפועל (ממתין/יתרה לא נספרים) */
+  /** הכנסות ברוטו (מס קבלה) */
+  incomeGross: number
+  /** מע״מ עסקאות */
   incomeVat: number
-  /** מע״מ תשומות — הוצאות חייבות במע״מ בלבד */
+  /** הכנסות נטו (שלי) */
+  incomeNet: number
+
+  /** הוצאות חייבות מע״מ — ברוטו */
+  expenseVatLiableGross: number
+  /** מע״מ תשומות (ניתן לקיזוז) */
+  expenseInputVat: number
+  /** הוצאות חייבות — נטו */
+  expenseVatLiableNet: number
+  /** הוצאות statutory + פטור — סכום מלא (= נטו) */
+  expenseNonVatTotal: number
+
+  /** סה״כ הוצאות נטו */
+  expenseNetTotal: number
+  /** מע״מ לתשלום = עסקאות − תשומות */
+  vatPayable: number
+  /** רווח גולמי = הכנסות נטו − הוצאות נטו */
+  grossProfit: number
+  /** רווח נקי אמיתי = גולמי − מע״מ לתשלום */
+  trueNetProfit: number
+
+  /** יתרה לגבייה — גלובלי */
+  collectionBalance: number
+  pendingCollection: number
+
+  /** @deprecated — alias ל-incomeGross */
+  totalTaxReceipts: number
+  /** @deprecated */
+  openTransactionInvoices: number
+  /** @deprecated */
+  totalTransactionInvoices: number
+  /** @deprecated */
+  totalTransactions: number
+  /** @deprecated */
+  totalPaidIncome: number
+  /** @deprecated — gross */
+  totalExpenses: number
+  /** @deprecated */
+  netProfit: number
+  /** @deprecated — alias ל-expenseInputVat */
   expenseVat: number
-  /** מע״מ עסקאות − מע״מ תשומות (חיובי = לשלם לרשות) */
+  /** @deprecated */
   vatNet: number
-  /** רווח נקי − מע״מ לתשלום (אם קיזוז חיובי) */
+  /** @deprecated — alias ל-trueNetProfit */
+  realProfit: number
+  /** @deprecated */
   profitAfterVat: number
+}
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
 export function computeSummary(
@@ -267,7 +358,8 @@ export function computeSummary(
   projectIdsForClient: Set<string>,
   expenseTypes: FinanceExpenseTypeDef[],
 ): FinanceSummary {
-  const filteredIncomes = filterIncomes(incomes, filters)
+  const filteredTaxReceipts = filterTaxReceiptIncomes(incomes, filters)
+  const filteredCollectionInPeriod = filterCollectionIncomes(incomes, filters)
   const filteredExpenses = filterExpensesByClient(
     expenses,
     filters,
@@ -276,53 +368,101 @@ export function computeSummary(
     incomes,
   )
 
-  let totalTransactions = 0
+  let incomeGross = 0
+  let incomeVat = 0
+  let incomeNet = 0
   let totalPaidIncome = 0
   let pendingCollection = 0
-  let incomeVat = 0
-  for (const row of filteredIncomes) {
-    totalTransactions += row.amount
+
+  for (const row of filteredTaxReceipts) {
+    const vat = resolveIncomeVat(row)
+    incomeGross += vat.gross
+    incomeVat += vat.vat
+    incomeNet += vat.net
     totalPaidIncome += incomeRecognizedPaid(row)
+  }
+  for (const row of filteredCollectionInPeriod) {
     pendingCollection += incomeOutstandingAmount(row)
-    incomeVat += incomeVatOnPaid(row)
   }
 
-  const totalExpenses = filteredExpenses.reduce((s, e) => s + e.amount, 0)
-  let expenseVat = 0
+  const collectionBalance = computeCollectionBalance(
+    incomes,
+    { projectId: filters.projectId, clientId: filters.clientId },
+    projectIdsForClient,
+  )
+
+  let expenseVatLiableGross = 0
+  let expenseInputVat = 0
+  let expenseVatLiableNet = 0
+  let expenseNonVatTotal = 0
+
   for (const row of filteredExpenses) {
-    expenseVat += resolveExpenseRowVat(row).vat
+    const vatClass = resolveExpenseVatClass(row)
+    const breakdown = resolveExpenseRowVat(row)
+    if (vatClass === 'vat_liable') {
+      expenseVatLiableGross += breakdown.gross
+      expenseInputVat += breakdown.vat
+      expenseVatLiableNet += breakdown.net
+    } else {
+      expenseNonVatTotal += breakdown.gross
+    }
   }
-  incomeVat = Math.round(incomeVat * 100) / 100
-  expenseVat = Math.round(expenseVat * 100) / 100
-  const netProfit = totalTransactions - totalExpenses
-  const vatNet = Math.round((incomeVat - expenseVat) * 100) / 100
-  const vatPayable = Math.max(0, vatNet)
-  const profitAfterVat = Math.round((netProfit - vatPayable) * 100) / 100
+
+  incomeGross = roundMoney(incomeGross)
+  incomeVat = roundMoney(incomeVat)
+  incomeNet = roundMoney(incomeNet)
+  expenseVatLiableGross = roundMoney(expenseVatLiableGross)
+  expenseInputVat = roundMoney(expenseInputVat)
+  expenseVatLiableNet = roundMoney(expenseVatLiableNet)
+  expenseNonVatTotal = roundMoney(expenseNonVatTotal)
+
+  const expenseNetTotal = roundMoney(expenseVatLiableNet + expenseNonVatTotal)
+  const vatPayable = roundMoney(Math.max(0, incomeVat - expenseInputVat))
+  const grossProfit = roundMoney(incomeNet - expenseNetTotal)
+  const trueNetProfit = roundMoney(grossProfit - vatPayable)
 
   return {
-    totalTransactions,
-    totalPaidIncome,
-    totalExpenses,
-    netProfit,
-    pendingCollection,
+    incomeGross,
     incomeVat,
-    expenseVat,
-    vatNet,
-    profitAfterVat,
+    incomeNet,
+    expenseVatLiableGross,
+    expenseInputVat,
+    expenseVatLiableNet,
+    expenseNonVatTotal,
+    expenseNetTotal,
+    vatPayable,
+    grossProfit,
+    trueNetProfit,
+    collectionBalance,
+    pendingCollection,
+    totalTaxReceipts: incomeGross,
+    openTransactionInvoices: collectionBalance,
+    totalTransactionInvoices: collectionBalance,
+    totalTransactions: incomeGross,
+    totalPaidIncome,
+    totalExpenses: roundMoney(expenseVatLiableGross + expenseNonVatTotal),
+    netProfit: grossProfit,
+    expenseVat: expenseInputVat,
+    vatNet: roundMoney(incomeVat - expenseInputVat),
+    realProfit: trueNetProfit,
+    profitAfterVat: trueNetProfit,
   }
 }
 
 export type ProfitLossRow = {
   ym: string
   label: string
-  /** סכום כל העסקאות בחודש (כולל ממתין) */
-  totalTransactions: number
-  /** סכום שלא נגבה עדיין */
-  pendingCollection: number
+  incomeNet: number
+  expenseNet: number
+  vatPayable: number
+  trueNetProfit: number
+  /** @deprecated */
+  totalTaxReceipts: number
   fixedExpenses: number
   supplierExpenses: number
   platformExpenses: number
   totalExpenses: number
+  realProfit: number
   netProfit: number
   profitMargin: number
 }
@@ -336,45 +476,63 @@ export function computeProfitLossRows(
   const typeMap = expenseTypeMap(expenseTypes)
   const rows: ProfitLossRow[] = []
 
-  for (let month = 4; month <= 12; month += 1) {
+  for (let month = 1; month <= 12; month += 1) {
     const ym = `${year}-${String(month).padStart(2, '0')}`
 
-    let totalTransactions = 0
-    let pendingCollection = 0
+    let incomeNet = 0
+    let incomeVat = 0
     for (const inc of incomes) {
       if (!incomeAppliesToMonth(inc, ym)) continue
-      totalTransactions += inc.amount
-      pendingCollection += incomeOutstandingAmount(inc)
+      if (isTaxReceiptIncome(inc)) {
+        const vat = resolveIncomeVat(inc)
+        incomeNet += vat.net
+        incomeVat += vat.vat
+      }
     }
 
+    let expenseNet = 0
+    let expenseInputVat = 0
     let fixedExpenses = 0
     let supplierExpenses = 0
     let platformExpenses = 0
     for (const exp of expenses) {
       const def = resolveExpenseType(exp.type, typeMap)
       if (!expenseAppliesToMonth(exp, ym, def, incomes)) continue
-      if (def.pnlCategory === 'fixed') fixedExpenses += exp.amount
-      else if (def.pnlCategory === 'supplier') supplierExpenses += exp.amount
-      else platformExpenses += exp.amount
+      const breakdown = resolveExpenseRowVat(exp)
+      expenseNet += breakdown.net
+      if (resolveExpenseVatClass(exp) === 'vat_liable') {
+        expenseInputVat += breakdown.vat
+      }
+      if (def.pnlCategory === 'fixed') fixedExpenses += breakdown.net
+      else if (def.pnlCategory === 'supplier') supplierExpenses += breakdown.net
+      else platformExpenses += breakdown.net
     }
 
-    const totalExpenses = fixedExpenses + supplierExpenses + platformExpenses
-    const netProfit = totalTransactions - totalExpenses
+    incomeNet = roundMoney(incomeNet)
+    incomeVat = roundMoney(incomeVat)
+    expenseNet = roundMoney(expenseNet)
+    expenseInputVat = roundMoney(expenseInputVat)
+    const vatPayable = roundMoney(Math.max(0, incomeVat - expenseInputVat))
+    const grossProfit = roundMoney(incomeNet - expenseNet)
+    const trueNetProfit = roundMoney(grossProfit - vatPayable)
+    const totalExpenses = expenseNet
     const profitMargin =
-      totalTransactions > 0
-        ? Math.round((netProfit / totalTransactions) * 1000) / 10
-        : 0
+      incomeNet > 0 ? roundMoney((trueNetProfit / incomeNet) * 1000) / 10 : 0
 
     rows.push({
       ym,
       label: monthLabelHe(ym),
-      totalTransactions,
-      pendingCollection,
+      incomeNet,
+      expenseNet,
+      vatPayable,
+      trueNetProfit,
+      totalTaxReceipts: incomeNet,
       fixedExpenses,
       supplierExpenses,
       platformExpenses,
       totalExpenses,
-      netProfit,
+      realProfit: trueNetProfit,
+      netProfit: grossProfit,
       profitMargin,
     })
   }

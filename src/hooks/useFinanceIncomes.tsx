@@ -28,17 +28,21 @@ import {
   incomeTotalPaid,
   normalizeIncomePayments,
   resolveIncomeStatusFromPaidTotal,
+  syncTaxReceiptPaymentDate,
   type IncomePaymentInput,
 } from '../lib/financeIncomePayment'
 import { isFinanceHostingType } from '../lib/financeHostingTypes'
+import { incomeDocumentKind } from '../lib/financeIncomeDocument'
+import { prorateVatBreakdown, resolveIncomeVat } from '../lib/israeliVat'
 import { db } from '../lib/firebase'
 import { docToFinanceIncome } from '../lib/firestoreMappers'
 import { todayYmd } from '../lib/dates'
-import { withDisplayOverdueIncomes } from '../lib/financeCalc'
+import { withDisplayOverdueIncomes, formatNis } from '../lib/financeCalc'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type {
   FinanceIncome,
+  FinanceIncomeDocumentKind,
   FinanceIncomeStatus,
   FinanceHostingType,
   FinanceIncomePaymentRecord,
@@ -127,22 +131,37 @@ async function persistIncomePayments(
   }
   const newStatus = resolveIncomeStatusFromPaidTotal(oldInc.amount, totalPaid)
   const last = records[records.length - 1]
-  await updateDoc(
-    doc(db, 'financeIncomes', oldInc.id),
-    stripUndefined({
-      payments: records,
-      paidAmount: totalPaid,
-      paymentMethod: last?.paymentMethod,
-      paidDate: last?.paidDate,
-      status: newStatus,
-    }),
-  )
+  const patch: Record<string, unknown> = { status: newStatus }
+
+  if (records.length === 0) {
+    patch.payments = deleteField()
+    patch.paidAmount = deleteField()
+    patch.paymentMethod = deleteField()
+    patch.paidDate = deleteField()
+  } else {
+    patch.payments = records
+    patch.paidAmount = totalPaid
+    patch.paymentMethod = last?.paymentMethod
+    patch.paidDate = last?.paidDate
+  }
+
+  if (incomeDocumentKind(oldInc) === 'tax_receipt') {
+    const docDate = oldInc.invoiceDate.trim().slice(0, 10)
+    if (docDate) {
+      patch.invoiceDate = docDate
+      patch.paidDate = docDate
+      if (records.length > 0) {
+        patch.payments = records.map((p) => ({ ...p, paidDate: docDate }))
+      }
+    }
+  }
+  await updateDoc(doc(db, 'financeIncomes', oldInc.id), stripUndefined(patch))
   const nextInc: FinanceIncome = {
     ...oldInc,
-    payments: records,
-    paidAmount: totalPaid,
+    payments: records.length > 0 ? records : undefined,
+    paidAmount: records.length > 0 ? totalPaid : undefined,
     paymentMethod: last?.paymentMethod,
-    paidDate: last?.paidDate,
+    paidDate: records.length > 0 ? last?.paidDate : undefined,
     status: newStatus,
   }
   await syncClientBalance(oldInc, nextInc)
@@ -156,6 +175,7 @@ export type NewFinanceIncomeInput = {
   amountIncludesVat?: boolean
   vatAmount?: number
   amountBeforeVat?: number
+  documentKind?: FinanceIncomeDocumentKind
   invoiceNumber: string
   invoiceDate: string
   description?: string
@@ -175,6 +195,7 @@ export type FinanceIncomePatchInput = {
   amountIncludesVat?: boolean
   vatAmount?: number | null
   amountBeforeVat?: number | null
+  documentKind?: FinanceIncomeDocumentKind
   invoiceNumber?: string
   invoiceDate?: string
   description?: string | null
@@ -186,6 +207,20 @@ export type FinanceIncomePatchInput = {
   paymentMethod?: FinancePaymentMethod | null
   paidDate?: string | null
   payments?: FinanceIncomePaymentRecord[] | null
+  sourceTransactionInvoiceId?: string | null
+}
+
+export type ConvertToTaxReceiptInput = {
+  /** מספר חשבונית מס קבלה — חובה בהמרת תשלום חלקי */
+  taxReceiptNumber?: string
+  /** תאריך מס קבלה (= תאריך תשלום) — חובה, מוזן ידנית */
+  taxReceiptDate: string
+}
+
+/** האם יש תשלום חלקי שיש להפריד למס קבלה נפרדת */
+export function incomeNeedsPartialConversionSplit(inc: FinanceIncome): boolean {
+  const paid = incomeTotalPaid(inc)
+  return paid > 0 && paid < inc.amount - 0.001
 }
 
 export type AddIncomePaymentInput = IncomePaymentInput
@@ -198,12 +233,17 @@ type FinanceIncomesContextValue = {
   error: Error | null
   addIncome: (data: NewFinanceIncomeInput) => Promise<void>
   updateIncome: (id: string, patch: FinanceIncomePatchInput) => Promise<void>
+  convertToTaxReceipt: (
+    id: string,
+    options?: ConvertToTaxReceiptInput,
+  ) => Promise<void>
   addIncomePayment: (id: string, payment: AddIncomePaymentInput) => Promise<void>
   updateIncomePayment: (
     id: string,
     paymentId: string,
     payment: UpdateIncomePaymentInput,
   ) => Promise<void>
+  deleteIncomePayment: (id: string, paymentId: string) => Promise<void>
   deleteIncome: (id: string) => Promise<void>
 }
 
@@ -250,6 +290,7 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         clientId: data.clientId.trim(),
         amount: Math.round(data.amount * 100) / 100,
         amountIncludesVat: data.amountIncludesVat !== false,
+        documentKind: data.documentKind ?? 'transaction_invoice',
         invoiceNumber: data.invoiceNumber.trim(),
         invoiceDate: data.invoiceDate.slice(0, 10),
         status: data.status,
@@ -275,12 +316,18 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         row.amountBeforeVat = Math.round(data.amountBeforeVat * 100) / 100
       }
       applyPaymentFields(row, data)
+      const docDate = data.invoiceDate.slice(0, 10)
+      if (data.documentKind === 'tax_receipt') {
+        row.invoiceDate = docDate
+        row.paidDate = docDate
+      }
       const payments = paymentRowsFromInput({
         status: data.status,
         paidAmount: data.paidAmount,
         paymentMethod: data.paymentMethod,
-        paidDate: data.paidDate,
-        invoiceDate: data.invoiceDate,
+        paidDate:
+          data.documentKind === 'tax_receipt' ? docDate : data.paidDate,
+        invoiceDate: docDate,
       })
       if (payments.length) row.payments = payments
       await addDoc(collection(db, 'financeIncomes'), row)
@@ -373,6 +420,18 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         ) {
           next.invoiceNumber = patch.invoiceNumber.trim()
         }
+        if (patch.documentKind != null) {
+          next.documentKind = patch.documentKind
+        }
+        if (patch.sourceTransactionInvoiceId === null) {
+          next.sourceTransactionInvoiceId = deleteField()
+        } else if (
+          typeof patch.sourceTransactionInvoiceId === 'string' &&
+          patch.sourceTransactionInvoiceId.trim()
+        ) {
+          next.sourceTransactionInvoiceId =
+            patch.sourceTransactionInvoiceId.trim()
+        }
         if (typeof patch.invoiceDate === 'string' && patch.invoiceDate.trim()) {
           next.invoiceDate = patch.invoiceDate.trim().slice(0, 10)
         }
@@ -432,8 +491,40 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
 
         if (patch.payments === null) {
           next.payments = deleteField()
-        } else if (Array.isArray(patch.payments)) {
+        } else         if (Array.isArray(patch.payments)) {
           next.payments = patch.payments
+        }
+
+        const effectiveKind =
+          (patch.documentKind ??
+            (oldInc ? incomeDocumentKind(oldInc) : undefined)) ??
+          'transaction_invoice'
+        if (
+          effectiveKind === 'tax_receipt' &&
+          (patch.paidDate != null ||
+            patch.invoiceDate != null ||
+            Array.isArray(patch.payments))
+        ) {
+          const payD = (
+            (typeof patch.invoiceDate === 'string' ? patch.invoiceDate : null) ??
+            (typeof patch.paidDate === 'string' ? patch.paidDate : null) ??
+            oldInc?.invoiceDate ??
+            mergedPaidDate ??
+            oldInc?.paidDate ??
+            ''
+          ).slice(0, 10)
+          if (payD) {
+            const mergedPayments =
+              patch.payments === null
+                ? undefined
+                : Array.isArray(patch.payments)
+                  ? patch.payments
+                  : oldInc?.payments
+            const synced = syncTaxReceiptPaymentDate(payD, mergedPayments)
+            next.invoiceDate = synced.invoiceDate
+            next.paidDate = synced.paidDate
+            if (synced.payments) next.payments = synced.payments
+          }
         }
 
         if (Object.keys(next).length === 0) return
@@ -467,6 +558,144 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         toastFsSuccess('ההכנסה עודכנה')
       } catch (e) {
         toastFsError('שגיאה בעדכון ההכנסה', e, 'updateIncome')
+      }
+    },
+    [],
+  )
+
+  const convertToTaxReceipt = useCallback(
+    async (id: string, options?: ConvertToTaxReceiptInput) => {
+      try {
+        const oldSnap = await getDoc(doc(db, 'financeIncomes', id))
+        if (!oldSnap.exists()) return
+        const oldInc = docToFinanceIncome(
+          oldSnap as QueryDocumentSnapshot<DocumentData>,
+        )
+        if (incomeDocumentKind(oldInc) === 'tax_receipt') {
+          toastFsError(
+            'כבר מס קבלה',
+            new Error('already tax receipt'),
+            'convertToTaxReceipt',
+          )
+          return
+        }
+
+        const receiptDate = options?.taxReceiptDate?.trim().slice(0, 10) ?? ''
+        if (!receiptDate) {
+          toastFsError(
+            'חובה לציין תאריך מס קבלה',
+            new Error('missing tax receipt date'),
+            'convertToTaxReceipt',
+          )
+          return
+        }
+
+        const paid = incomeTotalPaid(oldInc)
+        const isPartialSplit = incomeNeedsPartialConversionSplit(oldInc)
+
+        if (isPartialSplit) {
+          const receiptNumber = options?.taxReceiptNumber?.trim()
+          if (!receiptNumber) {
+            toastFsError(
+              'חובה לציין מספר חשבונית מס קבלה',
+              new Error('missing tax receipt number'),
+              'convertToTaxReceipt',
+            )
+            return
+          }
+
+          const fullVat = resolveIncomeVat(oldInc)
+          const paidPortion = prorateVatBreakdown(fullVat, paid, oldInc.amount)
+          const remainingGross = round2(oldInc.amount - paid)
+          const remainingPortion = prorateVatBreakdown(
+            fullVat,
+            remainingGross,
+            oldInc.amount,
+          )
+          const payments = normalizeIncomePayments(oldInc)
+          const last = payments[payments.length - 1]
+          const syncedDates = syncTaxReceiptPaymentDate(receiptDate, payments)
+
+          const receiptRow: Record<string, unknown> = {
+            clientId: oldInc.clientId.trim(),
+            amount: paidPortion.gross,
+            amountIncludesVat: oldInc.amountIncludesVat !== false,
+            vatAmount: paidPortion.vat,
+            amountBeforeVat: paidPortion.net,
+            documentKind: 'tax_receipt',
+            invoiceNumber: receiptNumber,
+            invoiceDate: syncedDates.invoiceDate,
+            status: 'paid',
+            paidAmount: paid,
+            paymentMethod: last?.paymentMethod ?? 'bank_transfer',
+            paidDate: syncedDates.paidDate,
+            payments: syncedDates.payments ?? payments,
+            sourceTransactionInvoiceId: id,
+            createdAt: serverTimestamp(),
+          }
+          if (oldInc.description?.trim()) {
+            receiptRow.description = oldInc.description.trim()
+          }
+          if (oldInc.projectId?.trim()) {
+            receiptRow.projectId = oldInc.projectId.trim()
+          }
+          if (oldInc.hostingClient) {
+            receiptRow.hostingClient = true
+            if (oldInc.hostingType) receiptRow.hostingType = oldInc.hostingType
+          }
+
+          await addDoc(collection(db, 'financeIncomes'), receiptRow)
+
+          await updateDoc(
+            doc(db, 'financeIncomes', id),
+            stripUndefined({
+              amount: remainingPortion.gross,
+              vatAmount: remainingPortion.vat,
+              amountBeforeVat: remainingPortion.net,
+              status: 'pending',
+              paidAmount: deleteField(),
+              payments: deleteField(),
+              paymentMethod: deleteField(),
+              paidDate: deleteField(),
+            }),
+          )
+
+          const remainingInc: FinanceIncome = {
+            ...oldInc,
+            amount: remainingPortion.gross,
+            vatAmount: remainingPortion.vat,
+            amountBeforeVat: remainingPortion.net,
+            status: 'pending',
+            paidAmount: undefined,
+            payments: undefined,
+            paymentMethod: undefined,
+            paidDate: undefined,
+          }
+          await syncClientBalance(oldInc, remainingInc)
+
+          toastFsSuccess(
+            `נוצרה מס קבלה על ${formatNis(paid)} — יתרת ${formatNis(remainingGross)} נשארה כחשבונית עסקה`,
+          )
+          return
+        }
+
+        const syncedDates = syncTaxReceiptPaymentDate(
+          receiptDate,
+          normalizeIncomePayments(oldInc),
+        )
+        await updateDoc(
+          doc(db, 'financeIncomes', id),
+          stripUndefined({
+            documentKind: 'tax_receipt',
+            sourceTransactionInvoiceId: id,
+            invoiceDate: syncedDates.invoiceDate,
+            paidDate: syncedDates.paidDate,
+            ...(syncedDates.payments ? { payments: syncedDates.payments } : {}),
+          }),
+        )
+        toastFsSuccess('הומר לחשבונית מס קבלה — נספר כהכנסה בפועל')
+      } catch (e) {
+        toastFsError('שגיאה בהמרה למס קבלה', e, 'convertToTaxReceipt')
       }
     },
     [],
@@ -563,6 +792,40 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const deleteIncomePayment = useCallback(
+    async (id: string, paymentId: string) => {
+      try {
+        const oldSnap = await getDoc(doc(db, 'financeIncomes', id))
+        if (!oldSnap.exists()) return
+        const oldInc = docToFinanceIncome(
+          oldSnap as QueryDocumentSnapshot<DocumentData>,
+        )
+        const records = normalizeIncomePayments(oldInc)
+        const rawRecords = incomePaymentRecords(oldInc)
+        const targetIdx = rawRecords.findIndex((p) => p.id === paymentId)
+        if (targetIdx < 0) {
+          toastFsError(
+            'התשלום לא נמצא',
+            new Error('payment not found'),
+            'deleteIncomePayment',
+          )
+          return
+        }
+        const resolvedId = records[targetIdx]!.id
+        const nextRecords = records.filter((p) => p.id !== resolvedId)
+        const nextInc = await persistIncomePayments(oldInc, nextRecords)
+        toastFsSuccess(
+          nextInc.status === 'pending'
+            ? 'התשלום נמחק — החשבון ממתין לתשלום'
+            : 'התשלום נמחק',
+        )
+      } catch (e) {
+        toastFsError('שגיאה במחיקת התשלום', e, 'deleteIncomePayment')
+      }
+    },
+    [],
+  )
+
   const deleteIncome = useCallback(async (id: string) => {
     try {
       const oldSnap = await getDoc(doc(db, 'financeIncomes', id))
@@ -591,8 +854,10 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
       error,
       addIncome,
       updateIncome,
+      convertToTaxReceipt,
       addIncomePayment,
       updateIncomePayment,
+      deleteIncomePayment,
       deleteIncome,
     }),
     [
@@ -601,8 +866,10 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
       error,
       addIncome,
       updateIncome,
+      convertToTaxReceipt,
       addIncomePayment,
       updateIncomePayment,
+      deleteIncomePayment,
       deleteIncome,
     ],
   )

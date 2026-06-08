@@ -14,9 +14,11 @@ import {
   currentYm,
   addMonths,
   filterExpensesByClient,
-  filterIncomes,
+  filterCollectionIncomes,
+  filterTaxReceiptIncomes,
   formatNis,
   formatYmRangeLabel,
+  monthOptions,
   INCOME_STATUS_LABEL,
   INCOME_STATUS_STYLE,
   monthLabelHe,
@@ -24,13 +26,11 @@ import {
 } from '../lib/financeCalc'
 import {
   expenseTypeMap,
-  expenseTypeStyle,
   expenseDisplayName,
   expensePaymentMonth,
   expenseUsesPnlAttribution,
   isOneTimeGeneralExpenseType,
   EXPENSE_TYPE_COLOR_PRESETS,
-  isRecurringExpense,
   resolveExpenseType,
 } from '../lib/financeExpenseTypes'
 import {
@@ -41,13 +41,42 @@ import {
   resolveLinkedIncome,
   suggestLinkedIncome,
 } from '../lib/financeExpensePnl'
+import {
+  FINANCE_INCOME_DOCUMENT_LABELS,
+  incomeDocumentDateLabel,
+  incomeDocumentKind,
+  incomeDocumentNumberLabel,
+  isTaxReceiptIncome,
+} from '../lib/financeIncomeDocument'
+import { toastFsSuccess } from '../lib/fsToast'
+import {
+  aprilPaymentDateForTarget,
+  buildLegacyTaxReceiptPatch,
+  findMissingKnownIncomeTargets,
+  needsLegacyTaxReceiptRestore,
+} from '../lib/financeIncomeLegacyMigration'
+import {
+  buildInvoiceFixturePatch,
+  findInvoiceFixture,
+  invoiceFixtureNeedsFix,
+} from '../lib/financeInvoiceDateFixtures'
+import { matchMonthlyRecurringExpense } from '../lib/financeRecurringCatalog'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import {
+  defaultVatClassForExpenseType,
+  EXPENSE_VAT_CLASS_LABEL,
+  EXPENSE_VAT_CLASS_SHORT,
+  resolveExpenseVatClass,
+  suggestExpenseVatClass,
+  vatClassToLiable,
+} from '../lib/financeExpenseVat'
 import {
   calcVatFromGross,
   calcVatFromNet,
-  expenseIsVatLiable,
   formatNisPlain,
   ISRAEL_VAT_PERCENT_LABEL,
+  resolveExpenseRowVat,
+  resolveIncomeVat,
 } from '../lib/israeliVat'
 import { useClients } from '../hooks/useClients'
 import {
@@ -61,6 +90,7 @@ import {
 } from '../hooks/useFinanceExpenses'
 import {
   useFinanceIncomes,
+  incomeNeedsPartialConversionSplit,
   type AddIncomePaymentInput,
   type UpdateIncomePaymentInput,
   type NewFinanceIncomeInput,
@@ -71,23 +101,26 @@ import { useSuppliers } from '../hooks/useSuppliers'
 import {
   PAYMENT_METHOD_LABEL,
   incomeOutstandingAmount,
+  incomePaymentDate,
   incomePaymentRecords,
   incomeTotalPaid,
   maxPaymentAmountForEdit,
   resolveIncomeStatusFromPayment,
+  syncTaxReceiptPaymentDate,
+  taxReceiptDatesOutOfSync,
 } from '../lib/financeIncomePayment'
 import {
   HOSTING_TYPE_LABEL,
   hostingIncomeLabel,
-  hostingIsMonthlyRecurring,
   hostingTypeUsesMonthPicker,
   isHostingIncome,
-  resolveHostingType,
 } from '../lib/financeHostingTypes'
 import type {
   FinanceExpense,
   FinanceExpenseFieldMode,
+  FinanceExpenseVatClass,
   FinanceIncome,
+  FinanceIncomeDocumentKind,
   FinanceIncomeStatus,
   FinanceHostingType,
   FinancePaymentMethod,
@@ -100,6 +133,7 @@ const uiBtnDanger =
   'inline-flex h-9 min-w-[72px] items-center justify-center rounded-[10px] border border-[#FECACA] bg-[#FEF2F2] px-3 text-xs font-semibold text-[#DC2626] transition hover:bg-[#FEE2E2]'
 
 type IncomeFormState = {
+  documentKind: FinanceIncomeDocumentKind
   projectId: string
   clientId: string
   amount: string
@@ -125,7 +159,7 @@ type ExpenseFormState = {
   linkedIncomeId: string
   name: string
   amount: string
-  vatLiable: boolean
+  vatClass: FinanceExpenseVatClass
   amountIncludesVat: boolean
   description: string
   billingMonth: string
@@ -140,6 +174,7 @@ const emptyAdditionalPayment = () => ({
 })
 
 const emptyIncomeForm = (): IncomeFormState => ({
+  documentKind: 'transaction_invoice',
   projectId: '',
   clientId: '',
   amount: '',
@@ -165,7 +200,7 @@ const emptyExpenseForm = (): ExpenseFormState => ({
   linkedIncomeId: '',
   name: '',
   amount: '',
-  vatLiable: true,
+  vatClass: 'vat_liable',
   amountIncludesVat: true,
   description: '',
   billingMonth: currentYm(),
@@ -173,27 +208,71 @@ const emptyExpenseForm = (): ExpenseFormState => ({
   supplierInvoiceReceived: false,
 })
 
+type FinanceTab = 'receipts' | 'collection' | 'expenses' | 'pnl'
+
+const FINANCE_TABS: { id: FinanceTab; label: string }[] = [
+  { id: 'receipts', label: 'חשבוניות מס קבלה' },
+  { id: 'collection', label: 'יתרה לגבייה' },
+  { id: 'expenses', label: 'הוצאות' },
+  { id: 'pnl', label: 'דוח רווח והפסד' },
+]
+
+function daysOpen(invoiceDate: string, today = todayYmd()): number {
+  const due = invoiceDate.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) return 0
+  const ms =
+    new Date(today.slice(0, 10)).getTime() - new Date(due).getTime()
+  return Math.max(0, Math.floor(ms / 86400000))
+}
+
 function KpiCard(props: {
+  index: number
   seq: number
   label: string
   value: string
   valueClass?: string
-  hint?: string
+  hint: string
 }) {
   return (
     <div
-      className={`rounded-2xl ${hubSectionClass(props.seq)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.08)]`}
+      className={`flex min-h-[132px] flex-col rounded-2xl ${hubSectionClass(props.seq)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.08)]`}
     >
+      <div className="flex items-center gap-2">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-black/5 text-[10px] font-extrabold text-[var(--text-mid)]">
+          {props.index}
+        </span>
+        <div className="text-[12px] font-bold leading-snug text-[var(--text-dark)]">
+          {props.label}
+        </div>
+      </div>
       <div
-        className={`text-[22px] font-extrabold tabular-nums ${props.valueClass ?? 'text-[var(--text-dark)]'}`}
+        className={`mt-3 text-[26px] font-extrabold tabular-nums leading-none ${props.valueClass ?? 'text-[var(--text-dark)]'}`}
       >
         {props.value}
       </div>
-      <div className="mt-1 text-[12px] text-[var(--text-mid)]">{props.label}</div>
-      {props.hint ? (
-        <div className="mt-1.5 text-[10px] leading-snug text-[var(--text-light)]">
-          {props.hint}
-        </div>
+      <div className="mt-auto pt-3 text-[11px] leading-snug text-[var(--text-mid)]">
+        {props.hint}
+      </div>
+    </div>
+  )
+}
+
+function KpiRowLabel({
+  row,
+  title,
+  period,
+}: {
+  row: number
+  title: string
+  period?: string
+}) {
+  return (
+    <div className="mb-3 border-b border-[var(--border)] pb-2">
+      <div className="text-[13px] font-extrabold text-[var(--text-dark)]">
+        שורה {row} — {title}
+      </div>
+      {period ? (
+        <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">{period}</div>
       ) : null}
     </div>
   )
@@ -228,32 +307,240 @@ function ExpenseFormSection({
   )
 }
 
-function ExpenseInvoiceBadge({
-  received,
-  onToggle,
+function TaxReceiptTable({
+  rows,
+  clientNameById,
+  projectNameById,
+  onEdit,
+  onDelete,
+  onOpenProject,
 }: {
-  received: boolean
-  onToggle?: () => void
+  rows: FinanceIncome[]
+  clientNameById: Map<string, string>
+  projectNameById: Map<string, string>
+  onEdit: (row: FinanceIncome) => void
+  onDelete: (id: string) => void
+  onOpenProject: (projectId: string) => void
 }) {
-  const className = received
-    ? 'inline-flex items-center gap-1 rounded-full bg-[#10B981] px-2.5 py-1 text-[10px] font-bold text-white'
-    : 'inline-flex items-center gap-1 rounded-full bg-[#F59E0B] px-2.5 py-1 text-[10px] font-bold text-white'
-
-  const label = received ? '✓ יש חשבונית' : 'ממתין לחשבונית'
-
-  if (!onToggle) {
-    return <span className={className}>{label}</span>
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-[var(--text-mid)]">אין רשומות בטווח הנבחר</p>
+    )
   }
 
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`${className} cursor-pointer transition hover:brightness-95`}
-      title="לחץ לעדכון סטטוס חשבונית"
-    >
-      {label}
-    </button>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[960px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
+            <th className="px-2 py-2 text-right">תאריך תשלום</th>
+            <th className="px-2 py-2 text-right">לקוח</th>
+            <th className="px-2 py-2 text-right">פרויקט</th>
+            <th className="px-2 py-2 text-right">ברוטו</th>
+            <th className="px-2 py-2 text-right">מע״מ</th>
+            <th className="px-2 py-2 text-right">נטו</th>
+            <th className="px-2 py-2 text-right">אמצעי תשלום</th>
+            <th className="px-2 py-2 text-right">סטטוס</th>
+            <th className="px-2 py-2 text-right">פעולות</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const badge = INCOME_STATUS_STYLE[row.status]
+            const vat = resolveIncomeVat(row)
+            return (
+              <tr
+                key={`${row.id}-${incomePaymentDate(row)}`}
+                className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
+              >
+                <td className="px-2 py-2.5 tabular-nums">
+                  <div>{formatDateIL(incomePaymentDate(row))}</div>
+                  <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
+                    #{row.invoiceNumber || '—'}
+                  </div>
+                </td>
+                <td className="px-2 py-2.5">
+                  {clientNameById.get(row.clientId) ?? '—'}
+                </td>
+                <td className="px-2 py-2.5">
+                  {isHostingIncome(row) ? (
+                    <span className="text-[11px] font-semibold text-[var(--text-mid)]">
+                      {hostingIncomeLabel(row) ?? 'אחסון'}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onOpenProject(row.projectId)}
+                      className="font-semibold text-[var(--orange)] underline decoration-dotted hover:text-[#ea6c0a]"
+                    >
+                      {projectNameById.get(row.projectId) ?? '—'}
+                    </button>
+                  )}
+                </td>
+                <td className="px-2 py-2.5 tabular-nums font-bold">
+                  {formatNis(vat.gross)}
+                </td>
+                <td className="px-2 py-2.5 tabular-nums text-[#6366F1]">
+                  {formatNis(vat.vat)}
+                </td>
+                <td className="px-2 py-2.5 tabular-nums font-bold text-[#10B981]">
+                  {formatNis(vat.net)}
+                </td>
+                <td className="px-2 py-2.5 text-[11px]">
+                  {row.paymentMethod
+                    ? PAYMENT_METHOD_LABEL[row.paymentMethod]
+                    : '—'}
+                </td>
+                <td className="px-2 py-2.5">
+                  <span
+                    className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    style={{ backgroundColor: badge.bg, color: badge.color }}
+                  >
+                    {INCOME_STATUS_LABEL[row.status]}
+                  </span>
+                </td>
+                <td className="px-2 py-2.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    <button type="button" className={uiBtnSmOutline} onClick={() => onEdit(row)}>
+                      עריכה
+                    </button>
+                    <button type="button" className={uiBtnDanger} onClick={() => onDelete(row.id)}>
+                      מחק
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function CollectionTable({
+  rows,
+  clientNameById,
+  projectNameById,
+  onEdit,
+  onDelete,
+  onConvert,
+  onOpenProject,
+}: {
+  rows: FinanceIncome[]
+  clientNameById: Map<string, string>
+  projectNameById: Map<string, string>
+  onEdit: (row: FinanceIncome) => void
+  onDelete: (id: string) => void
+  onConvert: (id: string) => void
+  onOpenProject: (projectId: string) => void
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-[var(--text-mid)]">אין רשומות בטווח הנבחר</p>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[860px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
+            <th className="px-2 py-2 text-right">תאריך מסמך</th>
+            <th className="px-2 py-2 text-right">לקוח</th>
+            <th className="px-2 py-2 text-right">פרויקט</th>
+            <th className="px-2 py-2 text-right">סכום</th>
+            <th className="px-2 py-2 text-right">ימים פתוח</th>
+            <th className="px-2 py-2 text-right">סטטוס</th>
+            <th className="px-2 py-2 text-right">פעולות</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const badge = INCOME_STATUS_STYLE[row.status]
+            const openDays = daysOpen(row.invoiceDate)
+            const outstanding = incomeOutstandingAmount(row)
+            return (
+              <tr
+                key={`${row.id}-${row.invoiceDate.slice(0, 7)}`}
+                className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
+              >
+                <td className="px-2 py-2.5 tabular-nums">
+                  <div>{formatDateIL(row.invoiceDate)}</div>
+                  <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
+                    #{row.invoiceNumber || '—'}
+                  </div>
+                </td>
+                <td className="px-2 py-2.5">
+                  {clientNameById.get(row.clientId) ?? '—'}
+                </td>
+                <td className="px-2 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject(row.projectId)}
+                    className="font-semibold text-[var(--orange)] underline decoration-dotted hover:text-[#ea6c0a]"
+                  >
+                    {projectNameById.get(row.projectId) ?? '—'}
+                  </button>
+                </td>
+                <td className="px-2 py-2.5 tabular-nums font-bold">
+                  {row.status === 'partial' ? (
+                    <div>
+                      <div>{formatNis(row.amount)}</div>
+                      <div className="text-[10px] font-semibold text-[#F59E0B]">
+                        יתרה {formatNis(outstanding)}
+                      </div>
+                    </div>
+                  ) : (
+                    formatNis(row.amount)
+                  )}
+                </td>
+                <td className="px-2 py-2.5 tabular-nums">
+                  <span
+                    className={
+                      openDays > 30
+                        ? 'font-bold text-[#EF4444]'
+                        : openDays > 14
+                          ? 'font-semibold text-[#F59E0B]'
+                          : ''
+                    }
+                  >
+                    {openDays} ימים
+                  </span>
+                </td>
+                <td className="px-2 py-2.5">
+                  <span
+                    className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    style={{ backgroundColor: badge.bg, color: badge.color }}
+                  >
+                    {INCOME_STATUS_LABEL[row.status]}
+                  </span>
+                </td>
+                <td className="px-2 py-2.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    {row.isAutoOccurrence !== true ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-9 items-center justify-center rounded-[10px] border border-[#A7F3D0] bg-[#ECFDF5] px-3 text-xs font-semibold text-[#059669] transition hover:bg-[#D1FAE5]"
+                        onClick={() => onConvert(row.id)}
+                      >
+                        המר למס קבלה
+                      </button>
+                    ) : null}
+                    <button type="button" className={uiBtnSmOutline} onClick={() => onEdit(row)}>
+                      עריכה
+                    </button>
+                    <button type="button" className={uiBtnDanger} onClick={() => onDelete(row.id)}>
+                      מחק
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -261,7 +548,7 @@ export function Finance() {
   const { clients } = useClients()
   const { projects } = useProjects()
   const { suppliers, addSupplier } = useSuppliers()
-  const { incomes, loading: incomesLoading, addIncome, updateIncome, addIncomePayment, updateIncomePayment, deleteIncome } =
+  const { incomes, loading: incomesLoading, addIncome, updateIncome, convertToTaxReceipt, addIncomePayment, updateIncomePayment, deleteIncomePayment, deleteIncome } =
     useFinanceIncomes()
   const {
     expenses,
@@ -279,11 +566,13 @@ export function Finance() {
 
   const [filterYmFrom, setFilterYmFrom] = useState(currentYm())
   const [filterYmTo, setFilterYmTo] = useState(currentYm())
+  const [periodMode, setPeriodMode] = useState<'single' | 'range'>('single')
   const [monthPreset, setMonthPreset] = useState<
-    'month' | 'prev' | 'q' | 'half' | 'year' | 'custom'
+    'month' | 'prev' | 'q' | 'half' | 'year' | 'pick' | 'custom'
   >('month')
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterClientId, setFilterClientId] = useState('')
+  const [activeTab, setActiveTab] = useState<FinanceTab>('receipts')
   const [panelProject, setPanelProject] = useState<Project | null>(null)
 
   const [incomeModalOpen, setIncomeModalOpen] = useState(false)
@@ -291,9 +580,55 @@ export function Finance() {
   const [incomeForm, setIncomeForm] = useState<IncomeFormState>(emptyIncomeForm)
   const [additionalPayment, setAdditionalPayment] = useState(emptyAdditionalPayment)
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [deletePaymentTarget, setDeletePaymentTarget] = useState<{
+    incomeId: string
+    paymentId: string
+  } | null>(null)
   const [paymentEditForm, setPaymentEditForm] = useState(emptyAdditionalPayment)
   const [deleteIncomeId, setDeleteIncomeId] = useState<string | null>(null)
+  const [convertIncomeId, setConvertIncomeId] = useState<string | null>(null)
+  const [convertTaxReceiptNumber, setConvertTaxReceiptNumber] = useState('')
+  const [convertTaxReceiptDate, setConvertTaxReceiptDate] = useState('')
 
+  const convertIncomeTarget = useMemo(
+    () =>
+      convertIncomeId
+        ? incomes.find((i) => i.id === convertIncomeId) ?? null
+        : null,
+    [convertIncomeId, incomes],
+  )
+
+  const convertIsPartialSplit = useMemo(
+    () =>
+      convertIncomeTarget
+        ? incomeNeedsPartialConversionSplit(convertIncomeTarget)
+        : false,
+    [convertIncomeTarget],
+  )
+
+  const openConvertDialog = (id: string) => {
+    setConvertIncomeId(id)
+    setConvertTaxReceiptNumber('')
+    setConvertTaxReceiptDate('')
+  }
+
+  const closeConvertDialog = () => {
+    setConvertIncomeId(null)
+    setConvertTaxReceiptNumber('')
+    setConvertTaxReceiptDate('')
+  }
+
+  const canSubmitConvert =
+    !!convertTaxReceiptDate.trim() &&
+    (!convertIsPartialSplit || !!convertTaxReceiptNumber.trim())
+
+  const submitConvertToTaxReceipt = () => {
+    if (!convertIncomeId || !canSubmitConvert) return
+    void convertToTaxReceipt(convertIncomeId, {
+      taxReceiptNumber: convertTaxReceiptNumber.trim() || undefined,
+      taxReceiptDate: convertTaxReceiptDate.trim(),
+    }).then(closeConvertDialog)
+  }
   const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<FinanceExpense | null>(null)
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(emptyExpenseForm)
@@ -317,23 +652,10 @@ export function Finance() {
     return m
   }, [clients])
 
-  const supplierNameById = useMemo(() => {
-    const m = new Map<string, string>()
-    suppliers.forEach((s) => m.set(s.id, s.name))
-    return m
-  }, [suppliers])
-
   const listedSuppliers = useMemo(
     () => suppliers.filter((s) => s.active !== false),
     [suppliers],
   )
-
-  const resolveSupplierDisplay = (row: FinanceExpense): string => {
-    if (row.supplierId) {
-      return supplierNameById.get(row.supplierId) ?? row.supplierName ?? '—'
-    }
-    return row.supplierName ?? '—'
-  }
 
   const projectNameById = useMemo(() => {
     const m = new Map<string, string>()
@@ -348,9 +670,6 @@ export function Finance() {
     })
     return m
   }, [projects])
-
-  const resolveExpenseClientId = (row: FinanceExpense): string | undefined =>
-    row.clientId ?? (row.projectId ? projectClientById.get(row.projectId) : undefined)
 
   const projectIdsForClient = useMemo(() => {
     if (!filterClientId) return new Set<string>()
@@ -381,28 +700,40 @@ export function Finance() {
     setMonthPreset(preset)
     switch (preset) {
       case 'month':
+        setPeriodMode('single')
         setFilterYmFrom(now)
         setFilterYmTo(now)
         break
       case 'prev': {
         const prev = addMonths(now, -1)
+        setPeriodMode('single')
         setFilterYmFrom(prev)
         setFilterYmTo(prev)
         break
       }
       case 'q':
+        setPeriodMode('range')
         setFilterYmFrom(addMonths(now, -2))
         setFilterYmTo(now)
         break
       case 'half':
+        setPeriodMode('range')
         setFilterYmFrom(addMonths(now, -5))
         setFilterYmTo(now)
         break
       case 'year':
+        setPeriodMode('range')
         setFilterYmFrom(addMonths(now, -11))
         setFilterYmTo(now)
         break
     }
+  }
+
+  const applySingleMonth = (ym: string) => {
+    setPeriodMode('single')
+    setMonthPreset('pick')
+    setFilterYmFrom(ym)
+    setFilterYmTo(ym)
   }
 
   const summary = useMemo(
@@ -417,9 +748,181 @@ export function Finance() {
     [incomes, expenses, filters, projectIdsForClient, expenseTypes],
   )
 
-  const filteredIncomes = useMemo(
+  useEffect(() => {
+    const SYNC_KEY = 'hub-finance-data-sync-v3'
+    if (expensesLoading || expenses.length === 0) return
+    if (sessionStorage.getItem(SYNC_KEY)) return
+
+    let cancelled = false
+    void (async () => {
+      let recurringCount = 0
+      let oneTimeCount = 0
+      let vatCount = 0
+      for (const exp of expenses) {
+        if (cancelled) return
+        const shouldRecur = matchMonthlyRecurringExpense(exp) != null
+        const suggestedVat = suggestExpenseVatClass(exp)
+        const currentVat = resolveExpenseVatClass(exp)
+        const needsRecur = exp.recurring !== shouldRecur
+        const needsVat = currentVat !== suggestedVat
+
+        if (!needsRecur && !needsVat) continue
+
+        await updateExpense(exp.id, {
+          ...(needsRecur ? { recurring: shouldRecur } : {}),
+          ...(needsVat
+            ? {
+                vatClass: suggestedVat,
+                vatLiable: vatClassToLiable(suggestedVat),
+              }
+            : {}),
+        })
+        if (needsRecur) {
+          if (shouldRecur) recurringCount += 1
+          else oneTimeCount += 1
+        }
+        if (needsVat) vatCount += 1
+      }
+      if (cancelled) return
+      sessionStorage.setItem(SYNC_KEY, '1')
+      if (recurringCount > 0 || oneTimeCount > 0 || vatCount > 0) {
+        const parts: string[] = []
+        if (recurringCount > 0 || oneTimeCount > 0) {
+          parts.push(`${recurringCount} חוזרות, ${oneTimeCount} חד־פעמיות`)
+        }
+        if (vatCount > 0) parts.push(`${vatCount} סיווגי מע״מ`)
+        toastFsSuccess(`סונכרנו הוצאות: ${parts.join(' · ')}`)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [expensesLoading, expenses, updateExpense])
+
+  useEffect(() => {
+    const SYNC_KEY = 'hub-finance-income-restore-v1'
+    if (incomesLoading) return
+    if (sessionStorage.getItem(SYNC_KEY)) return
+
+    let cancelled = false
+    void (async () => {
+      let restored = 0
+      let recreated = 0
+
+      for (const inc of incomes) {
+        if (cancelled) return
+
+        if (needsLegacyTaxReceiptRestore(inc)) {
+          await updateIncome(inc.id, buildLegacyTaxReceiptPatch(inc))
+          restored += 1
+        }
+      }
+
+      for (const target of findMissingKnownIncomeTargets(incomes)) {
+        if (cancelled) return
+        const payD = aprilPaymentDateForTarget(target)
+        const row: NewFinanceIncomeInput = {
+          clientId: target.clientId,
+          amount: target.amount,
+          amountIncludesVat: true,
+          documentKind: 'tax_receipt',
+          invoiceNumber: `שחזור-${target.paymentYm}`,
+          invoiceDate: payD,
+          paidDate: payD,
+          status: 'paid',
+          description: target.label,
+        }
+        await addIncome(row)
+        recreated += 1
+      }
+
+      if (cancelled) return
+      sessionStorage.setItem(SYNC_KEY, '1')
+      if (restored > 0 || recreated > 0) {
+        const parts: string[] = []
+        if (restored > 0) parts.push(`${restored} הומרו למס קבלה`)
+        if (recreated > 0) parts.push(`${recreated} שוחזרו`)
+        toastFsSuccess(`הכנסות: ${parts.join(' · ')}`)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [incomesLoading, incomes, updateIncome, addIncome])
+
+  useEffect(() => {
+    const SYNC_KEY = 'hub-finance-income-dates-v2'
+    if (incomesLoading) return
+    if (sessionStorage.getItem(SYNC_KEY)) return
+
+    let cancelled = false
+    void (async () => {
+      let fixed = 0
+      for (const inc of incomes) {
+        if (cancelled) return
+        if (!isTaxReceiptIncome(inc) || !taxReceiptDatesOutOfSync(inc)) continue
+        const docDate = inc.invoiceDate.trim().slice(0, 10)
+        const synced = syncTaxReceiptPaymentDate(docDate, inc.payments)
+        await updateIncome(inc.id, {
+          invoiceDate: synced.invoiceDate,
+          paidDate: synced.paidDate,
+          ...(synced.payments ? { payments: synced.payments } : {}),
+        })
+        fixed += 1
+      }
+      if (cancelled) return
+      sessionStorage.setItem(SYNC_KEY, '1')
+      if (fixed > 0) {
+        toastFsSuccess(`תוקנו ${fixed} תאריכי מס קבלה לפי תאריך המסמך`)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [incomesLoading, incomes, updateIncome])
+
+  useEffect(() => {
+    const SYNC_KEY = 'hub-finance-invoice-fixtures-v1'
+    if (incomesLoading) return
+    if (sessionStorage.getItem(SYNC_KEY)) return
+
+    let cancelled = false
+    void (async () => {
+      let fixed = 0
+      for (const inc of incomes) {
+        if (cancelled) return
+        const fixture = findInvoiceFixture(inc)
+        if (!fixture || !invoiceFixtureNeedsFix(inc, fixture)) continue
+        const patch = buildInvoiceFixturePatch(inc, fixture)
+        await updateIncome(inc.id, patch)
+        fixed += 1
+      }
+      if (cancelled) return
+      sessionStorage.setItem(SYNC_KEY, '1')
+      if (fixed > 0) {
+        toastFsSuccess(`תוקנו ${fixed} חשבוניות — תאריך וחודש נכונים`)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [incomesLoading, incomes, updateIncome])
+
+  const filteredTaxReceipts = useMemo(
     () =>
-      [...filterIncomes(incomes, filters)].sort((a, b) =>
+      [...filterTaxReceiptIncomes(incomes, filters)].sort((a, b) =>
+        incomePaymentDate(b).localeCompare(incomePaymentDate(a)),
+      ),
+    [incomes, filters],
+  )
+
+  const filteredTransactionInvoices = useMemo(
+    () =>
+      [...filterCollectionIncomes(incomes, filters)].sort((a, b) =>
         b.invoiceDate.localeCompare(a.invoiceDate),
       ),
     [incomes, filters],
@@ -491,11 +994,11 @@ export function Finance() {
   const expenseVatPreview = useMemo(() => {
     const n = Number.parseFloat(expenseForm.amount.replace(/,/g, ''))
     if (!Number.isFinite(n) || n <= 0) return null
-    if (!expenseForm.vatLiable) {
+    if (expenseForm.vatClass !== 'vat_liable') {
       return { gross: n, net: n, vat: 0, rate: 0.18 }
     }
     return expenseForm.amountIncludesVat ? calcVatFromGross(n) : calcVatFromNet(n)
-  }, [expenseForm.amount, expenseForm.amountIncludesVat, expenseForm.vatLiable])
+  }, [expenseForm.amount, expenseForm.amountIncludesVat, expenseForm.vatClass])
 
   const incomeVatPreview = useMemo(() => {
     const n = Number.parseFloat(incomeForm.amount.replace(/,/g, ''))
@@ -574,9 +1077,9 @@ export function Finance() {
     if (p) setPanelProject(p)
   }
 
-  const openAddIncome = () => {
+  const openAddIncome = (documentKind: FinanceIncomeDocumentKind = 'transaction_invoice') => {
     setEditingIncome(null)
-    setIncomeForm(emptyIncomeForm())
+    setIncomeForm({ ...emptyIncomeForm(), documentKind })
     setAdditionalPayment(emptyAdditionalPayment())
     setEditingPaymentId(null)
     setPaymentEditForm(emptyAdditionalPayment())
@@ -595,13 +1098,15 @@ export function Finance() {
     const displayAmount = includesVat
       ? source.amount
       : (source.amountBeforeVat ?? calcVatFromGross(source.amount).net)
+    const docDate = source.invoiceDate.slice(0, 10)
     setIncomeForm({
+      documentKind: incomeDocumentKind(source),
       projectId: source.projectId,
       clientId: source.clientId,
       amount: String(displayAmount),
       amountIncludesVat: includesVat,
       invoiceNumber: source.invoiceNumber,
-      invoiceDate: source.invoiceDate.slice(0, 10),
+      invoiceDate: docDate,
       description: source.description ?? '',
       status: source.status === 'partial' ? 'paid' : source.status,
       monthlyRetainer: source.monthlyRetainer === true,
@@ -617,13 +1122,15 @@ export function Finance() {
         source.status === 'paid' || source.status === 'partial'
           ? String(source.paidAmount ?? source.amount)
           : '',
-      paidDate: source.paidDate?.slice(0, 10) ?? todayYmd(),
+      paidDate: isTaxReceiptIncome(source)
+        ? docDate
+        : incomePaymentDate(source),
     })
     const outstanding = incomeOutstandingAmount(source)
     setAdditionalPayment({
       amount: outstanding > 0 ? String(outstanding) : '',
       paymentMethod: 'bank_transfer',
-      paidDate: todayYmd(),
+      paidDate: isTaxReceiptIncome(source) ? docDate : todayYmd(),
     })
     setEditingPaymentId(null)
     setPaymentEditForm(emptyAdditionalPayment())
@@ -642,6 +1149,23 @@ export function Finance() {
   const cancelEditPayment = () => {
     setEditingPaymentId(null)
     setPaymentEditForm(emptyAdditionalPayment())
+  }
+
+  const requestDeletePayment = (paymentId: string) => {
+    if (!editingIncome) return
+    if (editingPaymentId === paymentId) cancelEditPayment()
+    setDeletePaymentTarget({
+      incomeId: editingIncome.id,
+      paymentId,
+    })
+  }
+
+  const confirmDeletePayment = () => {
+    if (!deletePaymentTarget) return
+    void deleteIncomePayment(
+      deletePaymentTarget.incomeId,
+      deletePaymentTarget.paymentId,
+    ).then(() => setDeletePaymentTarget(null))
   }
 
   const submitPaymentEdit = () => {
@@ -679,13 +1203,14 @@ export function Finance() {
   const submitIncome = () => {
     const amount = Number.parseFloat(incomeForm.amount.replace(/,/g, ''))
     const isHosting = incomeForm.hostingType !== ''
+    const isTaxReceipt = incomeForm.documentKind === 'tax_receipt'
     if (
       (!isHosting && !incomeForm.projectId) ||
       !incomeForm.clientId ||
       !Number.isFinite(amount) ||
       amount <= 0 ||
       !incomeForm.invoiceNumber.trim() ||
-      !incomeForm.invoiceDate
+      !incomeForm.invoiceDate.trim()
     ) {
       return
     }
@@ -705,7 +1230,9 @@ export function Finance() {
         return
       }
       paymentMethod = incomeForm.paymentMethod
-      paidDate = incomeForm.paidDate.slice(0, 10)
+      paidDate = isTaxReceipt
+        ? incomeForm.invoiceDate.slice(0, 10)
+        : incomeForm.paidDate.slice(0, 10)
       finalStatus = resolveIncomeStatusFromPayment(
         gross,
         paidAmount,
@@ -717,6 +1244,11 @@ export function Finance() {
       ? hostingTypeUsesMonthPicker(incomeForm.hostingType)
       : incomeForm.monthlyRetainer
 
+    const invoiceDate = incomeForm.invoiceDate.slice(0, 10)
+    if (isTaxReceipt) {
+      paidDate = invoiceDate
+    }
+
     const payload: NewFinanceIncomeInput = {
       projectId: isHosting ? undefined : incomeForm.projectId,
       clientId: incomeForm.clientId,
@@ -724,8 +1256,9 @@ export function Finance() {
       amountIncludesVat: incomeForm.amountIncludesVat,
       vatAmount: vatBreakdown.vat,
       amountBeforeVat: vatBreakdown.net,
+      documentKind: incomeForm.documentKind,
       invoiceNumber: incomeForm.invoiceNumber,
-      invoiceDate: incomeForm.invoiceDate,
+      invoiceDate,
       description: incomeForm.description.trim() || undefined,
       status: finalStatus,
       monthlyRetainer,
@@ -745,8 +1278,9 @@ export function Finance() {
         amountIncludesVat: incomeForm.amountIncludesVat,
         vatAmount: vatBreakdown.vat,
         amountBeforeVat: vatBreakdown.net,
+        documentKind: incomeForm.documentKind,
         invoiceNumber: incomeForm.invoiceNumber,
-        invoiceDate: incomeForm.invoiceDate,
+        invoiceDate,
         description: incomeForm.description.trim() || null,
         status: hasPaymentHistory ? editingIncome.status : finalStatus,
         monthlyRetainer,
@@ -759,6 +1293,14 @@ export function Finance() {
         updatePatch.paidAmount = paidAmount ?? null
         updatePatch.paymentMethod = paymentMethod ?? null
         updatePatch.paidDate = paidDate ?? null
+      } else if (isTaxReceipt && editingIncome) {
+        const synced = syncTaxReceiptPaymentDate(
+          invoiceDate,
+          editingIncome.payments,
+        )
+        updatePatch.invoiceDate = synced.invoiceDate
+        updatePatch.paidDate = synced.paidDate
+        if (synced.payments) updatePatch.payments = synced.payments
       }
       void updateIncome(editingIncome.id, updatePatch).then(() =>
         setIncomeModalOpen(false),
@@ -812,7 +1354,7 @@ export function Finance() {
         '',
       name: source.name ?? source.description ?? '',
       amount: String(displayAmount),
-      vatLiable: expenseIsVatLiable(source),
+      vatClass: resolveExpenseVatClass(source),
       amountIncludesVat: includesVat,
       description: source.description ?? '',
       billingMonth: source.billingMonth,
@@ -836,7 +1378,8 @@ export function Finance() {
     if (typeDef.fieldMode === 'supplier' && !expenseForm.supplierId.trim()) {
       return
     }
-    const vatBreakdown = expenseForm.vatLiable
+    const isVatLiable = expenseForm.vatClass === 'vat_liable'
+    const vatBreakdown = isVatLiable
       ? expenseForm.amountIncludesVat
         ? calcVatFromGross(parsed)
         : calcVatFromNet(parsed)
@@ -879,8 +1422,9 @@ export function Finance() {
           : expenseForm.clientId.trim() || undefined,
       ...pnlFields,
       amount: vatBreakdown.gross,
-      vatLiable: expenseForm.vatLiable,
-      amountIncludesVat: expenseForm.vatLiable
+      vatClass: expenseForm.vatClass,
+      vatLiable: vatClassToLiable(expenseForm.vatClass),
+      amountIncludesVat: isVatLiable
         ? expenseForm.amountIncludesVat
         : true,
       vatAmount: vatBreakdown.vat,
@@ -893,11 +1437,12 @@ export function Finance() {
         typeDef.fieldMode === 'salary' ? employeeNameTrimmed : undefined,
       description: expenseForm.description.trim() || undefined,
       billingMonth: expenseForm.billingMonth,
-      recurring: typeDef.autoRecurring
-        ? true
-        : isOneTimeGeneralExpenseType(typeDef)
-          ? false
-          : expenseForm.recurring,
+      recurring:
+        typeDef.fieldMode === 'salary'
+          ? expenseForm.recurring
+          : isOneTimeGeneralExpenseType(typeDef)
+            ? false
+            : expenseForm.recurring,
       supplierInvoiceReceived: expenseForm.supplierInvoiceReceived,
     }
     if (editingExpense) {
@@ -919,7 +1464,8 @@ export function Finance() {
         pnlMonth: projectIdTrimmed ? (pnlFields.pnlMonth ?? null) : null,
         employeeName:
           typeDef.fieldMode === 'salary' ? employeeNameTrimmed : null,
-        vatLiable: expenseForm.vatLiable,
+        vatClass: expenseForm.vatClass,
+        vatLiable: vatClassToLiable(expenseForm.vatClass),
         supplierInvoiceReceived: expenseForm.supplierInvoiceReceived,
       }).then(() => setExpenseModalOpen(false))
     } else {
@@ -938,12 +1484,6 @@ export function Finance() {
     }
   }
 
-  const toggleExpenseInvoice = (row: FinanceExpense) => {
-    void updateExpense(row.id, {
-      supplierInvoiceReceived: !row.supplierInvoiceReceived,
-    })
-  }
-
   const loading = incomesLoading || expensesLoading
 
   return (
@@ -959,79 +1499,41 @@ export function Finance() {
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5 sm:gap-4">
-        <KpiCard
-          seq={0}
-          label={'סה"כ עסקאות'}
-          value={formatNis(summary.totalTransactions)}
-          valueClass="text-[var(--text-dark)]"
-        />
-        <KpiCard
-          seq={1}
-          label={'סה"כ הכנסות'}
-          value={formatNis(summary.totalPaidIncome)}
-          valueClass="text-[#10B981]"
-        />
-        <KpiCard
-          seq={2}
-          label={'סה"כ הוצאות'}
-          value={formatNis(summary.totalExpenses)}
-          valueClass="text-[#EF4444]"
-        />
-        <KpiCard
-          seq={3}
-          label="רווח נקי"
-          value={formatNis(summary.netProfit)}
-          valueClass={
-            summary.netProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
-          }
-        />
-        <KpiCard
-          seq={4}
-          label="יתרה לגבייה"
-          value={formatNis(summary.pendingCollection)}
-          valueClass="text-[#F59E0B]"
-        />
-      </section>
-
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 sm:gap-4">
-        <KpiCard
-          seq={5}
-          label="מע״מ הכנסות (שולם)"
-          value={formatNis(summary.incomeVat)}
-          valueClass="text-[#6366F1]"
-          hint={`על ${formatNis(summary.totalPaidIncome)} מתוך ${formatNis(summary.totalTransactions)} · חיוב מע״מ ${ISRAEL_VAT_PERCENT_LABEL}`}
-        />
-        <KpiCard
-          seq={6}
-          label="מע״מ הוצאות (חייב)"
-          value={formatNis(summary.expenseVat)}
-          valueClass="text-[#8B5CF6]"
-        />
-        <KpiCard
-          seq={7}
-          label="קיזוז מע״מ"
-          value={formatNis(summary.vatNet)}
-          valueClass={
-            summary.vatNet >= 0 ? 'text-[#6366F1]' : 'text-[#10B981]'
-          }
-        />
-        <KpiCard
-          seq={8}
-          label="רווח לאחר מע״מ"
-          value={formatNis(summary.profitAfterVat)}
-          valueClass={
-            summary.profitAfterVat >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
-          }
-        />
-      </section>
-
       <section
         className={`flex flex-col gap-3 rounded-2xl ${hubSectionClass(4)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:flex-wrap sm:items-end`}
       >
         <div className="min-w-0 flex-[2]">
           <FieldLabel>תקופה</FieldLabel>
           <div className="mb-2 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setPeriodMode('single')
+                if (filterYmFrom !== filterYmTo) {
+                  setFilterYmTo(filterYmFrom)
+                }
+                setMonthPreset('pick')
+              }}
+              className={
+                periodMode === 'single'
+                  ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
+                  : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+              }
+            >
+              חודש בודד
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodMode('range')}
+              className={
+                periodMode === 'range'
+                  ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
+                  : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+              }
+            >
+              טווח
+            </button>
+            <span className="mx-1 hidden h-6 w-px self-center bg-[var(--border)] sm:inline" />
             {(
               [
                 ['month', 'חודש נוכחי'],
@@ -1055,36 +1557,49 @@ export function Finance() {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          {periodMode === 'single' ? (
             <div>
               <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-                מ-
+                בחר חודש
               </span>
-              <input
-                type="month"
+              <HubDropdownSelect
                 value={filterYmFrom}
-                onChange={(e) => {
-                  setMonthPreset('custom')
-                  setFilterYmFrom(e.target.value)
-                }}
-                className={hubInputClass()}
+                onChange={applySingleMonth}
+                options={monthOptions(36)}
               />
             </div>
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-                עד
-              </span>
-              <input
-                type="month"
-                value={filterYmTo}
-                onChange={(e) => {
-                  setMonthPreset('custom')
-                  setFilterYmTo(e.target.value)
-                }}
-                className={hubInputClass()}
-              />
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
+                  מ-
+                </span>
+                <input
+                  type="month"
+                  value={filterYmFrom}
+                  onChange={(e) => {
+                    setMonthPreset('custom')
+                    setFilterYmFrom(e.target.value)
+                  }}
+                  className={hubInputClass()}
+                />
+              </div>
+              <div>
+                <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
+                  עד
+                </span>
+                <input
+                  type="month"
+                  value={filterYmTo}
+                  onChange={(e) => {
+                    setMonthPreset('custom')
+                    setFilterYmTo(e.target.value)
+                  }}
+                  className={hubInputClass()}
+                />
+              </div>
             </div>
-          </div>
+          )}
           <p className="mt-1.5 text-[11px] font-semibold text-[var(--text-mid)]">
             {filterRangeLabel}
           </p>
@@ -1120,20 +1635,208 @@ export function Finance() {
         </div>
       ) : null}
 
-      {/* Incomes */}
+      <section
+        className={`rounded-2xl ${hubSectionClass(1)} border-2 border-[#F59E0B] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}
+        aria-label="יתרה לגבייה"
+      >
+        <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#92400E]">
+          תמיד בראש · לא מושפע מפילטר תאריך
+        </div>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-xl">
+            <div className="text-[14px] font-extrabold text-[#92400E]">
+              יתרה לגבייה
+            </div>
+            <div className="mt-2 text-[11px] leading-snug text-[var(--text-mid)]">
+              מה שלקוחות עדיין חייבים לי — לא נספר כהכנסה ולא נכנס לרווח
+            </div>
+          </div>
+          <div className="text-[32px] font-extrabold tabular-nums leading-none text-[#F59E0B]">
+            {formatNis(summary.collectionBalance)}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 p-4 sm:p-5">
+        <KpiRowLabel row={1} title="הכנסות" period={filterRangeLabel} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <KpiCard
+            index={1}
+            seq={0}
+            label="הכנסות ברוטו"
+            value={formatNis(summary.incomeGross)}
+            valueClass="text-[#10B981]"
+            hint="כולל מע״מ שגביתי מלקוחות (מס קבלה לפי תאריך תשלום)"
+          />
+          <KpiCard
+            index={2}
+            seq={1}
+            label="מע״מ עסקאות"
+            value={formatNis(summary.incomeVat)}
+            valueClass="text-[#6366F1]"
+            hint="שייך למדינה — לא שלי"
+          />
+          <KpiCard
+            index={3}
+            seq={2}
+            label="הכנסות נטו"
+            value={formatNis(summary.incomeNet)}
+            valueClass="text-[#059669]"
+            hint="מה שבאמת שלי — ברוטו פחות מע״מ עסקאות"
+          />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 p-4 sm:p-5">
+        <KpiRowLabel row={2} title="הוצאות" period={filterRangeLabel} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <KpiCard
+            index={4}
+            seq={3}
+            label="הוצאות חייבות מע״מ — ברוטו"
+            value={formatNis(summary.expenseVatLiableGross)}
+            valueClass="text-[#EF4444]"
+            hint="חשבוניות מס מספקים — לפני קיזוז מע״מ תשומות"
+          />
+          <KpiCard
+            index={5}
+            seq={4}
+            label="מע״מ תשומות"
+            value={formatNis(summary.expenseInputVat)}
+            valueClass="text-[#8B5CF6]"
+            hint="שהמדינה מחזירה לי בקיזוז מול מע״מ עסקאות"
+          />
+          <KpiCard
+            index={6}
+            seq={5}
+            label="הוצאות ללא מע״מ"
+            value={formatNis(summary.expenseNonVatTotal)}
+            valueClass="text-[#64748B]"
+            hint="ביטוח לאומי, מסים, ספקים פטורים וכו׳ — סכום מלא"
+          />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 p-4 sm:p-5">
+        <KpiRowLabel row={3} title="תוצאה" period={filterRangeLabel} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <KpiCard
+            index={7}
+            seq={6}
+            label="מע״מ לתשלום"
+            value={formatNis(summary.vatPayable)}
+            valueClass="text-[#6366F1]"
+            hint="מע״מ עסקאות פחות מע״מ תשומות — מה שאני משלם לרשות המסים"
+          />
+          <KpiCard
+            index={8}
+            seq={7}
+            label="רווח גולמי"
+            value={formatNis(summary.grossProfit)}
+            valueClass={
+              summary.grossProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
+            }
+            hint="הכנסות נטו פחות כל ההוצאות נטו (חייבות + ללא מע״מ)"
+          />
+          <KpiCard
+            index={9}
+            seq={8}
+            label="רווח נקי אמיתי"
+            value={formatNis(summary.trueNetProfit)}
+            valueClass={
+              summary.trueNetProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
+            }
+            hint="רווח גולמי פחות מע״מ לתשלום — מה שנשאר לי בפועל"
+          />
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-2 border-b border-[var(--border)] pb-1">
+        {FINANCE_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={
+              activeTab === tab.id
+                ? 'rounded-t-[10px] border border-b-0 border-[var(--orange)] bg-[var(--orange)] px-4 py-2.5 text-xs font-bold text-white'
+                : 'rounded-t-[10px] border border-transparent px-4 py-2.5 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+            }
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'receipts' ? (
       <section className={`rounded-2xl ${hubSectionClass(5)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-extrabold text-[var(--text-dark)]">הכנסות</h2>
-          <button type="button" onClick={openAddIncome} className="hub-btn-orange text-sm">
-            + הוסף הכנסה
+          <div>
+            <h2 className="text-lg font-extrabold text-[var(--text-dark)]">
+              חשבוניות מס קבלה
+            </h2>
+            <p className="mt-1 text-[12px] text-[var(--text-mid)]">
+              הכנסה בפועל — נספרת לרווח האמיתי
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openAddIncome('tax_receipt')}
+            className="hub-btn-orange text-sm"
+          >
+            + הוסף מס קבלה
           </button>
         </div>
         {loading ? (
           <p className="text-sm text-[var(--text-mid)]">טוען…</p>
-        ) : filteredIncomes.length === 0 ? (
+        ) : filteredTaxReceipts.length === 0 ? (
           <EmptyState
-            title="אין הכנסות לטווח הנבחר"
-            description={`${filterRangeLabel} — הוסיפו הכנסה או שנו את הסינון`}
+            title="אין חשבוניות מס קבלה לטווח הנבחר"
+            description={`${filterRangeLabel} — הוסיפו מס קבלה או המירו מחשבונית עסקה`}
+            icon={
+              <svg viewBox="0 0 24 24" className="mx-auto h-10 w-10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+          />
+        ) : (
+          <TaxReceiptTable
+            rows={filteredTaxReceipts}
+            clientNameById={clientNameById}
+            projectNameById={projectNameById}
+            onEdit={openEditIncome}
+            onDelete={setDeleteIncomeId}
+            onOpenProject={openProjectPanel}
+          />
+        )}
+      </section>
+      ) : null}
+
+      {activeTab === 'collection' ? (
+      <section className={`rounded-2xl ${hubSectionClass(6)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-extrabold text-[var(--text-dark)]">
+              יתרה לגבייה — פירוט
+            </h2>
+            <p className="mt-1 text-[12px] text-[var(--text-mid)]">
+              לפי תקופה שנבחרה · סה״כ כל החודשים בקובייה למעלה
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openAddIncome('transaction_invoice')}
+            className="hub-btn-orange text-sm"
+          >
+            + הוסף ליתרה לגבייה
+          </button>
+        </div>
+        {loading ? (
+          <p className="text-sm text-[var(--text-mid)]">טוען…</p>
+        ) : filteredTransactionInvoices.length === 0 ? (
+          <EmptyState
+            title="אין רשומות ליתרה לגבייה בטווח הנבחר"
+            description={`${filterRangeLabel} — הוסיפו רשומה או שנו את הסינון`}
             icon={
               <svg viewBox="0 0 24 24" className="mx-auto h-10 w-10" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M9 12h6m-6 4h4m8 2V7l-5-5H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2z" />
@@ -1141,118 +1844,21 @@ export function Finance() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
-                  <th className="px-2 py-2 text-right">מס׳ חשבון עסקה</th>
-                  <th className="px-2 py-2 text-right">לקוח</th>
-                  <th className="px-2 py-2 text-right">פרויקט</th>
-                  <th className="px-2 py-2 text-right">סכום</th>
-                  <th className="px-2 py-2 text-right">תאריך חשבון עסקה</th>
-                  <th className="px-2 py-2 text-right">סטטוס</th>
-                  <th className="px-2 py-2 text-right">פעולות</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredIncomes.map((row) => {
-                  const badge = INCOME_STATUS_STYLE[row.status]
-                  const retainer =
-                    row.monthlyRetainer === true || row.isAutoOccurrence === true
-                  return (
-                    <tr
-                      key={`${row.id}-${row.invoiceDate.slice(0, 7)}`}
-                      className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
-                    >
-                      <td className="px-2 py-2.5 font-semibold">
-                        {row.invoiceNumber || '—'}
-                        {retainer ? (
-                          <span
-                            className="ms-1"
-                            title={
-                              row.isAutoOccurrence
-                                ? `ריטיינר מ-${row.sourceInvoiceDate?.slice(0, 7) ?? ''}`
-                                : 'ריטיינר חודשי'
-                            }
-                          >
-                            🔁
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-2 py-2.5">{clientNameById.get(row.clientId) ?? '—'}</td>
-                      <td className="px-2 py-2.5">
-                        {isHostingIncome(row) ? (
-                          <span
-                            className={
-                              resolveHostingType(row) === 'portal_monthly'
-                                ? 'inline-flex items-center gap-1 rounded-full bg-[#EDE9FE] px-2 py-0.5 text-[10px] font-bold text-[#6D28D9]'
-                                : 'inline-flex items-center gap-1 rounded-full bg-[#E0E7FF] px-2 py-0.5 text-[10px] font-bold text-[#4338CA]'
-                            }
-                            title={hostingIncomeLabel(row)}
-                          >
-                            {hostingIncomeLabel(row) ?? 'אחסון'}
-                            {hostingIsMonthlyRecurring(row) ? (
-                              <span title="חוזר כל חודש">🔁</span>
-                            ) : null}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => openProjectPanel(row.projectId)}
-                            className="font-semibold text-[var(--orange)] underline decoration-dotted hover:text-[#ea6c0a]"
-                          >
-                            {projectNameById.get(row.projectId) ?? '—'}
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-2 py-2.5 tabular-nums font-bold">
-                        {row.status === 'partial' ? (
-                          <div>
-                            <div>{formatNis(row.amount)}</div>
-                            <div className="text-[10px] font-semibold text-[var(--text-mid)]">
-                              שולם {formatNis(incomeTotalPaid(row))}
-                            </div>
-                          </div>
-                        ) : (
-                          formatNis(row.amount)
-                        )}
-                      </td>
-                      <td className="px-2 py-2.5 tabular-nums">{formatDateIL(row.invoiceDate)}</td>
-                      <td className="px-2 py-2.5">
-                        <span
-                          className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
-                          style={{ backgroundColor: badge.bg, color: badge.color }}
-                        >
-                          {INCOME_STATUS_LABEL[row.status]}
-                        </span>
-                        {row.paymentMethod &&
-                        (row.status === 'paid' || row.status === 'partial') ? (
-                          <div className="mt-1 text-[10px] text-[var(--text-mid)]">
-                            {PAYMENT_METHOD_LABEL[row.paymentMethod]}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-2 py-2.5">
-                        <div className="flex flex-wrap gap-1.5">
-                          <button type="button" className={uiBtnSmOutline} onClick={() => openEditIncome(row)}>
-                            עריכה
-                          </button>
-                          <button type="button" className={uiBtnDanger} onClick={() => setDeleteIncomeId(row.id)}>
-                            מחק
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <CollectionTable
+            rows={filteredTransactionInvoices}
+            clientNameById={clientNameById}
+            projectNameById={projectNameById}
+            onEdit={openEditIncome}
+            onDelete={setDeleteIncomeId}
+            onConvert={openConvertDialog}
+            onOpenProject={openProjectPanel}
+          />
         )}
       </section>
+      ) : null}
 
-      {/* Expenses */}
-      <section className={`rounded-2xl ${hubSectionClass(6)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
+      {activeTab === 'expenses' ? (
+      <section className={`rounded-2xl ${hubSectionClass(7)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-extrabold text-[var(--text-dark)]">הוצאות</h2>
           <button type="button" onClick={openAddExpense} className="hub-btn-orange text-sm">
@@ -1273,31 +1879,25 @@ export function Finance() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] border-collapse text-sm">
+            <table className="w-full min-w-[980px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
-                  <th className="px-3 py-2 text-right">חודש</th>
-                  <th className="px-3 py-2 text-right">פרטי הוצאה</th>
-                  <th className="px-3 py-2 text-right">סכום</th>
-                  <th className="px-3 py-2 text-right">חשבונית</th>
+                  <th className="px-3 py-2 text-right">תאריך</th>
+                  <th className="px-3 py-2 text-right">שם הוצאה</th>
+                  <th className="px-3 py-2 text-right">סוג</th>
+                  <th className="px-3 py-2 text-right">ברוטו</th>
+                  <th className="px-3 py-2 text-right">מע״מ</th>
+                  <th className="px-3 py-2 text-right">נטו</th>
+                  <th className="px-3 py-2 text-right">פרויקט</th>
                   <th className="px-3 py-2 text-right">פעולות</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredExpenses.map((row) => {
                   const typeDef = resolveExpenseType(row.type, expenseTypeById)
-                  const badge = expenseTypeStyle(typeDef)
-                  const vendor =
-                    typeDef.fieldMode === 'supplier'
-                      ? resolveSupplierDisplay(row)
-                      : typeDef.fieldMode === 'platform'
-                        ? row.platformName
-                        : null
-                  const recurring = isRecurringExpense(row, typeDef)
-                  const invoiceReceived = row.supplierInvoiceReceived === true
-                  const expenseClientId = resolveExpenseClientId(row)
+                  const vatClass = resolveExpenseVatClass(row)
+                  const breakdown = resolveExpenseRowVat(row)
                   const payMonth = expensePaymentMonth(row)
-                  const reportMonth = deriveExpensePnlMonth(row, incomes)
                   const pnlAttributed =
                     expenseUsesPnlAttribution(row, incomes) ||
                     row.isPnlAttribution === true
@@ -1306,92 +1906,43 @@ export function Finance() {
                       key={`${row.id}-${row.pnlMonth ?? row.billingMonth}-${payMonth}`}
                       className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
                     >
-                      <td className="px-3 py-3 align-top">
-                        <div className="font-semibold text-[var(--text-dark)]">
-                          {pnlAttributed ? (
-                            <>
-                              <span className="text-[11px] font-semibold text-[var(--text-mid)]">
-                                תשלום:{' '}
-                              </span>
-                              {monthLabelHe(payMonth)}
-                            </>
-                          ) : (
-                            monthLabelHe(row.billingMonth)
-                          )}
-                        </div>
-                        {pnlAttributed ? (
-                          <div className="mt-0.5 text-[10px] font-bold text-[#1D4ED8]">
-                            רווח והפסד: {monthLabelHe(reportMonth)}
-                          </div>
-                        ) : null}
-                        {row.isAutoOccurrence && row.sourceBillingMonth ? (
-                          <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
-                            חוזר מ-{monthLabelHe(row.sourceBillingMonth)}
-                          </div>
-                        ) : null}
+                      <td className="px-3 py-3 align-top tabular-nums">
+                        {monthLabelHe(pnlAttributed ? payMonth : row.billingMonth)}
                       </td>
                       <td className="px-3 py-3 align-top">
                         <div className="font-semibold text-[var(--text-dark)]">
                           {expenseDisplayName(row, typeDef)}
                         </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span
-                            className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
-                            style={{ backgroundColor: badge.bg, color: badge.color }}
-                          >
-                            {typeDef.label}
-                          </span>
-                          {vendor ? (
-                            <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
-                              {vendor}
-                            </span>
-                          ) : null}
-                          {expenseClientId ? (
-                            <span className="rounded-full bg-[#EFF6FF] px-2 py-0.5 text-[10px] font-semibold text-[#1D4ED8]">
-                              {clientNameById.get(expenseClientId) ?? 'לקוח'}
-                            </span>
-                          ) : null}
-                          {row.projectId ? (
-                            <button
-                              type="button"
-                              onClick={() => openProjectPanel(row.projectId!)}
-                              className="rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[10px] font-semibold text-[var(--orange)] hover:bg-[#FFEDD5]"
-                            >
-                              {projectNameById.get(row.projectId) ?? 'פרויקט'}
-                            </button>
-                          ) : null}
-                          {recurring ? (
-                            <span
-                              className="text-[11px]"
-                              title={
-                                row.isAutoOccurrence
-                                  ? `חוזר מ-${row.sourceBillingMonth ?? ''}`
-                                  : 'הוצאה חוזרת'
-                              }
-                            >
-                              🔁
-                            </span>
-                          ) : null}
-                          {!expenseIsVatLiable(row) ? (
-                            <span className="rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[10px] font-semibold text-[#6B7280]">
-                              פטור ממע״מ
-                            </span>
-                          ) : null}
+                        <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
+                          {typeDef.label}
                         </div>
-                        {row.name && row.description ? (
-                          <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--text-mid)]">
-                            {row.description}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-3 align-top tabular-nums font-bold">
-                        {formatNis(row.amount)}
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <ExpenseInvoiceBadge
-                          received={invoiceReceived}
-                          onToggle={() => toggleExpenseInvoice(row)}
-                        />
+                        <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-mid)]">
+                          {EXPENSE_VAT_CLASS_SHORT[vatClass]}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 align-top tabular-nums font-bold">
+                        {formatNis(breakdown.gross)}
+                      </td>
+                      <td className="px-3 py-3 align-top tabular-nums text-[#8B5CF6]">
+                        {vatClass === 'vat_liable' ? formatNis(breakdown.vat) : '—'}
+                      </td>
+                      <td className="px-3 py-3 align-top tabular-nums font-bold text-[#EF4444]">
+                        {formatNis(breakdown.net)}
+                      </td>
+                      <td className="px-3 py-3 align-top">
+                        {row.projectId ? (
+                          <button
+                            type="button"
+                            onClick={() => openProjectPanel(row.projectId!)}
+                            className="text-[11px] font-semibold text-[var(--orange)] underline decoration-dotted"
+                          >
+                            {projectNameById.get(row.projectId) ?? '—'}
+                          </button>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="px-3 py-3 align-top">
                         <div className="flex flex-wrap gap-1.5">
@@ -1411,33 +1962,30 @@ export function Finance() {
           </div>
         )}
       </section>
+      ) : null}
 
-      {/* P&L */}
-      <section className={`rounded-2xl ${hubSectionClass(7)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
+      {activeTab === 'pnl' ? (
+      <section className={`rounded-2xl ${hubSectionClass(8)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
         <h2 className="mb-4 text-lg font-extrabold text-[var(--text-dark)]">
-          רווח והפסד — סיכום חודשי
+          דוח רווח והפסד — סיכום חודשי
         </h2>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-sm">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
                 <th className="px-2 py-2 text-right">חודש</th>
-                <th className="px-2 py-2 text-right">עסקאות לתשלום</th>
-                <th className="px-2 py-2 text-right">קבועות</th>
-                <th className="px-2 py-2 text-right">ספקים</th>
-                <th className="px-2 py-2 text-right">פלטפורמות</th>
-                <th className="px-2 py-2 text-right">סה״כ הוצאות</th>
+                <th className="px-2 py-2 text-right">הכנסות נטו</th>
+                <th className="px-2 py-2 text-right">הוצאות נטו</th>
+                <th className="px-2 py-2 text-right">מע״מ לתשלום</th>
                 <th className="px-2 py-2 text-right">רווח נקי</th>
-                <th className="px-2 py-2 text-right">יתרה לגבייה</th>
-                <th className="px-2 py-2 text-right">מרווח %</th>
               </tr>
             </thead>
             <tbody>
               {pnlRows.map((row) => {
                 const rowBg =
-                  row.netProfit > 0
+                  row.trueNetProfit > 0
                     ? 'rgba(16,185,129,0.08)'
-                    : row.netProfit < 0
+                    : row.trueNetProfit < 0
                       ? 'rgba(239,68,68,0.08)'
                       : undefined
                 return (
@@ -1447,22 +1995,22 @@ export function Finance() {
                     style={{ backgroundColor: rowBg }}
                   >
                     <td className="px-2 py-2.5 font-semibold">{row.label}</td>
-                    <td className="px-2 py-2.5 tabular-nums">{formatNis(row.totalTransactions)}</td>
-                    <td className="px-2 py-2.5 tabular-nums">{formatNis(row.fixedExpenses)}</td>
-                    <td className="px-2 py-2.5 tabular-nums">{formatNis(row.supplierExpenses)}</td>
-                    <td className="px-2 py-2.5 tabular-nums">{formatNis(row.platformExpenses)}</td>
-                    <td className="px-2 py-2.5 tabular-nums font-semibold">{formatNis(row.totalExpenses)}</td>
+                    <td className="px-2 py-2.5 tabular-nums text-[#10B981]">
+                      {formatNis(row.incomeNet)}
+                    </td>
+                    <td className="px-2 py-2.5 tabular-nums text-[#EF4444]">
+                      {formatNis(row.expenseNet)}
+                    </td>
+                    <td className="px-2 py-2.5 tabular-nums text-[#6366F1]">
+                      {formatNis(row.vatPayable)}
+                    </td>
                     <td
                       className={`px-2 py-2.5 tabular-nums font-bold ${
-                        row.netProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
+                        row.trueNetProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
                       }`}
                     >
-                      {formatNis(row.netProfit)}
+                      {formatNis(row.trueNetProfit)}
                     </td>
-                    <td className="px-2 py-2.5 tabular-nums font-semibold text-[#F59E0B]">
-                      {formatNis(row.pendingCollection)}
-                    </td>
-                    <td className="px-2 py-2.5 tabular-nums">{row.profitMargin}%</td>
                   </tr>
                 )
               })}
@@ -1470,6 +2018,7 @@ export function Finance() {
           </table>
         </div>
       </section>
+      ) : null}
 
       {panelProject ? (
         <ProjectFinancePanel
@@ -1488,10 +2037,59 @@ export function Finance() {
       <Modal
         isOpen={incomeModalOpen}
         onClose={() => setIncomeModalOpen(false)}
-        title={editingIncome ? 'עריכת הכנסה' : 'הוספת הכנסה'}
+        title={
+          editingIncome
+            ? `עריכת ${FINANCE_INCOME_DOCUMENT_LABELS[incomeForm.documentKind]}`
+            : incomeForm.documentKind === 'tax_receipt'
+              ? 'הוספת חשבונית מס קבלה'
+              : 'הוספת חשבונית עסקה'
+        }
         size="lg"
       >
         <div className="space-y-4">
+          <div>
+            <FieldLabel>סוג מסמך</FieldLabel>
+            {editingIncome ? (
+              <div
+                className={`inline-flex rounded-full px-3 py-1.5 text-xs font-bold ${
+                  incomeForm.documentKind === 'tax_receipt'
+                    ? 'bg-[#ECFDF5] text-[#059669]'
+                    : 'bg-[#EEF2FF] text-[#6366F1]'
+                }`}
+              >
+                {FINANCE_INCOME_DOCUMENT_LABELS[incomeForm.documentKind]}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    'transaction_invoice',
+                    'tax_receipt',
+                  ] as FinanceIncomeDocumentKind[]
+                ).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() =>
+                      setIncomeForm((f) => ({ ...f, documentKind: kind }))
+                    }
+                    className={
+                      incomeForm.documentKind === kind
+                        ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-4 py-2 text-xs font-bold text-white'
+                        : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+                    }
+                  >
+                    {FINANCE_INCOME_DOCUMENT_LABELS[kind]}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-mid)]">
+              {incomeForm.documentKind === 'tax_receipt'
+                ? 'נספר לרווח בפועל לפי סכום המסמך המלא.'
+                : 'יתרה לגבייה — המירו למס קבלה כשמתקבל תשלום.'}
+            </p>
+          </div>
           <div>
             <FieldLabel>סוג הכנסה</FieldLabel>
             <div className="flex flex-wrap gap-2">
@@ -1680,14 +2278,20 @@ export function Finance() {
               ) : null}
             </div>
             <div>
-              <FieldLabel>מספר חשבון עסקה *</FieldLabel>
+              <FieldLabel>
+                {incomeDocumentNumberLabel(incomeForm.documentKind)}
+              </FieldLabel>
               <input
                 type="text"
                 value={incomeForm.invoiceNumber}
                 onChange={(e) =>
                   setIncomeForm((f) => ({ ...f, invoiceNumber: e.target.value }))
                 }
-                placeholder="מספר חשבון עסקה — לא חשבונית מס"
+                placeholder={
+                  incomeForm.documentKind === 'tax_receipt'
+                    ? 'מספר חשבונית מס קבלה'
+                    : 'מספר חשבונית עסקה'
+                }
                 className={hubInputClass()}
               />
             </div>
@@ -1695,31 +2299,40 @@ export function Finance() {
               <FieldLabel>
                 {hostingTypeUsesMonthPicker(incomeForm.hostingType) ||
                 incomeForm.monthlyRetainer
-                  ? 'חודש התחלה *'
+                  ? incomeForm.documentKind === 'tax_receipt'
+                    ? 'חודש מס קבלה (= תשלום) *'
+                    : 'חודש התחלה *'
                   : incomeForm.hostingType === 'yearly'
                     ? 'תאריך חשבון שנתי *'
-                    : 'תאריך חשבון עסקה *'}
+                    : incomeDocumentDateLabel(incomeForm.documentKind)}
               </FieldLabel>
               {hostingTypeUsesMonthPicker(incomeForm.hostingType) ||
               incomeForm.monthlyRetainer ? (
                 <input
                   type="month"
                   value={incomeForm.invoiceDate.slice(0, 7)}
-                  onChange={(e) =>
-                    setIncomeForm((f) => ({
-                      ...f,
-                      invoiceDate: `${e.target.value}-01`,
-                    }))
-                  }
+                  onChange={(e) => {
+                    const d = `${e.target.value}-01`
+                    setIncomeForm((f) =>
+                      f.documentKind === 'tax_receipt'
+                        ? { ...f, invoiceDate: d, paidDate: d }
+                        : { ...f, invoiceDate: d },
+                    )
+                  }}
                   className={hubInputClass()}
                 />
               ) : (
                 <input
                   type="date"
                   value={incomeForm.invoiceDate}
-                  onChange={(e) =>
-                    setIncomeForm((f) => ({ ...f, invoiceDate: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    const d = e.target.value
+                    setIncomeForm((f) =>
+                      f.documentKind === 'tax_receipt'
+                        ? { ...f, invoiceDate: d, paidDate: d }
+                        : { ...f, invoiceDate: d },
+                    )
+                  }}
                   className={hubInputClass()}
                 />
               )}
@@ -1748,8 +2361,13 @@ export function Finance() {
                             : '',
                       paidDate:
                         nextStatus === 'paid' && !f.paidDate
-                          ? todayYmd()
-                          : f.paidDate,
+                          ? f.documentKind === 'tax_receipt' && f.invoiceDate
+                            ? f.invoiceDate
+                            : todayYmd()
+                          : nextStatus === 'paid' &&
+                              f.documentKind === 'tax_receipt'
+                            ? f.invoiceDate || f.paidDate
+                            : f.paidDate,
                     }
                   })
                 }
@@ -1823,17 +2441,19 @@ export function Finance() {
                     </p>
                   ) : null}
                 </div>
-                <div>
-                  <FieldLabel>תאריך תשלום</FieldLabel>
-                  <input
-                    type="date"
-                    value={incomeForm.paidDate}
-                    onChange={(e) =>
-                      setIncomeForm((f) => ({ ...f, paidDate: e.target.value }))
-                    }
-                    className={hubInputClass()}
-                  />
-                </div>
+                {incomeForm.documentKind !== 'tax_receipt' ? (
+                  <div>
+                    <FieldLabel>תאריך תשלום</FieldLabel>
+                    <input
+                      type="date"
+                      value={incomeForm.paidDate}
+                      onChange={(e) =>
+                        setIncomeForm((f) => ({ ...f, paidDate: e.target.value }))
+                      }
+                      className={hubInputClass()}
+                    />
+                  </div>
+                ) : null}
               </div>
               {incomePaymentPreview && incomePaymentPreview.remaining > 0 ? (
                 <div className="rounded-lg border border-[#F59E0B] bg-[#FFFBEB] px-3 py-2 text-[11px] text-[#92400E]">
@@ -1958,6 +2578,13 @@ export function Finance() {
                             >
                               ביטול
                             </button>
+                            <button
+                              type="button"
+                              className={uiBtnDanger}
+                              onClick={() => requestDeletePayment(payment.id)}
+                            >
+                              מחק
+                            </button>
                           </div>
                         </div>
                       ) : (
@@ -1971,13 +2598,22 @@ export function Finance() {
                               {formatDateIL(payment.paidDate)}
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            className={uiBtnSmOutline}
-                            onClick={() => openEditPayment(payment)}
-                          >
-                            עריכה
-                          </button>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              className={uiBtnSmOutline}
+                              onClick={() => openEditPayment(payment)}
+                            >
+                              עריכה
+                            </button>
+                            <button
+                              type="button"
+                              className={uiBtnDanger}
+                              onClick={() => requestDeletePayment(payment.id)}
+                            >
+                              מחק
+                            </button>
+                          </div>
                         </div>
                       )}
                     </li>
@@ -2140,8 +2776,8 @@ export function Finance() {
                   setExpenseForm((f) => ({
                     ...f,
                     type,
-                    recurring: isSalary || isOneTime ? false : nextType.autoRecurring,
-                    vatLiable: isSalary ? false : f.vatLiable,
+                    recurring: isSalary || isOneTime ? false : f.recurring,
+                    vatClass: defaultVatClassForExpenseType(type),
                     employeeName: isSalary ? f.employeeName : '',
                     name: isSalary ? '' : f.name,
                     clientId: isSalary ? '' : f.clientId,
@@ -2151,11 +2787,7 @@ export function Finance() {
                 }}
                 options={expenseTypeOptions}
               />
-              {selectedExpenseType.autoRecurring ? (
-                <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-mid)]">
-                  הוצאה מסוג זה תחול אוטומטית בכל חודש מהחודש שנבחר ועד סוף אותה שנה.
-                </p>
-              ) : isOneTimeGeneralExpenseType(selectedExpenseType) ? (
+              {isOneTimeGeneralExpenseType(selectedExpenseType) ? (
                 <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-mid)]">
                   הוצאה חד פעמית — רשומה לחודש שנבחר בלבד, ללא חזרה אוטומטית.
                 </p>
@@ -2352,41 +2984,36 @@ export function Finance() {
 
           <ExpenseFormSection title="סכום ותקופה">
             <div>
-              <FieldLabel>חיוב במע״מ</FieldLabel>
+              <FieldLabel>סיווג מע״מ *</FieldLabel>
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpenseForm((f) => ({ ...f, vatLiable: true }))
-                  }
-                  className={
-                    expenseForm.vatLiable
-                      ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-4 py-2 text-xs font-bold text-white'
-                      : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-                  }
-                >
-                  חייב במע״מ
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpenseForm((f) => ({ ...f, vatLiable: false }))
-                  }
-                  className={
-                    !expenseForm.vatLiable
-                      ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-4 py-2 text-xs font-bold text-white'
-                      : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-                  }
-                >
-                  לא חייב (פטור)
-                </button>
+                {(
+                  [
+                    'vat_liable',
+                    'statutory',
+                    'exempt_supplier',
+                  ] as FinanceExpenseVatClass[]
+                ).map((vatClass) => (
+                  <button
+                    key={vatClass}
+                    type="button"
+                    onClick={() =>
+                      setExpenseForm((f) => ({ ...f, vatClass }))
+                    }
+                    className={
+                      expenseForm.vatClass === vatClass
+                        ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-4 py-2 text-xs font-bold text-white'
+                        : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+                    }
+                  >
+                    {EXPENSE_VAT_CLASS_LABEL[vatClass]}
+                  </button>
+                ))}
               </div>
               <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--text-mid)]">
-                משכורות וסוגים דומים — סמן &quot;לא חייב&quot;. רק הוצאות חייבות
-                נכנסות לקיזוז מע״מ.
+                תשומות — מע״מ לקיזוז · חוקי — ביטוח לאומי, מס · פטור — עוסק פטור
               </p>
             </div>
-            {expenseForm.vatLiable ? (
+            {expenseForm.vatClass === 'vat_liable' ? (
               <div>
                 <FieldLabel>סוג סכום</FieldLabel>
                 <div className="flex flex-wrap gap-2">
@@ -2423,7 +3050,7 @@ export function Finance() {
               <div>
                 <FieldLabel>
                   {selectedExpenseType.fieldMode === 'salary' ||
-                  !expenseForm.vatLiable
+                  expenseForm.vatClass !== 'vat_liable'
                     ? `סכום (₪) *`
                     : expenseForm.amountIncludesVat
                       ? `סכום כולל מע״מ (₪) *`
@@ -2477,7 +3104,7 @@ export function Finance() {
                 />
               </div>
             </div>
-            {expenseVatPreview && expenseForm.vatLiable ? (
+            {expenseVatPreview && expenseForm.vatClass === 'vat_liable' ? (
               <div className="space-y-0.5 rounded-lg border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-[11px] text-[var(--text-mid)]">
                 <div className="flex justify-between gap-2">
                   <span>לפני מע״מ</span>
@@ -2499,8 +3126,7 @@ export function Finance() {
                 </div>
               </div>
             ) : null}
-            {!selectedExpenseType.autoRecurring &&
-            selectedExpenseType.fieldMode !== 'salary' &&
+            {selectedExpenseType.fieldMode !== 'salary' &&
             !isOneTimeGeneralExpenseType(selectedExpenseType) ? (
               <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-[var(--text-dark)]">
                 <input
@@ -2511,7 +3137,7 @@ export function Finance() {
                   }
                   className="h-4 w-4 accent-[var(--orange)]"
                 />
-                הוצאה חוזרת (כל חודש מהתחלה ועד סוף השנה)
+                חוזרת כל חודש (מהחודש שנבחר ועד סוף אותה שנה)
               </label>
             ) : null}
           </ExpenseFormSection>
@@ -2674,6 +3300,100 @@ export function Finance() {
           </div>
         </div>
       </Modal>
+
+      {convertIncomeTarget ? (
+        <Modal
+          isOpen={!!convertIncomeId}
+          onClose={closeConvertDialog}
+          title={
+            convertIsPartialSplit
+              ? 'המרת תשלום חלקי למס קבלה'
+              : 'המרה לחשבונית מס קבלה'
+          }
+          size="md"
+        >
+          <div className="space-y-4">
+            {convertIsPartialSplit ? (
+              <p className="text-sm leading-relaxed text-[var(--text-mid)]">
+                שולם{' '}
+                <span className="font-bold text-[#10B981]">
+                  {formatNis(incomeTotalPaid(convertIncomeTarget))}
+                </span>{' '}
+                מתוך{' '}
+                <span className="font-bold text-[var(--text-dark)]">
+                  {formatNis(convertIncomeTarget.amount)}
+                </span>
+                . הסכום ששולם יירשם כ<strong>חשבונית מס קבלה</strong> (הכנסה
+                בפועל), והיתרה{' '}
+                <span className="font-bold text-[#6366F1]">
+                  {formatNis(incomeOutstandingAmount(convertIncomeTarget))}
+                </span>{' '}
+                תישאר כ<strong>חשבונית עסקה</strong>.
+              </p>
+            ) : (
+              <p className="text-sm leading-relaxed text-[var(--text-mid)]">
+                הסכום המלא (
+                <span className="font-bold text-[var(--text-dark)]">
+                  {formatNis(convertIncomeTarget.amount)}
+                </span>
+                ) ייספר כהכנסה בפועל ברווח ובמע״מ.
+              </p>
+            )}
+            <p className="rounded-lg border border-[#F59E0B] bg-[#FFFBEB] px-3 py-2 text-[11px] leading-snug text-[#92400E]">
+              תאריך מס הקבלה נקבע ידנית — לא נלקח מתאריך חשבון העסקה (
+              {formatDateIL(convertIncomeTarget.invoiceDate)}).
+            </p>
+            <div>
+              <FieldLabel>תאריך מס קבלה (= תאריך תשלום) *</FieldLabel>
+              <input
+                type="date"
+                value={convertTaxReceiptDate}
+                onChange={(e) => setConvertTaxReceiptDate(e.target.value)}
+                className={hubInputClass()}
+                autoFocus
+              />
+            </div>
+            {convertIsPartialSplit ? (
+              <div>
+                <FieldLabel>מספר חשבונית מס קבלה *</FieldLabel>
+                <input
+                  type="text"
+                  value={convertTaxReceiptNumber}
+                  onChange={(e) => setConvertTaxReceiptNumber(e.target.value)}
+                  placeholder="מספר מהחשבונית שהוצאת בחשבונית ירוקה"
+                  className={hubInputClass()}
+                />
+              </div>
+            ) : null}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={closeConvertDialog}
+                className="hub-btn-secondary text-sm"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={submitConvertToTaxReceipt}
+                disabled={!canSubmitConvert}
+                className="rounded-[10px] bg-[#059669] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#047857] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {convertIsPartialSplit
+                  ? 'צור מס קבלה על הסכום ששולם'
+                  : 'המר למס קבלה'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      <ConfirmDialog
+        isOpen={!!deletePaymentTarget}
+        onClose={() => setDeletePaymentTarget(null)}
+        onConfirm={confirmDeletePayment}
+        message="למחוק את התשלום? הסכום יורד מהחשבון ויתרת הלקוח תתעדכן."
+      />
 
       <ConfirmDialog
         isOpen={!!deleteIncomeId}

@@ -1,3 +1,6 @@
+import type { FinanceExpenseVatClass } from '../types'
+import { resolveExpenseVatClass } from './financeExpenseVat'
+
 /** שיעור מע״מ בישראל — 18% מ-2025 */
 export const ISRAEL_VAT_RATE = 0.18
 
@@ -54,12 +57,11 @@ export function resolveExpenseVat(
 }
 
 export function expenseIsVatLiable(exp: {
+  vatClass?: FinanceExpenseVatClass
   vatLiable?: boolean
   type?: string
 }): boolean {
-  if (exp.vatLiable === false) return false
-  if (exp.vatLiable === true) return true
-  return exp.type !== 'salary'
+  return resolveExpenseVatClass(exp) === 'vat_liable'
 }
 
 export function resolveIncomeVat(inc: {
@@ -79,10 +81,11 @@ export function resolveExpenseRowVat(exp: {
   amountIncludesVat?: boolean
   vatAmount?: number
   amountBeforeVat?: number
+  vatClass?: FinanceExpenseVatClass
   vatLiable?: boolean
   type?: string
 }): VatBreakdown {
-  if (!expenseIsVatLiable(exp)) {
+  if (resolveExpenseVatClass(exp) !== 'vat_liable') {
     return {
       gross: round2(exp.amount),
       net: round2(exp.amount),

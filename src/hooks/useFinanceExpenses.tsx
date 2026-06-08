@@ -22,7 +22,7 @@ import { docToFinanceExpense } from '../lib/firestoreMappers'
 import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
-import type { FinanceExpense } from '../types'
+import type { FinanceExpense, FinanceExpenseVatClass } from '../types'
 
 export type NewFinanceExpenseInput = {
   type: string
@@ -33,6 +33,7 @@ export type NewFinanceExpenseInput = {
   projectId?: string
   amount: number
   vatLiable?: boolean
+  vatClass?: FinanceExpenseVatClass
   amountIncludesVat?: boolean
   vatAmount?: number
   amountBeforeVat?: number
@@ -54,7 +55,8 @@ export type FinanceExpensePatchInput = {
   platformName?: string | null
   projectId?: string | null
   amount?: number
-  vatLiable?: boolean | null
+  vatLiable?: boolean
+  vatClass?: FinanceExpenseVatClass | null
   amountIncludesVat?: boolean
   vatAmount?: number | null
   amountBeforeVat?: number | null
@@ -124,6 +126,7 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
       if (typeof data.vatLiable === 'boolean') {
         row.vatLiable = data.vatLiable
       }
+      if (data.vatClass) row.vatClass = data.vatClass
       if (data.projectId?.trim()) row.projectId = data.projectId.trim()
       if (data.clientId?.trim()) row.clientId = data.clientId.trim()
       if (data.supplierId?.trim()) row.supplierId = data.supplierId.trim()
@@ -261,6 +264,11 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
           next.vatLiable = patch.vatLiable
         } else if (patch.vatLiable === null) {
           next.vatLiable = deleteField()
+        }
+        if (patch.vatClass) {
+          next.vatClass = patch.vatClass
+        } else if (patch.vatClass === null) {
+          next.vatClass = deleteField()
         }
         if (typeof patch.supplierInvoiceReceived === 'boolean') {
           next.supplierInvoiceReceived = patch.supplierInvoiceReceived

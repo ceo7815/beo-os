@@ -18,7 +18,10 @@ export interface FinanceIncomePaymentRecord {
 /** סוג הכנסה ללא פרויקט — אחסון / פורטל */
 export type FinanceHostingType = 'monthly' | 'yearly' | 'portal_monthly'
 
-/** הכנסה במודול פיננסים — אדמין בלבד (חשבון עסקה, לא חשבונית מס) */
+/** סוג מסמך הכנסה — מס קבלה = הכנסה בפועל; עסקה = רווח צפוי בלבד */
+export type FinanceIncomeDocumentKind = 'tax_receipt' | 'transaction_invoice'
+
+/** הכנסה במודול פיננסים — אדמין בלבד */
 export interface FinanceIncome {
   id: string
   /** ריק כש־hostingClient — הכנסת אחסון ללא פרויקט */
@@ -31,10 +34,14 @@ export interface FinanceIncome {
   vatAmount?: number
   /** לפני מע״מ ₪ */
   amountBeforeVat?: number
-  /** מספר חשבון עסקה — לא חשבונית מס */
+  /** חשבונית מס קבלה (בפועל) או חשבונית עסקה (פתוחה) — ברירת מחדל לרשומות ישנות: עסקה */
+  documentKind?: FinanceIncomeDocumentKind
+  /** מספר המסמך — מס קבלה או חשבונית עסקה לפי documentKind */
   invoiceNumber: string
-  /** YYYY-MM-DD — תאריך חשבון עסקה */
+  /** YYYY-MM-DD — תאריך המסמך */
   invoiceDate: string
+  /** כשנוצרה מס קבלה מהמרה ידנית של חשבונית עסקה */
+  sourceTransactionInvoiceId?: string
   description?: string
   status: FinanceIncomeStatus
   /** סכום ששולם בפועל (כולל מע״מ) — רלוונטי ל־paid / partial */
@@ -58,6 +65,12 @@ export interface FinanceIncome {
 
 export type FinanceExpenseFieldMode = 'none' | 'supplier' | 'platform' | 'salary'
 export type FinanceExpensePnlCategory = 'fixed' | 'supplier' | 'platform'
+
+/** סיווג מע״מ להוצאה — חשבונאי */
+export type FinanceExpenseVatClass =
+  | 'vat_liable' /** תשומות — חייב מע״מ, ניתן לקיזוז */
+  | 'statutory' /** חוקי — ביטוח לאומי, מס הכנסה, מע״מ לתשלום */
+  | 'exempt_supplier' /** ספק פטור — ללא מע״מ */
 
 /** הגדרת סוג הוצאה — מובנים + מותאמים אישית ב-Firestore */
 export interface FinanceExpenseTypeDef {
@@ -93,8 +106,10 @@ export interface FinanceExpense {
   /** שם העובד — רלוונטי להוצאות משכורת */
   employeeName?: string
   amount: number
-  /** false = פטור ממע״מ (משכורות וכד׳) — ברירת מחדל חייב */
+  /** @deprecated — השתמשו ב-vatClass */
   vatLiable?: boolean
+  /** סיווג מע״מ: תשומות / חוקי / פטור */
+  vatClass?: FinanceExpenseVatClass
   /** true = הסכום שהוזן/נשמר כולל מע״מ (ברירת מחדל) */
   amountIncludesVat?: boolean
   /** סכום מע״מ ₪ */

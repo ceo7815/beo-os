@@ -20,7 +20,9 @@ import type {
   FinanceExpenseFieldMode,
   FinanceExpensePnlCategory,
   FinanceExpenseTypeDef,
+  FinanceExpenseVatClass,
   FinanceIncome,
+  FinanceIncomeDocumentKind,
   FinanceIncomeStatus,
   FinancePaymentMethod,
   Invoice,
@@ -74,6 +76,20 @@ const FINANCE_INCOME_STATUSES: FinanceIncomeStatus[] = [
   'overdue',
   'partial',
 ]
+const FINANCE_EXPENSE_VAT_CLASSES: FinanceExpenseVatClass[] = [
+  'vat_liable',
+  'statutory',
+  'exempt_supplier',
+]
+
+function normalizeExpenseVatClass(raw: unknown): FinanceExpenseVatClass | undefined {
+  const s = String(raw ?? '').trim()
+  if (FINANCE_EXPENSE_VAT_CLASSES.includes(s as FinanceExpenseVatClass)) {
+    return s as FinanceExpenseVatClass
+  }
+  return undefined
+}
+
 const FINANCE_EXPENSE_FIELD_MODES: FinanceExpenseFieldMode[] = [
   'none',
   'supplier',
@@ -122,6 +138,21 @@ export function docToFinanceExpenseType(
   }
 }
 
+const FINANCE_INCOME_DOCUMENT_KINDS: FinanceIncomeDocumentKind[] = [
+  'tax_receipt',
+  'transaction_invoice',
+]
+
+function normalizeFinanceIncomeDocumentKind(
+  raw: unknown,
+): FinanceIncomeDocumentKind | undefined {
+  const s = String(raw ?? '').trim()
+  if (FINANCE_INCOME_DOCUMENT_KINDS.includes(s as FinanceIncomeDocumentKind)) {
+    return s as FinanceIncomeDocumentKind
+  }
+  return undefined
+}
+
 function normalizeFinanceIncomeStatus(raw: unknown): FinanceIncomeStatus {
   const s = String(raw ?? '').trim().toLowerCase()
   if (FINANCE_INCOME_STATUSES.includes(s as FinanceIncomeStatus)) {
@@ -165,6 +196,12 @@ export function docToFinanceIncome(
       ? x.paidDate.slice(0, 10)
       : undefined
   const payments = parseIncomePaymentRecords(x.payments)
+  const documentKind = normalizeFinanceIncomeDocumentKind(x.documentKind)
+  const sourceTransactionInvoiceId =
+    typeof x.sourceTransactionInvoiceId === 'string' &&
+    x.sourceTransactionInvoiceId.trim()
+      ? x.sourceTransactionInvoiceId.trim()
+      : undefined
   return {
     id: d.id,
     projectId: String(x.projectId ?? ''),
@@ -174,8 +211,10 @@ export function docToFinanceIncome(
     amountIncludesVat,
     ...(vatAmount !== undefined ? { vatAmount } : {}),
     ...(amountBeforeVat !== undefined ? { amountBeforeVat } : {}),
+    ...(documentKind ? { documentKind } : {}),
     invoiceNumber: String(x.invoiceNumber ?? ''),
     invoiceDate,
+    ...(sourceTransactionInvoiceId ? { sourceTransactionInvoiceId } : {}),
     description,
     status: normalizeFinanceIncomeStatus(x.status),
     ...(paidAmount !== undefined ? { paidAmount } : {}),
@@ -264,6 +303,9 @@ export function docToFinanceExpense(
     recurring: x.recurring === true,
     billingMonth,
     vatLiable: x.vatLiable === false ? false : x.vatLiable === true ? true : undefined,
+    ...(normalizeExpenseVatClass(x.vatClass)
+      ? { vatClass: normalizeExpenseVatClass(x.vatClass) }
+      : {}),
     ...(pnlMonth ? { pnlMonth } : {}),
     ...(linkedIncomeId ? { linkedIncomeId } : {}),
     supplierInvoiceReceived: x.supplierInvoiceReceived === true,

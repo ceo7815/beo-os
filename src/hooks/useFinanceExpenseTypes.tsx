@@ -143,7 +143,7 @@ export function newExpenseTypeDefaults(
     label: '',
     color: '#F97316',
     fieldMode,
-    autoRecurring: fieldMode === 'none',
+    autoRecurring: false,
     pnlCategory: defaultPnlForFieldMode(fieldMode),
   }
 }

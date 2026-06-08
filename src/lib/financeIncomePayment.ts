@@ -4,6 +4,7 @@ import type {
   FinanceIncomeStatus,
   FinancePaymentMethod,
 } from '../types'
+import { isTaxReceiptIncome } from './financeIncomeDocument'
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -35,6 +36,75 @@ function parsePaymentRecord(raw: unknown): FinanceIncomePaymentRecord | null {
     paidDate,
     ...(createdAt ? { createdAt } : {}),
   }
+}
+
+/** תאריך מס קבלה שהמשתמש הזין — מקור האמת לסינון ולתצוגה */
+export function taxReceiptDocumentDate(inc: FinanceIncome): string {
+  if (inc.invoiceDate?.trim()) return inc.invoiceDate.trim().slice(0, 10)
+  if (inc.paidDate?.trim()) return inc.paidDate.trim().slice(0, 10)
+  const records = incomePaymentRecords(inc)
+  if (records.length > 0) {
+    return records[0]!.paidDate.slice(0, 10)
+  }
+  return ''
+}
+
+/** תאריך תשלום — מס קבלה לפי תאריך המסמך; יתרה לגבייה לפי תשלומים */
+export function incomePaymentDate(inc: FinanceIncome): string {
+  if (isTaxReceiptIncome(inc)) {
+    return taxReceiptDocumentDate(inc) || inc.invoiceDate.slice(0, 10)
+  }
+  const records = incomePaymentRecords(inc)
+  if (records.length > 0) {
+    return records[records.length - 1]!.paidDate.slice(0, 10)
+  }
+  if (inc.paidDate?.trim()) return inc.paidDate.trim().slice(0, 10)
+  return inc.invoiceDate.slice(0, 10)
+}
+
+/** תאריך לסינון/תצוגה — מס קבלה לפי תאריך מסמך, יתרה לגבייה לפי מסמך */
+export function incomeFilterAnchorDate(inc: FinanceIncome): string {
+  if (isTaxReceiptIncome(inc)) return incomePaymentDate(inc)
+  return inc.invoiceDate.slice(0, 10)
+}
+
+/** מס קבלה — האם תאריכי תשלום/רשומות סוטים מתאריך המסמך */
+export function taxReceiptDatesOutOfSync(inc: FinanceIncome): boolean {
+  if (!isTaxReceiptIncome(inc)) return false
+  const doc = taxReceiptDocumentDate(inc)
+  if (!doc) return false
+  if (inc.paidDate?.trim().slice(0, 10) !== doc) return true
+  return incomePaymentRecords(inc).some(
+    (p) => p.paidDate.slice(0, 10) !== doc,
+  )
+}
+
+/** סנכרון תאריך מס קבלה (= תאריך תשלום) לשדות המסמך */
+export function syncTaxReceiptPaymentDate(
+  paidDate: string,
+  payments?: FinanceIncomePaymentRecord[],
+): {
+  invoiceDate: string
+  paidDate: string
+  payments?: FinanceIncomePaymentRecord[]
+} {
+  const d = paidDate.slice(0, 10)
+  if (!Array.isArray(payments) || payments.length === 0) {
+    return { invoiceDate: d, paidDate: d }
+  }
+  if (payments.length === 1) {
+    return {
+      invoiceDate: d,
+      paidDate: d,
+      payments: [{ ...payments[0]!, paidDate: d }],
+    }
+  }
+  const updated = [...payments]
+  updated[updated.length - 1] = {
+    ...updated[updated.length - 1]!,
+    paidDate: d,
+  }
+  return { invoiceDate: d, paidDate: d, payments: updated }
 }
 
 /** רשימת תשלומים — כולל המרה מרשומות ישנות */

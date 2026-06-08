@@ -1,10 +1,13 @@
 import type { FinanceExpense, FinanceIncome } from '../types'
+import { isTaxReceiptIncome } from './financeIncomeDocument'
+import { incomePaymentDate } from './financeIncomePayment'
 
 function formatNisLocal(amount: number): string {
   return `₪${Math.round(amount).toLocaleString('he-IL')}`
 }
 
 export function incomeYm(inc: FinanceIncome): string {
+  if (isTaxReceiptIncome(inc)) return incomePaymentDate(inc).slice(0, 7)
   return inc.invoiceDate.slice(0, 7)
 }
 

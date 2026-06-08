@@ -17,7 +17,7 @@ export const BUILTIN_FINANCE_EXPENSE_TYPES: FinanceExpenseTypeDef[] = [
     label: 'קבועה',
     color: '#94A3B8',
     fieldMode: 'none',
-    autoRecurring: true,
+    autoRecurring: false,
     pnlCategory: 'fixed',
     builtIn: true,
   },
@@ -102,11 +102,12 @@ export function resolveExpenseType(
   )
 }
 
+/** חוזרת רק כשסומן במפורש על הרשומה */
 export function isRecurringExpense(
   exp: FinanceExpense,
-  typeDef: FinanceExpenseTypeDef,
+  _typeDef?: FinanceExpenseTypeDef,
 ): boolean {
-  return exp.recurring || typeDef.autoRecurring
+  return exp.recurring === true
 }
 
 function parseYm(ym: string): { y: number; m: number } | null {
