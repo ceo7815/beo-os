@@ -1,6 +1,7 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { db, functionsClient } from './firebase'
+import { formatFirebaseErrorDetail } from './formatFirebaseError'
 import {
   addDaysYmd,
   endOfDayMsFromYmd,
@@ -71,18 +72,62 @@ export function normalizeClockifyEmail(email: string | null | undefined): string
   return (email ?? '').trim().toLowerCase()
 }
 
+function clockifyCallableError(err: unknown): Error {
+  const detail = formatFirebaseErrorDetail(err)
+  return new Error(detail.trim() || 'שגיאה בקריאה ל-Clockify')
+}
+
 /** תגובת Clockify דרך Cloud Function (Gen2 Callable + httpsCallable) */
 export async function clockifyProxyGet(path: string, params?: Record<string, string>): Promise<unknown> {
-  const res = await clockifyProxyCallable({ path: path.replace(/^\/+/, ''), params })
-  return res.data.body
+  try {
+    const res = await clockifyProxyCallable({ path: path.replace(/^\/+/, ''), params })
+    return res.data.body
+  } catch (err) {
+    throw clockifyCallableError(err)
+  }
 }
 
 async function clockifyProxyWithStatus(
   path: string,
   params?: Record<string, string>,
 ): Promise<{ status: number; body: unknown }> {
-  const res = await clockifyProxyCallable({ path: path.replace(/^\/+/, ''), params })
-  return res.data
+  try {
+    const res = await clockifyProxyCallable({ path: path.replace(/^\/+/, ''), params })
+    return res.data
+  } catch (err) {
+    throw clockifyCallableError(err)
+  }
+}
+
+/** בדיקת חיבור — משיכת רשימת משתמשי workspace (אדמין) */
+export async function testClockifyConnection(workspaceId: string): Promise<{
+  userCount: number
+  sampleEmails: string[]
+}> {
+  const users = await getWorkspaceUsers(workspaceId.trim())
+  return {
+    userCount: users.length,
+    sampleEmails: users.slice(0, 5).map((u) => u.email).filter(Boolean),
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return []
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const i = nextIndex++
+      results[i] = await fn(items[i]!)
+    }
+  }
+  const workers = Math.min(Math.max(1, concurrency), items.length)
+  await Promise.all(Array.from({ length: workers }, () => worker()))
+  return results
 }
 
 export interface ClockifyWorkspaceUser {
@@ -283,11 +328,9 @@ export async function getAllUsersReport(
   const rangeStart = startOfDayMsFromYmd(startYmd)
   const rangeEnd = endOfDayMsFromYmd(endYmd)
 
-  const rows = await Promise.all(
-    users.map(async (u) => {
-      if (!u.id) {
-        return null
-      }
+  const rows = await mapWithConcurrency(users, 4, async (u) => {
+    if (!u.id) return null
+    try {
       const [entries, activeEntry] = await Promise.all([
         getUserTimeEntries(workspaceId, u.id, fetchStart, fetchEnd),
         getActiveTimer(workspaceId, u.id),
@@ -312,8 +355,20 @@ export async function getAllUsersReport(
         hoursMonth,
         active: activeEntry != null,
       }
-    }),
-  )
+    } catch (err) {
+      console.warn('[clockify] דילוג על משתמש בגלל שגיאה', u.email, err)
+      return {
+        clockifyUserId: u.id,
+        name: u.name,
+        email: u.email,
+        hoursInRange: 0,
+        hoursToday: 0,
+        hoursWeek: 0,
+        hoursMonth: 0,
+        active: false,
+      }
+    }
+  })
   return rows
     .filter((r): r is AllUsersReportRow => r != null)
     .sort((a, b) => a.name.localeCompare(b.name, 'he'))

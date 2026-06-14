@@ -88,7 +88,7 @@ export function QuickTasksSlider() {
             onClick={() => setQuickOpen(false)}
           />
           <aside
-            className="fixed bottom-0 left-0 top-0 z-[80] flex w-full max-w-[320px] flex-col border-e-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] shadow-[4px_0_20px_rgba(15,23,42,0.07)]"
+            className="fixed bottom-0 left-0 top-0 z-[80] flex w-full max-w-[320px] flex-col border-e border-[var(--border)] bg-[var(--dash-panel-bg)] shadow-[var(--shadow-lg)]"
             dir="rtl"
           >
             <header className="flex shrink-0 items-center justify-between border-b border-[rgba(249,115,22,0.35)] px-4 py-3">

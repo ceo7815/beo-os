@@ -11,6 +11,10 @@ interface ImportMetaEnv {
   readonly VITE_FUNCTIONS_REGION?: string
   /** אופציונלי — URL מלא ל־clockifyProxy (onRequest), אם שונה מברירת המחדל */
   readonly VITE_CLOCKIFY_PROXY_URL?: string
+  /** קישור לחשבונית ירוקה / Morning בדף גבייה */
+  readonly VITE_GREEN_INVOICE_URL?: string
+  /** seed ל-Firestore — רק פיתוח; בפרודקשן false */
+  readonly VITE_ENABLE_FIRESTORE_SEED?: string
 }
 
 interface ImportMeta {

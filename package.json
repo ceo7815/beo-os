@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "npm run dev --prefix server",
+    "dev:all": "concurrently -n server,web -c blue,green \"npm run dev:server\" \"npm run dev\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -30,6 +32,7 @@
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "concurrently": "^9.2.1",
     "firebase-tools": "^15.19.0",
     "globals": "^17.4.0",
     "tailwindcss": "^4.2.2",

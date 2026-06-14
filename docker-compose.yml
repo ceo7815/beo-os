@@ -1,0 +1,30 @@
+# Hub POS — React static + Nginx
+# Domain: pos.hub.co.il → host Nginx → 127.0.0.1:3002
+# xCloud: set VITE_* env vars in the app settings (no env_file here).
+
+services:
+  hub-pos:
+    container_name: hub-pos-web
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
+        VITE_FUNCTIONS_REGION: ${VITE_FUNCTIONS_REGION:-us-central1}
+        VITE_CLOCKIFY_PROXY_URL: ${VITE_CLOCKIFY_PROXY_URL:-}
+        VITE_GREEN_INVOICE_URL: ${VITE_GREEN_INVOICE_URL:-}
+        VITE_ENABLE_FIRESTORE_SEED: ${VITE_ENABLE_FIRESTORE_SEED:-false}
+    ports:
+      - "127.0.0.1:3002:80"
+    restart: unless-stopped
+    networks:
+      - bakrayot-proxy
+
+networks:
+  bakrayot-proxy:
+    external: true

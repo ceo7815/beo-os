@@ -18,6 +18,15 @@ functions/.env
 functions/.env.local
 .env
 .env.*
+!.env.example
+!server/env.example
+
+# שרת Hub POS
+server/node_modules
+server/dist
+server/.env
+server/.env.local
+secrets/
 
 # Editor directories and files
 .vscode/*

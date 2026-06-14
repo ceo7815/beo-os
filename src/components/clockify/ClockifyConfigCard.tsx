@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ClockifyIntegrationConfig } from '../../types'
-import { CLOCKIFY_API_V1_DEFAULT } from '../../lib/clockifyService'
+import { CLOCKIFY_API_V1_DEFAULT, testClockifyConnection } from '../../lib/clockifyService'
+import { toastFsError, toastFsSuccess } from '../../lib/fsToast'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
 
 type Props = {
@@ -14,6 +15,7 @@ export function ClockifyConfigCard({ config, loading, onSave }: Props) {
   const [workspaceId, setWorkspaceId] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState(CLOCKIFY_API_V1_DEFAULT)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
 
   useEffect(() => {
     if (!config) return
@@ -23,6 +25,29 @@ export function ClockifyConfigCard({ config, loading, onSave }: Props) {
   }, [config?.workspaceId, config?.apiBaseUrl, config?.apiKey])
 
   const hasStoredKey = Boolean(config?.apiKey?.trim())
+
+  const runTest = async () => {
+    const ws = workspaceId.trim() || config?.workspaceId?.trim() || ''
+    if (!ws) {
+      toastFsError('חסר Workspace ID', new Error(''), 'clockify test')
+      return
+    }
+    if (!hasStoredKey && !apiKey.trim()) {
+      toastFsError('שמרו קודם API Key', new Error(''), 'clockify test')
+      return
+    }
+    setTesting(true)
+    try {
+      const { userCount, sampleEmails } = await testClockifyConnection(ws)
+      const sample =
+        sampleEmails.length > 0 ? `\nדוגמאות: ${sampleEmails.join(', ')}` : ''
+      toastFsSuccess(`חיבור תקין — ${userCount} משתמשים ב-workspace.${sample}`)
+    } catch (e) {
+      toastFsError('בדיקת חיבור נכשלה', e, 'clockify test')
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -107,6 +132,14 @@ export function ClockifyConfigCard({ config, loading, onSave }: Props) {
           <div className="flex flex-wrap gap-2 pt-1">
             <button type="submit" className="hub-btn-orange" disabled={saving}>
               {saving ? 'שומר…' : 'שמירה ב-Firestore'}
+            </button>
+            <button
+              type="button"
+              className="hub-btn-secondary"
+              disabled={testing || saving}
+              onClick={() => void runTest()}
+            >
+              {testing ? 'בודק…' : 'בדיקת חיבור'}
             </button>
           </div>
         </form>

@@ -1,43 +1,47 @@
 @import 'tailwindcss';
 
-/* Design Tokens */
+/* Design Tokens — Enterprise calm */
 :root {
-  /* רקעים — חיצוני אפור עדין; קוביות לבן */
-  --bg-main: #f3f4f6;
-  --bg-sidebar: #1a2b5e;
+  /* רקעים */
+  --bg-main: #f1f5f9;
+  --bg-sidebar: #454545;
   --bg-card: #ffffff;
-  /** פני כרטיסי דשבורד — לבן */
   --dash-panel-bg: #ffffff;
-  --bg-input: #fafafa;
+  --bg-input: #ffffff;
 
   /* מותג */
-  --blue-dark: #1a2b5e;
+  --blue-dark: #1e293b;
   --blue-mid: #2563eb;
-  --blue-light: #eff4ff;
+  --blue-light: #eff6ff;
   --orange: #f97316;
-  --orange-light: #fff3e8;
+  --orange-light: #fff7ed;
+  --orange-muted: rgba(249, 115, 22, 0.12);
 
-  /* טקסט — שחור חזק לקריאות עיקריות */
+  /* טקסט */
   --text-dark: #0f172a;
-  --text-mid: #334155;
-  --text-light: #64748b;
+  --text-mid: #475569;
+  --text-light: #94a3b8;
 
-  /* גבולות */
+  /* גבולות וצל */
   --border: #e2e8f0;
   --border-dark: #cbd5e1;
-  /** מסגרת כתומה בולטת לכרטיסי דשבורד */
-  --border-orange-soft: rgba(249, 115, 22, 0.55);
+  --border-orange-soft: rgba(249, 115, 22, 0.35);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.08);
+
   /** רקע פנימי בכרטיס — אפור עדין */
-  --surface-muted: #e8eaef;
+  --surface-muted: #f8fafc;
+  --surface-hover: #f1f5f9;
 
   /* סטטוס */
   --success: #10b981;
-  --warning: #f97316;
+  --warning: #f59e0b;
   --danger: #ef4444;
   --info: #2563eb;
   --retainer: #7c3aed;
 
-  /* תאימות לקוד קיים — אותה סמנטיקה, ערכים חדשים */
+  /* תאימות לקוד קיים */
   --bg: var(--bg-main);
   --sidebar: var(--bg-sidebar);
   --card: var(--bg-card);
@@ -66,7 +70,7 @@ body,
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-main);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-dark);
@@ -86,6 +90,9 @@ textarea {
   direction: rtl;
   width: 100%;
   outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 input:focus,
@@ -95,7 +102,6 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-/* רדיו / צ׳קבוקס — לא מקבלים width:100% מהכלל הגלובלי שלמעלה */
 input[type='radio'],
 input[type='checkbox'] {
   width: auto;
@@ -117,7 +123,6 @@ input[type='checkbox']:focus {
   outline-offset: 2px;
 }
 
-/* כפתורים גלובליים */
 button {
   font-family: 'Rubik', sans-serif !important;
   border-radius: 10px;
@@ -188,7 +193,7 @@ button {
   font-weight: 600;
 }
 .hub-btn-orange:hover {
-  background: #ea6c0a;
+  background: #ea580c;
 }
 
 .hub-btn-danger {
@@ -203,14 +208,10 @@ button {
   background: #fee2e2;
 }
 
-/**
- * רשימות נפתחות — עיצוב אחיד עם שפת המותג (מסגרת כתומה רכה).
- * דורש className="hub-select" על ה־select (לא משפיע על select ללא המחלקה).
- */
 select.hub-select {
   cursor: pointer;
-  border: 2px solid rgba(249, 115, 22, 0.45);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background-color: var(--dash-panel-bg);
   padding-block: 10px;
   padding-inline-start: 40px;
@@ -218,12 +219,11 @@ select.hub-select {
   font-size: 14px;
   font-weight: 500;
   color: var(--text-dark);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  /* inline-start = ימין ב-RTL, שמאל ב-LTR — חץ מיושר עם כיוון האתר */
   background-position: start 14px center;
   transition:
     border-color 0.15s ease,
@@ -232,55 +232,171 @@ select.hub-select {
 }
 
 select.hub-select:hover:not(:disabled) {
-  border-color: var(--orange);
+  border-color: var(--border-dark);
   background-color: var(--surface-muted);
 }
 
 select.hub-select:focus {
-  border-color: var(--orange);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
+  border-color: var(--blue-mid);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 select.hub-select:disabled {
   opacity: 0.52;
   cursor: not-allowed;
-  background-color: var(--bg-input);
+  background-color: var(--surface-muted);
 }
 
-/** כרטיס / סקשן — מסגרת שחורה (ברירת מחדל); צמד עם .hub-dash-card--orange לסירוגין */
+/** כרטיס / סקשן — מסגרת עדינה + צל */
 .hub-dash-card {
-  border: 2px solid #0f172a;
+  border: 1px solid var(--border);
   background: var(--dash-panel-bg);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--shadow-sm);
 }
 
+/** תאימות לאחור — אותו עיצוב אחיד */
 .hub-dash-card--orange {
-  border-color: var(--orange);
-  box-shadow:
-    0 0 0 1px rgba(249, 115, 22, 0.12),
-    0 4px 14px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--border);
+  background: var(--dash-panel-bg);
+  box-shadow: var(--shadow-sm);
 }
 
-/** כותרת עליונה (דשבורד) — מסגרת כתומה מעט עבה יותר מכרטיסי הסקשן הרגילים */
+/** כרטיס בולט (hero, KPI ראשי) */
+.hub-dash-card.hub-dash-card--elevated,
 .hub-dash-card.hub-dash-card--hero {
-  border: 3px solid var(--orange);
-  box-shadow:
-    0 0 0 1px rgba(249, 115, 22, 0.18),
-    0 6px 22px rgba(249, 115, 22, 0.12),
-    0 4px 14px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--border);
+  background: var(--dash-panel-bg);
+  box-shadow: var(--shadow-md);
 }
 
-/** שורה/אזור פנימי — אפור עדין + מסגרת כתומה */
+/** שורה/אזור פנימי ברשימות */
 .hub-dash-inset {
   background: var(--surface-muted);
-  border: 1px solid rgba(249, 115, 22, 0.42);
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
 }
 
-/** מצב ריק / אזור מקווקו — תואם פאנל דשבורד */
-.hub-empty-dashed {
-  border: 2px dashed var(--border-orange-soft);
+.hub-dash-inset:hover,
+.hub-dash-row:hover {
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+
+/** שורת רשימה בדשבורד */
+.hub-dash-row {
+  background: var(--surface-muted);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/** כפתור קיצור outline */
+.hub-chip-link {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: var(--dash-panel-bg);
-  box-shadow:
-    0 0 0 1px rgba(249, 115, 22, 0.08),
-    0 2px 10px rgba(15, 23, 42, 0.04);
+  padding: 0.5rem 0.75rem;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-mid);
+  box-shadow: var(--shadow-sm);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.hub-chip-link:hover {
+  border-color: var(--border-dark);
+  background: var(--surface-muted);
+  color: var(--text-dark);
+}
+
+.hub-chip-link--accent {
+  border-color: var(--border-orange-soft);
+  color: var(--orange);
+  background: var(--orange-light);
+}
+
+.hub-chip-link--accent:hover {
+  border-color: var(--orange);
+  background: var(--orange-light);
+  color: #c2410c;
+}
+
+/** כפתור משני בתוך כרטיס */
+.hub-card-action {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 0.25rem 0.5rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-mid);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.hub-card-action:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-dark);
+  color: var(--text-dark);
+}
+
+/** תג מונה */
+.hub-count-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background: var(--surface-muted);
+  padding: 0.25rem 0.5rem;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-mid);
+}
+
+/** התראות דשבורד */
+.hub-alert {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 0.75rem 1rem;
+  text-align: right;
+  transition: background-color 0.15s ease;
+}
+
+.hub-alert--danger {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.hub-alert--danger:hover {
+  background: #fee2e2;
+}
+
+.hub-alert--warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.hub-alert--warning:hover {
+  background: #fef3c7;
+}
+
+/** מצב ריק */
+.hub-empty-dashed {
+  border: 1px dashed var(--border-dark);
+  background: var(--surface-muted);
+  box-shadow: none;
 }

@@ -4,7 +4,12 @@ exports.clockifyProxy = void 0;
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
-const CLOCKIFY_BASE = 'https://api.clockify.me/api/v1';
+const CLOCKIFY_BASE_DEFAULT = 'https://api.clockify.me/api/v1';
+function normalizeClockifyBaseUrl(raw) {
+    const t = (raw ?? '').trim();
+    const base = t || CLOCKIFY_BASE_DEFAULT;
+    return base.replace(/\/+$/, '');
+}
 function requireAuthUid(authUid) {
     if (!authUid) {
         throw new https_1.HttpsError('unauthenticated', 'יש להתחבר למערכת');
@@ -73,13 +78,20 @@ async function loadClockifyCredentials() {
         workspaceFromClockify: Boolean(readStringField(clockifyData, 'workspaceId')),
         workspaceFromSettingsFallback: Boolean(workspaceId && !readStringField(clockifyData, 'workspaceId')),
     });
-    return { apiKey, workspaceId };
+    const apiBaseUrl = normalizeClockifyBaseUrl(readStringField(clockifyData, 'apiBaseUrl'));
+    return { apiKey, workspaceId, apiBaseUrl };
 }
 /**
  * Gen2 Callable — כמו שאר הפונקציות בפרויקט.
  * `invoker: 'public'` — נדרש ל־`httpsCallable` מהדפדפן (כולל localhost); האימות נשאר ב־`request.auth`.
  */
-exports.clockifyProxy = (0, https_1.onCall)({ region: 'us-central1', invoker: 'public' }, async (request) => {
+exports.clockifyProxy = (0, https_1.onCall)({
+    region: 'us-central1',
+    invoker: 'public',
+    /** דוח אדמין מושך time-entries לכל העובדים — צריך יותר מ-60 שניות */
+    timeoutSeconds: 300,
+    memory: '512MiB',
+}, async (request) => {
     try {
         requireAuthUid(request.auth?.uid);
         const data = request.data;
@@ -87,7 +99,7 @@ exports.clockifyProxy = (0, https_1.onCall)({ region: 'us-central1', invoker: 'p
         if (!path) {
             throw new https_1.HttpsError('invalid-argument', 'חסר path');
         }
-        const { apiKey, workspaceId } = await loadClockifyCredentials();
+        const { apiKey, workspaceId, apiBaseUrl } = await loadClockifyCredentials();
         if (!apiKey) {
             console.error('[clockifyProxy] חסר apiKey ב-attendanceConfig/clockify');
             throw new https_1.HttpsError('failed-precondition', 'חסר API Key ב-Firestore (attendanceConfig/clockify)');
@@ -106,7 +118,7 @@ exports.clockifyProxy = (0, https_1.onCall)({ region: 'us-central1', invoker: 'p
         }
         const flat = flattenParams(data.params);
         const qs = new URLSearchParams(flat).toString();
-        const url = `${CLOCKIFY_BASE}/${normalized}${qs ? `?${qs}` : ''}`;
+        const url = `${apiBaseUrl}/${normalized}${qs ? `?${qs}` : ''}`;
         console.log('[clockifyProxy] Clockify בקשה', { path: normalized, hasQuery: Boolean(qs) });
         let clockifyRes;
         try {

@@ -142,7 +142,17 @@ export function ClockifyAdminDashboard({
                     }`}
                     onClick={() => setDetailRow(row)}
                   >
-                    <td className="px-3 py-3 font-semibold text-[var(--text-dark)]">{m.name}</td>
+                    <td className="px-3 py-3 font-semibold text-[var(--text-dark)]">
+                      {m.name}
+                      {!row.clockifyUserId ? (
+                        <span
+                          className="ms-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900"
+                          title="אין משתמש Clockify עם אותו אימייל"
+                        >
+                          ללא התאמה
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-3 font-mono text-[12px] text-[var(--text-mid)]" dir="ltr">
                       {m.email?.trim() || '—'}
                     </td>
@@ -176,9 +186,20 @@ export function ClockifyAdminDashboard({
         </div>
 
         {integrationReady && !loading && rows.length > 0 ? (
-          <p className="mt-3 text-[11px] text-[var(--text-light)]">
+          <>
+            {rows.some((r) => !r.clockifyUserId) ? (
+              <div
+                className="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-[12px] text-amber-950"
+                role="status"
+              >
+                {rows.filter((r) => !r.clockifyUserId).length} עובדים ב-Hub ללא התאמת אימייל ב-Clockify — השעות
+                שלהם יוצגו כ-0. ודאו שהאימייל ב-Firebase זהה לאימייל ב-Clockify (אותיות קטנות).
+              </div>
+            ) : null}
+            <p className="mt-3 text-[11px] text-[var(--text-light)]">
             עמודת «בטווח»: סה״כ שעות בין {formatDateIL(filterStart)} ל-{formatDateIL(filterEnd)} (לפי שעון מקומי).
-          </p>
+            </p>
+          </>
         ) : null}
 
         {rows.length === 0 && integrationReady && !loading ? (

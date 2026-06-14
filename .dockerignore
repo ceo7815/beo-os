@@ -1,0 +1,35 @@
+node_modules
+dist
+dist-ssr
+.firebase
+.git
+.github
+.vscode
+.idea
+*.log
+npm-debug.log*
+
+# סודות
+.env
+.env.*
+!.env.example
+secrets/
+functions/.env
+functions/.env.local
+server/.env
+server/.env.local
+
+# לא נדרש ל-build של ה-frontend
+server/node_modules
+server/dist
+functions/node_modules
+functions/lib
+functions/src
+
+# מסמכים / IDE
+*.md
+!README.md
+.DS_Store
+Thumbs.db
+agent-transcripts
+terminals

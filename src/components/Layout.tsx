@@ -25,7 +25,7 @@ const workspaceLinks = [
 const LAYOUT_LOGO_SRC = `${import.meta.env.BASE_URL}logo-hub-pos.png?v=3`
 
 const navBase =
-  'flex items-center gap-2.5 rounded-none px-5 py-3 text-base transition'
+  'flex items-center gap-2.5 rounded-lg px-4 py-2.5 text-[15px] transition'
 
 const navIconClass =
   'h-[17px] w-[17px] shrink-0 text-current opacity-90 [&>svg]:h-full [&>svg]:w-full'
@@ -48,6 +48,113 @@ function NavGlyph({ children }: { children: ReactNode }) {
   )
 }
 
+function navSubLinkClass(isActive: boolean, nested = false): string {
+  return [
+    'flex min-h-[34px] w-full items-center rounded-md text-[13px] leading-snug transition',
+    nested ? 'pe-2 ps-5' : 'px-3 py-1.5',
+    isActive
+      ? 'bg-white/10 font-semibold text-[#F97316]'
+      : 'font-medium text-white/65 hover:bg-white/[0.06] hover:text-white/90',
+  ].join(' ')
+}
+
+function NavSubSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="px-2 pb-0.5 pt-2 text-[10px] font-semibold tracking-wide text-white/35 first:pt-1">
+      {children}
+    </p>
+  )
+}
+
+function NavSubPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="border-t border-white/[0.08] px-2 pb-2 pt-2">
+      <div className="rounded-lg bg-black/20 p-1.5">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function NavExpandChevron({ open }: { open: boolean }) {
+  return (
+    <span
+      className={`ms-auto shrink-0 text-white/45 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+      aria-hidden
+    >
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  )
+}
+
+function NavExpandableGroup({
+  label,
+  icon,
+  isSectionActive,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string
+  icon: ReactNode
+  isSectionActive: boolean
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  const highlighted = open || isSectionActive
+  return (
+    <div
+      className={`flex flex-col overflow-hidden rounded-lg transition-[background] duration-200 ${
+        highlighted ? 'bg-white/[0.07]' : ''
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`${navBase} w-full text-right ${
+          highlighted
+            ? 'bg-white/10 font-semibold text-[#F97316]'
+            : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
+        }`}
+      >
+        {icon}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <NavExpandChevron open={open} />
+      </button>
+      {open ? <NavSubPanel>{children}</NavSubPanel> : null}
+    </div>
+  )
+}
+
+function NavSubLink({
+  to,
+  label,
+  end,
+  nested,
+  onClick,
+  badge,
+}: {
+  to: string
+  label: string
+  end?: boolean
+  nested?: boolean
+  onClick?: () => void
+  badge?: ReactNode
+}) {
+  return (
+    <NavLink to={to} end={end} onClick={onClick} className={({ isActive }) => navSubLinkClass(isActive, nested)}>
+      <span className="flex w-full min-w-0 items-center justify-between gap-2">
+        <span className="truncate">{label}</span>
+        {badge}
+      </span>
+    </NavLink>
+  )
+}
+
 export function Layout() {
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -58,7 +165,28 @@ export function Layout() {
   const overdueInvoiceCount = invoices.filter((i) => i.status === 'overdue').length
   const { user, signOutUser } = useAuth()
 
-  const calendarNavActive = location.pathname.startsWith('/calendar')
+  const financeNavActive =
+    location.pathname.startsWith('/finance') ||
+    location.pathname.startsWith('/collections')
+  const operationsNavActive =
+    location.pathname.startsWith('/projects') ||
+    location.pathname.startsWith('/campaigns') ||
+    location.pathname.startsWith('/leads') ||
+    location.pathname.startsWith('/tasks') ||
+    location.pathname.startsWith('/calendar') ||
+    location.pathname.startsWith('/prompts') ||
+    location.pathname.startsWith('/hosting')
+
+  const [operationsOpen, setOperationsOpen] = useState(operationsNavActive)
+  const [financeOpen, setFinanceOpen] = useState(financeNavActive)
+
+  useEffect(() => {
+    if (operationsNavActive) setOperationsOpen(true)
+  }, [operationsNavActive])
+
+  useEffect(() => {
+    if (financeNavActive) setFinanceOpen(true)
+  }, [financeNavActive])
 
   useEffect(() => {
     setMobileNavOpen(false)
@@ -120,7 +248,7 @@ export function Layout() {
         className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-[100dvh] md:flex-row md:overflow-hidden"
       >
         <header
-          className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-[rgba(255,255,255,0.12)] bg-[#454545] px-3 py-2.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)] md:hidden"
+          className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-white/10 bg-[var(--bg-sidebar)] px-3 py-2.5 shadow-sm md:hidden"
           style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
         >
           <button
@@ -170,7 +298,7 @@ export function Layout() {
           id="app-sidebar"
           role="navigation"
           aria-label="ניווט ראשי"
-          className={`flex flex-col bg-[#454545] transition-transform duration-200 ease-out max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto max-md:border-l max-md:border-[rgba(255,255,255,0.08)] max-md:shadow-[-10px_0_40px_rgba(0,0,0,0.35)] md:static md:z-auto md:h-full md:w-[220px] md:shrink-0 md:translate-x-0 md:overflow-y-auto md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.08)] md:shadow-none ${
+          className={`flex flex-col bg-[var(--bg-sidebar)] transition-transform duration-200 ease-out max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto max-md:border-l max-md:border-white/[0.08] max-md:shadow-[-8px_0_32px_rgba(0,0,0,0.25)] md:static md:z-auto md:h-full md:w-[220px] md:shrink-0 md:translate-x-0 md:overflow-y-auto md:border-b-0 md:border-l md:border-white/[0.08] md:shadow-[-4px_0_24px_rgba(0,0,0,0.06)] ${
             mobileNavOpen ? 'max-md:translate-x-0' : 'max-md:pointer-events-none max-md:translate-x-full'
           }`}
           style={{
@@ -179,7 +307,7 @@ export function Layout() {
           }}
           onClick={(e) => {
             const t = e.target as HTMLElement
-            if (t.closest('a[href], button')) closeMobileNav()
+            if (t.closest('a[href]')) closeMobileNav()
           }}
         >
           <div className="flex flex-1 flex-col gap-5 p-4">
@@ -215,8 +343,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                      ? 'bg-white/10 font-semibold text-[#F97316]'
+                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                   }`
                 }
               >
@@ -228,61 +356,44 @@ export function Layout() {
                 </NavGlyph>
                 דשבורד
               </NavLink>
-              <NavLink
-                to="/projects"
-                onClick={() => setSelectedClient(null)}
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
+              <NavExpandableGroup
+                label="ניהול שוטף"
+                isSectionActive={operationsNavActive}
+                open={operationsOpen}
+                onToggle={() => setOperationsOpen((v) => !v)}
+                icon={
+                  <NavGlyph>
+                    <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 8v8M8 12h8" />
+                  </NavGlyph>
                 }
               >
-                <NavGlyph>
-                  <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </NavGlyph>
-                פרויקטים
-              </NavLink>
-              <NavLink
-                to="/campaigns"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
-              >
-                <NavGlyph>
-                  <path d="M4 19V5M4 19h16M8 19v-6m4 6V8m4 11v-9m4 9v-4" />
-                </NavGlyph>
-                קמפיינים
-              </NavLink>
-              <NavLink
-                to="/leads"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
-              >
-                <NavGlyph>
-                  <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M19 8v6M22 11h-6" />
-                </NavGlyph>
-                לידים
-              </NavLink>
+                <NavSubSectionLabel>מכירות ולקוחות</NavSubSectionLabel>
+                <NavSubLink to="/campaigns" label="קמפיינים" />
+                <NavSubLink to="/leads" label="לידים" />
+
+                <NavSubSectionLabel>פרויקטים וביצוע</NavSubSectionLabel>
+                <NavSubLink
+                  to="/projects"
+                  label="פרויקטים"
+                  onClick={() => setSelectedClient(null)}
+                />
+                <NavSubLink to="/tasks" label="משימות" />
+                <NavSubLink to="/hosting" label="אחסון ודומיינים" />
+
+                <NavSubSectionLabel>יומן וכלים</NavSubSectionLabel>
+                <NavSubLink to="/calendar" label="יומן" end />
+                <NavSubLink to="/calendar/summaries" label="סיכומי פגישות" />
+                <NavSubLink to="/prompts" label="ספריית פרומפטים" />
+              </NavExpandableGroup>
               <NavLink
                 to="/clients"
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                      ? 'bg-white/10 font-semibold text-[#F97316]'
+                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                   }`
                 }
               >
@@ -292,53 +403,12 @@ export function Layout() {
                 לקוחות
               </NavLink>
               <NavLink
-                to="/collections"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
-              >
-                <NavGlyph>
-                  <path d="M9 12h6m-6 4h4m8 2V7l-5-5H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2z" />
-                  <path d="M14 3v4a2 2 0 002 2h4" />
-                </NavGlyph>
-                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span>גבייה</span>
-                  {overdueInvoiceCount > 0 ? (
-                    <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#EF4444] px-1.5 text-[10px] font-bold text-white">
-                      {overdueInvoiceCount > 99 ? '99+' : overdueInvoiceCount}
-                    </span>
-                  ) : null}
-                </span>
-              </NavLink>
-              {showFinanceNav ? (
-                <NavLink
-                  to="/finance"
-                  className={({ isActive }) =>
-                    `${navBase} ${
-                      isActive
-                        ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                        : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                    }`
-                  }
-                >
-                  <NavGlyph>
-                    <path d="M21.21 15.89A10 10 0 118 2.83" />
-                    <path d="M22 12A10 10 0 0012 2v10z" />
-                  </NavGlyph>
-                  פיננסים
-                </NavLink>
-              ) : null}
-              <NavLink
                 to="/suppliers"
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                      ? 'bg-white/10 font-semibold text-[#F97316]'
+                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                   }`
                 }
               >
@@ -347,110 +417,64 @@ export function Layout() {
                 </NavGlyph>
                 ספקים
               </NavLink>
-              <NavLink
-                to="/hosting"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
-              >
-                <NavGlyph>
-                  <rect x="3" y="4" width="18" height="6" rx="1.2" />
-                  <rect x="3" y="14" width="18" height="6" rx="1.2" />
-                  <path d="M7 7h.01M7 17h.01M11 7h6M11 17h6" />
-                </NavGlyph>
-                אחסון ודומיינים
-              </NavLink>
-              <NavLink
-                to="/tasks"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
-              >
-                <NavGlyph>
-                  <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
-                  <path d="M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12l2 2 4-4" />
-                </NavGlyph>
-                משימות
-              </NavLink>
-              <div
-                className={`flex flex-col overflow-hidden rounded-lg transition-[background] duration-200 ${
-                  calendarNavActive ? 'bg-white/[0.07]' : ''
-                }`}
-              >
+              {showFinanceNav ? (
+                <NavExpandableGroup
+                  label="פיננסים"
+                  isSectionActive={financeNavActive}
+                  open={financeOpen}
+                  onToggle={() => setFinanceOpen((v) => !v)}
+                  icon={
+                    <NavGlyph>
+                      <path d="M21.21 15.89A10 10 0 118 2.83" />
+                      <path d="M22 12A10 10 0 0012 2v10z" />
+                    </NavGlyph>
+                  }
+                >
+                  <NavSubLink to="/finance" label="סקירה פיננסית" />
+                  <NavSubLink
+                    to="/collections"
+                    label="גבייה"
+                    badge={
+                      overdueInvoiceCount > 0 ? (
+                        <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#EF4444] px-1.5 text-[10px] font-bold text-white">
+                          {overdueInvoiceCount > 99 ? '99+' : overdueInvoiceCount}
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                </NavExpandableGroup>
+              ) : (
                 <NavLink
-                  to="/calendar"
+                  to="/collections"
                   className={({ isActive }) =>
                     `${navBase} ${
                       isActive
-                        ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                        : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                        ? 'bg-white/10 font-semibold text-[#F97316]'
+                        : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                     }`
                   }
                 >
                   <NavGlyph>
-                    <rect x="3" y="5" width="18" height="16" rx="2" />
-                    <path d="M3 10h18M8 3v4M16 3v4" />
+                    <path d="M9 12h6m-6 4h4m8 2V7l-5-5H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2z" />
+                    <path d="M14 3v4a2 2 0 002 2h4" />
                   </NavGlyph>
-                  יומן
-                </NavLink>
-                {calendarNavActive ? (
-                  <div className="flex border-t border-white/[0.06] pb-1.5 pt-1">
-                    <div
-                      className="ms-6 me-2 mt-1 w-px shrink-0 self-stretch bg-white/20"
-                      aria-hidden
-                    />
-                    <NavLink
-                      to="/calendar/summaries"
-                      className={({ isActive }) =>
-                        `min-w-0 flex-1 rounded-lg py-2 ps-1 pe-3 text-[13px] leading-snug transition ${
-                          isActive
-                            ? 'bg-black/25 font-bold text-[#F97316]'
-                            : 'font-medium text-white/50 hover:bg-white/[0.06] hover:text-white/85'
-                        }`
-                      }
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <span
-                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-70"
-                          aria-hidden
-                        />
-                        סיכומי פגישות
+                  <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                    <span>גבייה</span>
+                    {overdueInvoiceCount > 0 ? (
+                      <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-[#EF4444] px-1.5 text-[10px] font-bold text-white">
+                        {overdueInvoiceCount > 99 ? '99+' : overdueInvoiceCount}
                       </span>
-                    </NavLink>
-                  </div>
-                ) : null}
-              </div>
-              <NavLink
-                to="/prompts"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
-                  }`
-                }
-              >
-                <NavGlyph>
-                  <path d="M12 3v2.5M12 18.5V21M5.64 5.64l1.77 1.77M16.59 16.59l1.77 1.77M3 12h2.5M18.5 12H21M5.64 18.36l1.77-1.77M16.59 7.41l1.77-1.77" />
-                  <path d="M15.5 12a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0z" />
-                </NavGlyph>
-                ספריית פרומפטים
-              </NavLink>
+                    ) : null}
+                  </span>
+                </NavLink>
+              )}
               <NavLink
                 to="/attendance"
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                      ? 'bg-white/10 font-semibold text-[#F97316]'
+                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                   }`
                 }
               >
@@ -466,8 +490,8 @@ export function Layout() {
                 className={({ isActive }) =>
                   `${navBase} ${
                     isActive
-                      ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                      : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                      ? 'bg-white/10 font-semibold text-[#F97316]'
+                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                   }`
                 }
               >
@@ -487,8 +511,8 @@ export function Layout() {
                     className={({ isActive }) =>
                       `${navBase} ${
                         isActive
-                          ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                          : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                          ? 'bg-white/10 font-semibold text-[#F97316]'
+                          : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                       }`
                     }
                   >
@@ -504,8 +528,8 @@ export function Layout() {
                     className={({ isActive }) =>
                       `${navBase} ${
                         isActive
-                          ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                          : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                          ? 'bg-white/10 font-semibold text-[#F97316]'
+                          : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                       }`
                     }
                   >
@@ -579,7 +603,7 @@ export function Layout() {
           </div>
         </aside>
 
-        <main className="relative min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <main className="relative min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--bg-main)]">
           <QuickActionsFloat />
           <QuickTasksSlider />
           <QuickCalendarSlider />

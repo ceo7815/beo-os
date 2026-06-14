@@ -13,6 +13,7 @@ import {
   getActiveTimer,
   weekDailyHours,
 } from '../lib/clockifyService'
+import { formatFirebaseErrorDetail } from '../lib/formatFirebaseError'
 import { todayYmd, weekStartSundayYmd, ymdFirstOfMonth } from '../lib/dates'
 import type { TeamMember } from '../types'
 
@@ -69,8 +70,7 @@ export function useClockifyAdminAttendance(opts: {
       const r = await getAllUsersReport(workspaceId.trim(), filterStart, filterEnd)
       setReport(r)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg)
+      setError(formatFirebaseErrorDetail(e))
       setReport([])
     } finally {
       setLoading(false)
@@ -173,8 +173,7 @@ export function useClockifyEmployeeAttendance(opts: {
         entries,
       })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setState({ status: 'error', message: msg })
+      setState({ status: 'error', message: formatFirebaseErrorDetail(e) })
     }
   }, [workspaceId, userEmail, enabled])
 
@@ -212,7 +211,7 @@ export function useClockifyUserDetail(opts: {
       ])
       setDays(buildDayDetailsFromEntries(entries, projectMap, filterStart, filterEnd))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(formatFirebaseErrorDetail(e))
       setDays([])
     } finally {
       setLoading(false)

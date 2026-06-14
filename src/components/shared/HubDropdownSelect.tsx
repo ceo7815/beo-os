@@ -96,11 +96,11 @@ export function HubDropdownSelect({
           if (!disabled) setOpen((o) => !o)
         }}
         onKeyDown={onKeyDownButton}
-        className={`flex w-full min-w-0 items-center gap-2 rounded-xl border-2 border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] py-2.5 ps-3 pe-3 text-start text-sm font-bold text-[var(--text-dark)] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition ${
+        className={`flex w-full min-w-0 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] py-2.5 ps-3 pe-3 text-start text-sm font-semibold text-[var(--text-dark)] shadow-[var(--shadow-sm)] transition ${
           disabled
             ? 'cursor-not-allowed opacity-[0.52]'
-            : 'cursor-pointer hover:border-[var(--orange)]'
-        } ${open ? 'ring-[3px] ring-[rgba(249,115,22,0.2)]' : ''}`}
+            : 'cursor-pointer hover:border-[var(--border-dark)]'
+        } ${open ? 'ring-[3px] ring-[rgba(37,99,235,0.12)]' : ''}`}
       >
         <span className="min-w-0 flex-1 truncate text-right">{displayLabel}</span>
         <span
@@ -122,7 +122,7 @@ export function HubDropdownSelect({
         <ul
           id={id ? `${id}-listbox` : undefined}
           role="listbox"
-          className="absolute start-0 end-0 top-full z-[100] mt-1 max-h-[min(20rem,50vh)] overflow-y-auto rounded-[10px] border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] py-0 shadow-[0_10px_36px_rgba(15,23,42,0.12)]"
+          className="absolute start-0 end-0 top-full z-[100] mt-1 max-h-[min(20rem,50vh)] overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] py-0 shadow-[var(--shadow-lg)]"
         >
           {rows.map((row, i) => {
             const isSelectedValue = row.value === value
@@ -138,7 +138,7 @@ export function HubDropdownSelect({
                   onMouseEnter={() => setHi(i)}
                   className={`w-full py-2.5 pe-3 ps-3 text-right text-sm transition-colors ${
                     isSelectedValue
-                      ? 'bg-[#454545] font-semibold text-white'
+                      ? 'bg-[var(--bg-sidebar)] font-semibold text-white'
                       : isHi
                         ? 'bg-[var(--orange-light)] font-medium text-[var(--text-dark)]'
                         : 'bg-[var(--dash-panel-bg)] font-normal text-[var(--text-dark)] hover:bg-[var(--surface-muted)]'

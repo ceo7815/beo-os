@@ -1,6 +1,11 @@
 /**
- * מסגרת סקשן לסירוגין: אינדקס זוגי = שחור, אי-זוגי = כתום מותג.
+ * מחלקת כרטיס אחידה לכל הסקשנים — ללא סירוגין צבעים.
  */
-export function hubSectionClass(seq: number): string {
-  return seq % 2 === 0 ? 'hub-dash-card' : 'hub-dash-card hub-dash-card--orange'
+export function hubSectionClass(_seq?: number): string {
+  return 'hub-dash-card'
+}
+
+/** כרטיס בולט יותר (hero, KPI מרכזי) */
+export function hubSectionElevatedClass(): string {
+  return 'hub-dash-card hub-dash-card--elevated'
 }

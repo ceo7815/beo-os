@@ -195,8 +195,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                    : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                    ? 'bg-white/10 font-semibold text-[#F97316]'
+                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                 }`
               }
             >
@@ -213,8 +213,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                    : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                    ? 'bg-white/10 font-semibold text-[#F97316]'
+                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                 }`
               }
             >
@@ -230,8 +230,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                    : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                    ? 'bg-white/10 font-semibold text-[#F97316]'
+                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                 }`
               }
             >
@@ -245,8 +245,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-                    : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+                    ? 'bg-white/10 font-semibold text-[#F97316]'
+                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
                 }`
               }
             >

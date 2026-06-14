@@ -34,10 +34,9 @@ import { Badge } from '../components/shared/Badge'
 import { LeadScheduleDateEditorModal } from '../components/leads/LeadScheduleDateEditorModal'
 import { EmptyState } from '../components/shared/EmptyState'
 import { ProgressBar } from '../components/shared/ProgressBar'
-import { hubSectionClass } from '../lib/hubSectionBorder'
+import { hubSectionClass, hubSectionElevatedClass } from '../lib/hubSectionBorder'
 
 function KpiCard(props: {
-  seq: number
   value: number
   label: string
   hint: string
@@ -54,10 +53,10 @@ function KpiCard(props: {
 }) {
   const navigate = useNavigate()
   const clickable = Boolean(props.navigateTo)
-  const surfaceClass = `min-w-0 w-full text-right ${hubSectionClass(props.seq)} rounded-2xl p-3 transition sm:p-5 ${
+  const surfaceClass = `min-w-0 w-full text-right ${hubSectionClass()} rounded-xl p-3 transition sm:p-5 ${
     clickable
-      ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-main)]'
-      : 'hover:-translate-y-0.5 hover:shadow-md'
+      ? 'cursor-pointer hover:border-[var(--border-dark)] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-mid)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-main)]'
+      : 'hover:border-[var(--border-dark)] hover:shadow-md'
   }`
 
   const body = (
@@ -65,7 +64,7 @@ function KpiCard(props: {
       {props.split ? (
         <div className="grid grid-cols-2 gap-2 gap-y-2">
           <div className="min-w-0">
-            <div className="text-[22px] font-black tabular-nums leading-none text-[var(--text-dark)] sm:text-[28px] md:text-[30px]">
+            <div className="text-[22px] font-bold tabular-nums leading-none text-[var(--text-dark)] sm:text-[26px] md:text-[28px]">
               {props.value}
             </div>
             <div className="mt-0.5 text-[10px] font-semibold leading-snug text-[var(--text-mid)] sm:text-[11px]">
@@ -73,7 +72,7 @@ function KpiCard(props: {
             </div>
           </div>
           <div className="min-w-0 border-s border-[var(--border)] ps-2 sm:ps-4">
-            <div className="text-[22px] font-black tabular-nums leading-none text-[var(--text-dark)] sm:text-[28px] md:text-[30px]">
+            <div className="text-[22px] font-bold tabular-nums leading-none text-[var(--text-dark)] sm:text-[26px] md:text-[28px]">
               {props.split.secondaryValue}
             </div>
             <div className="mt-0.5 text-[10px] font-semibold leading-snug text-[var(--text-mid)] sm:text-[11px]">
@@ -82,7 +81,7 @@ function KpiCard(props: {
           </div>
         </div>
       ) : (
-        <div className="text-[22px] font-black tabular-nums text-[var(--text-dark)] sm:text-[28px] md:text-[30px]">
+        <div className="text-[22px] font-bold tabular-nums text-[var(--text-dark)] sm:text-[26px] md:text-[28px]">
           {props.value}
         </div>
       )}
@@ -289,9 +288,14 @@ export function Dashboard() {
     const openTasksOther = myUid
       ? Math.max(0, openNotDone.length - openTasksMine - openTasksDelegated)
       : 0
-    const overdue = taskScope.filter(
-      (t) => t.status !== 'done' && t.dueDate.slice(0, 10) < todayDash,
-    ).length
+    const overdue = myUid
+      ? taskScope.filter(
+          (t) =>
+            t.assigneeId === myUid &&
+            t.status !== 'done' &&
+            t.dueDate.slice(0, 10) < todayDash,
+        ).length
+      : 0
     return {
       activeProjects,
       openTasksTotal: openNotDone.length,
@@ -381,13 +385,16 @@ export function Dashboard() {
   const todayY = todayYmd()
 
   const myOverdueTasks = useMemo(() => {
-    return visibleTasks.filter((t) => {
+    if (!myUid) return []
+    return tasks.filter((t) => {
+      if (!taskVisibleToUser(t, myUid, myRole)) return false
+      if (t.assigneeId !== myUid) return false
       if (t.status === 'done') return false
       const d = t.dueDate.slice(0, 10)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false
       return d < todayY
     })
-  }, [visibleTasks, todayY])
+  }, [tasks, myUid, myRole, todayY])
 
   const projectById = useMemo(() => {
     const m = new Map<string, Project>()
@@ -465,109 +472,96 @@ export function Dashboard() {
       : '')
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-5 md:px-8 md:py-7">
-      <header className="hub-dash-card hub-dash-card--hero rounded-2xl p-5">
+    <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 md:px-8 md:py-7">
+      {(topOverdueTask || leadsDueUrgent > 0) ? (
+        <section className="space-y-2">
+          {topOverdueTask ? (
+            <button
+              type="button"
+              onClick={() => navigate('/tasks')}
+              className="hub-alert hub-alert--danger"
+            >
+              <div>
+                <p className="text-xs font-bold text-rose-700">דורש טיפול מיידי</p>
+                <p className="text-sm font-semibold text-[var(--text-dark)]">
+                  {topOverdueTask.title}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-rose-700">
+                יעד: {formatTaskDueDisplay(topOverdueTask.dueDate, topOverdueTask.dueTime)}
+              </span>
+            </button>
+          ) : null}
+          {leadsDueUrgent > 0 ? (
+            <button
+              type="button"
+              onClick={() => navigate('/leads')}
+              className="hub-alert hub-alert--warning"
+            >
+              <div>
+                <p className="text-xs font-bold text-amber-800">מעקב לידים</p>
+                <p className="text-sm font-semibold text-[var(--text-dark)]">
+                  {leadsDueUrgent === 1
+                    ? 'ליד אחד עם פולואפ להיום או באיחור'
+                    : `${leadsDueUrgent} לידים עם פולואפ להיום או באיחור`}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-amber-800">
+                לרשימת הלידים
+              </span>
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+
+      <header className={`${hubSectionElevatedClass()} rounded-xl p-5 md:p-6`}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-light)]">
+            <p className="text-xs font-semibold tracking-wide text-[var(--text-light)]">
               {formatDateIL(todayDash)}
             </p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight text-[var(--text-dark)]">
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--text-dark)] md:text-3xl">
               {myDisplayName ? `שלום, ${myDisplayName}` : 'דשבורד'}
             </h1>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--text-mid)]">
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--text-mid)]">
               {privileged
-                ? 'סיכום צוותי: משימות, פרויקטים פעילים, לידים, קמפיינים וגבייה — לפי סדר דחיפות.'
+                ? 'סיכום צוותי: משימות, פרויקטים, לידים, קמפיינים וגבייה — לפי סדר דחיפות.'
                 : 'המיקוד שלך: משימות, לידים בטיפולך וקמפיינים שאתה מבצע.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-2 lg:max-w-md lg:justify-end">
-            <button
-              type="button"
-              onClick={() => navigate('/tasks')}
-              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
-            >
+            <button type="button" onClick={() => navigate('/tasks')} className="hub-chip-link">
               משימות
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/projects')}
-              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
-            >
+            <button type="button" onClick={() => navigate('/projects')} className="hub-chip-link">
               פרויקטים
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/leads')}
-              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
-            >
+            <button type="button" onClick={() => navigate('/leads')} className="hub-chip-link">
               לידים
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/campaigns')}
-              className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-mid)] shadow-sm transition hover:bg-[var(--surface-muted)]"
-            >
+            <button type="button" onClick={() => navigate('/campaigns')} className="hub-chip-link">
               קמפיינים
             </button>
             <button
               type="button"
               onClick={() => navigate('/collections')}
-              className="rounded-xl border border-[var(--orange)] bg-[var(--surface-muted)] px-3 py-2 text-xs font-semibold text-[var(--orange)] shadow-sm transition hover:bg-[var(--orange-light)]"
+              className="hub-chip-link hub-chip-link--accent"
             >
               גבייה
             </button>
           </div>
         </div>
-        {topOverdueTask ? (
-          <button
-            type="button"
-            onClick={() => navigate('/tasks')}
-            className="mt-4 flex w-full items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-2 text-right transition hover:bg-rose-100/80"
-          >
-            <div>
-              <p className="text-xs font-bold text-rose-700">דורש טיפול מיידי</p>
-              <p className="text-sm font-semibold text-[var(--text-dark)]">
-                {topOverdueTask.title}
-              </p>
-            </div>
-            <span className="shrink-0 text-xs font-semibold text-rose-700">
-              יעד: {formatTaskDueDisplay(topOverdueTask.dueDate, topOverdueTask.dueTime)}
-            </span>
-          </button>
-        ) : null}
-        {leadsDueUrgent > 0 ? (
-          <button
-            type="button"
-            onClick={() => navigate('/leads')}
-            className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-right transition hover:bg-amber-100/90"
-          >
-            <div>
-              <p className="text-xs font-bold text-amber-800">מעקב לידים</p>
-              <p className="text-sm font-semibold text-[var(--text-dark)]">
-                {leadsDueUrgent === 1
-                  ? 'ליד אחד עם פולואפ להיום או באיחור'
-                  : `${leadsDueUrgent} לידים עם פולואפ להיום או באיחור`}
-              </p>
-            </div>
-            <span className="shrink-0 text-xs font-semibold text-amber-800">
-              לרשימת הלידים
-            </span>
-          </button>
-        ) : null}
       </header>
 
       <section className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4 [&>*]:min-w-0">
         <KpiCard
-          seq={0}
           value={kpis.overdue}
           label="משימות באיחור"
-          hint="עדיפות ראשונה"
+          hint="מוקצות אליך · עדיפות ראשונה"
           navigateTo="/tasks?focus=overdue"
           navLabel="מעבר למשימות באיחור"
         />
         <KpiCard
-          seq={1}
           value={myUid ? kpis.openTasksMine : kpis.openTasksTotal}
           label="משימות פתוחות"
           hint={openTasksHintFull}
@@ -584,7 +578,6 @@ export function Dashboard() {
           }
         />
         <KpiCard
-          seq={2}
           value={kpis.activeProjects}
           label="פרויקטים פעילים"
           hint="במצב «פעיל» בלבד"
@@ -592,7 +585,6 @@ export function Dashboard() {
           navLabel="מעבר לפרויקטים פעילים"
         />
         <KpiCard
-          seq={3}
           value={openLeadsPool.length}
           label={privileged ? 'לידים בצינור' : 'הלידים שלי'}
           hint="ללא סטטוס «נסגר»"
@@ -602,16 +594,16 @@ export function Dashboard() {
       </section>
 
       {employeeShowOrgWideLeadsCampaigns ? (
-        <div className="rounded-2xl border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] px-4 py-3 text-center text-sm font-semibold leading-relaxed text-[var(--text-dark)]">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-center text-sm font-medium leading-relaxed text-[var(--text-mid)]">
           אין לידים או קמפיינים לטיפול שלך — להלן כל הלידים והקמפיינים הפתוחים בארגון
         </div>
       ) : null}
 
       <section className="grid min-w-0 grid-cols-2 gap-3 [&>*]:min-w-0">
-        <article className={`flex min-h-0 min-w-0 flex-col rounded-2xl p-3 sm:p-4 ${hubSectionClass(4)}`}>
+        <article className={`flex min-h-0 min-w-0 flex-col rounded-xl p-3 sm:p-4 ${hubSectionClass()}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-base font-extrabold text-[var(--text-dark)]">לידים</h2>
+              <h2 className="text-base font-bold text-[var(--text-dark)]">לידים</h2>
               <p className="text-xs text-[var(--text-light)]">
                 {privileged
                   ? 'הלידים הדחופים ביותר בצינור'
@@ -621,13 +613,13 @@ export function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">
+              <span className="hub-count-badge bg-violet-100 text-violet-800">
                 {dashboardLeadsSource.length}
               </span>
               <button
                 type="button"
                 onClick={() => navigate('/leads')}
-                className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[#dfe6f5]"
+                className="hub-card-action"
               >
                 כל הלידים
               </button>
@@ -658,7 +650,7 @@ export function Dashboard() {
                   const dateOverdue = schedOk && sched! <= todayDash
                   return (
                     <li key={l.id}>
-                      <div className="flex w-full flex-col gap-1 rounded-xl hub-dash-inset p-3 text-right transition hover:border-orange-200/45 hover:bg-white">
+                      <div className="hub-dash-row flex w-full flex-col gap-1 p-3 text-right">
                         <button
                           type="button"
                           className="w-full text-right"
@@ -724,10 +716,10 @@ export function Dashboard() {
           </div>
         </article>
 
-        <article className={`flex min-h-0 min-w-0 flex-col rounded-2xl p-3 sm:p-4 ${hubSectionClass(5)}`}>
+        <article className={`flex min-h-0 min-w-0 flex-col rounded-xl p-3 sm:p-4 ${hubSectionClass()}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-base font-extrabold text-[var(--text-dark)]">קמפיינים</h2>
+              <h2 className="text-base font-bold text-[var(--text-dark)]">קמפיינים</h2>
               <p className="text-xs text-[var(--text-light)]">
                 {privileged
                   ? 'קמפיינים בתכנון, פעילים או מושהים'
@@ -737,13 +729,13 @@ export function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
+              <span className="hub-count-badge bg-emerald-100 text-emerald-800">
                 {dashboardCampaignsSource.length}
               </span>
               <button
                 type="button"
                 onClick={() => navigate('/campaigns')}
-                className="rounded-lg border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] px-2 py-1 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[#dfe6f5]"
+                className="hub-card-action"
               >
                 כל הקמפיינים
               </button>
@@ -770,7 +762,7 @@ export function Dashboard() {
                     <button
                       type="button"
                       onClick={() => navigate('/campaigns')}
-                      className="flex w-full flex-col gap-1 rounded-xl hub-dash-inset p-3 text-right transition hover:border-emerald-200/50 hover:bg-white"
+                      className="hub-dash-row flex w-full flex-col gap-1 p-3 text-right"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
@@ -814,10 +806,10 @@ export function Dashboard() {
       </section>
 
       <section className="grid min-w-0 grid-cols-2 gap-3 [&>*]:min-w-0">
-        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(6)}`}>
+        <article className={`min-w-0 rounded-xl p-3 sm:p-4 ${hubSectionClass()}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-[var(--text-dark)]">גבייה באיחור</h2>
-            <span className="rounded-full bg-rose-100 px-2 py-1 text-xs font-bold text-rose-700">
+            <h2 className="text-base font-bold text-[var(--text-dark)]">גבייה באיחור</h2>
+            <span className="hub-count-badge bg-rose-100 text-rose-700">
               {collectionOverdueList.length}
             </span>
           </div>
@@ -831,7 +823,7 @@ export function Dashboard() {
                 return (
                   <li
                     key={row.id}
-                    className="flex items-center justify-between gap-2 rounded-xl hub-dash-inset px-3 py-2"
+                    className="hub-dash-row flex items-center justify-between gap-2 px-3 py-2"
                   >
                     <span className="truncate text-sm font-semibold text-[var(--text-dark)]">
                       {clientById.get(row.clientId) ?? 'לקוח'}
@@ -846,12 +838,12 @@ export function Dashboard() {
           )}
         </article>
 
-        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(7)}`}>
+        <article className={`min-w-0 rounded-xl p-3 sm:p-4 ${hubSectionClass()}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-[var(--text-dark)]">
+            <h2 className="text-base font-bold text-[var(--text-dark)]">
               יעד תשלום קרוב (10 ימים)
             </h2>
-            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700">
+            <span className="hub-count-badge bg-amber-100 text-amber-700">
               {collectionDueWithin10Days.length}
             </span>
           </div>
@@ -865,7 +857,7 @@ export function Dashboard() {
                 return (
                   <li
                     key={row.id}
-                    className="flex items-center justify-between gap-2 rounded-xl hub-dash-inset px-3 py-2"
+                    className="hub-dash-row flex items-center justify-between gap-2 px-3 py-2"
                   >
                     <span className="truncate text-sm font-semibold text-[var(--text-dark)]">
                       {clientById.get(row.clientId) ?? 'לקוח'}
@@ -882,10 +874,10 @@ export function Dashboard() {
       </section>
 
       <section className="grid min-w-0 grid-cols-2 gap-3 [&>*]:min-w-0">
-        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(8)}`}>
+        <article className={`min-w-0 rounded-xl p-3 sm:p-4 ${hubSectionClass()}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-[var(--text-dark)]">פרויקטים חד-פעמיים</h2>
-            <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs font-bold text-[var(--text-mid)]">
+            <h2 className="text-base font-bold text-[var(--text-dark)]">פרויקטים חד-פעמיים</h2>
+            <span className="hub-count-badge">
               {openOneTimeList.length}
             </span>
           </div>
@@ -905,7 +897,7 @@ export function Dashboard() {
                   key={p.id}
                   type="button"
                   onClick={() => navigate(`/projects/${p.id}`)}
-                  className="w-full rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] p-3 text-right transition hover:border-orange-300/45 hover:shadow-sm"
+                  className="hub-dash-row w-full p-3 text-right transition hover:border-[var(--border)]"
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="font-bold text-[var(--text-dark)]">{p.name}</span>
@@ -944,10 +936,10 @@ export function Dashboard() {
           </div>
         </article>
 
-        <article className={`min-w-0 rounded-2xl p-3 sm:p-4 ${hubSectionClass(9)}`}>
+        <article className={`min-w-0 rounded-xl p-3 sm:p-4 ${hubSectionClass()}`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-base font-extrabold text-[var(--text-dark)]">פרויקטים שוטפים</h2>
-            <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-700">
+            <h2 className="text-base font-bold text-[var(--text-dark)]">פרויקטים שוטפים</h2>
+            <span className="hub-count-badge bg-violet-100 text-violet-700">
               {openRetainerList.length}
             </span>
           </div>
@@ -967,7 +959,7 @@ export function Dashboard() {
                   key={p.id}
                   type="button"
                   onClick={() => navigate(`/projects/${p.id}`)}
-                  className="w-full rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] p-3 text-right transition hover:border-orange-300/45 hover:shadow-sm"
+                  className="hub-dash-row w-full p-3 text-right transition hover:border-[var(--border)]"
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="font-bold text-[var(--text-dark)]">{p.name}</span>

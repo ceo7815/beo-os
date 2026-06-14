@@ -7,13 +7,15 @@ const FIRESTORE_HINT_HE: Record<string, string> = {
   'permission-denied':
     'אין הרשאה: התחברו לחשבון ובדקו את חוקי האבטחה של Firestore לפרויקט.',
   'failed-precondition':
-    'תנאי לא מתקיים (למשל חסר אינדקס — בדקו את הקונסול של Firebase).',
+    'תנאי לא מתקיים — לדוגמה חסר API Key / Workspace ID (Clockify) או אינדקס Firestore.',
   unavailable: 'השירות לא זמין זמנית — נסו שוב בעוד רגע.',
   unauthenticated: 'ההתחברות פגה — התחברו מחדש.',
   'invalid-argument': 'נתונים לא חוקיים ל-Firestore.',
   'not-found': 'המסמך או האוסף לא נמצאו.',
   'functions/not-found':
     'הפונקציה בערוץ ה-Cloud Functions לא נמצאה — בדקו אזור (region) או שם פונקציה.',
+  'functions/failed-precondition':
+    'תנאי לא מתקיים בשרת — ל-Clockify: ודאו API Key ו-Workspace ID ב-attendanceConfig.',
   'functions/already-exists':
     'כבר קיים משתמש עם אימייל זה ב-Firebase Authentication.',
   'functions/internal':

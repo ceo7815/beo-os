@@ -44,7 +44,7 @@ export function QuickActionsFloat() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl border-2 border-[var(--orange)] bg-[var(--orange)] text-xl font-black text-white shadow-[0_8px_24px_rgba(249,115,22,0.35)] backdrop-blur-sm transition hover:brightness-110 active:scale-95"
+          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--orange)] text-xl font-bold text-white shadow-[0_4px_16px_rgba(249,115,22,0.3)] transition hover:brightness-105 active:scale-95"
           aria-label="פתח פעולות מהירות"
           aria-expanded={false}
         >
@@ -52,7 +52,7 @@ export function QuickActionsFloat() {
         </button>
       ) : (
         <div
-          className="pointer-events-auto flex max-w-[220px] flex-col gap-1 rounded-2xl border-2 border-[var(--orange)] bg-[var(--dash-panel-bg)] p-1.5 shadow-[0_8px_30px_rgba(15,23,42,0.12)]"
+          className="pointer-events-auto flex max-w-[220px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-1.5 shadow-[var(--shadow-lg)]"
           role="toolbar"
           aria-label="פעולות מהירות"
         >

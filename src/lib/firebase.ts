@@ -8,12 +8,14 @@ import {
 import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyAjMt8jq1b25AjXV6oRsK1uzlRpkjv-ADk',
-  authDomain: 'hub-pos-f399c.firebaseapp.com',
-  projectId: 'hub-pos-f399c',
-  storageBucket: 'hub-pos-f399c.firebasestorage.app',
-  messagingSenderId: '961483294937',
-  appId: '1:961483294937:web:765583ea55dc05cfa416c8',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyAjMt8jq1b25AjXV6oRsK1uzlRpkjv-ADk',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'hub-pos-f399c.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'hub-pos-f399c',
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'hub-pos-f399c.firebasestorage.app',
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '961483294937',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:961483294937:web:765583ea55dc05cfa416c8',
 }
 
 const app = initializeApp(firebaseConfig)
