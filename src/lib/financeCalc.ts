@@ -1,7 +1,8 @@
 import { todayYmd } from './dates'
 import {
-  isTaxReceiptIncome,
-  isTransactionInvoiceIncome,
+  isActualIncome,
+  isIncomePageDoc,
+  isOpenTransactionAccount,
 } from './financeIncomeDocument'
 import {
   monthsInRange,
@@ -12,7 +13,7 @@ import {
   incomeOutstandingAmount,
   incomeRecognizedPaid,
 } from './financeIncomePayment'
-import { resolveExpenseRowVat, resolveIncomeVat } from './israeliVat'
+import { ISRAEL_VAT_RATE, resolveExpenseRowVat, resolveIncomeVat } from './israeliVat'
 import { resolveExpenseVatClass } from './financeExpenseVat'
 import {
   expandExpensesForFilters,
@@ -103,7 +104,7 @@ export function computeCollectionBalance(
 ): number {
   let total = 0
   for (const row of incomes) {
-    if (!isTransactionInvoiceIncome(row)) continue
+    if (!isOpenTransactionAccount(row)) continue
     if (filters.projectId && row.projectId !== filters.projectId) continue
     if (filters.clientId) {
       const matchClient =
@@ -124,27 +125,49 @@ export function filterIncomes(
   return expandIncomesForFilters(incomes, filters, today)
 }
 
-/** מס קבלה — סינון לפי תאריך תשלום */
-export function filterTaxReceiptIncomes(
+/** הכנסות בפועל (מס קבלה + קבלה + זיכוי) — סינון לפי תאריך תשלום */
+export function filterActualIncomes(
   incomes: FinanceIncome[],
   filters: FinanceFilters,
   today = todayYmd(),
 ): FinanceIncome[] {
   return filterIncomes(
-    incomes.filter(isTaxReceiptIncome),
+    incomes.filter(isActualIncome),
     filters,
     today,
   )
 }
 
-/** יתרה לגבייה — סינון לפי תאריך מסמך */
+/** @deprecated — השתמשו ב-filterActualIncomes */
+export function filterTaxReceiptIncomes(
+  incomes: FinanceIncome[],
+  filters: FinanceFilters,
+  today = todayYmd(),
+): FinanceIncome[] {
+  return filterActualIncomes(incomes, filters, today)
+}
+
+/** חשבונות עסקה פתוחים לגבייה (תואם לסטטוס GI) — סינון לפי תאריך מסמך */
 export function filterCollectionIncomes(
   incomes: FinanceIncome[],
   filters: FinanceFilters,
   today = todayYmd(),
 ): FinanceIncome[] {
   return filterIncomes(
-    incomes.filter(isTransactionInvoiceIncome),
+    incomes.filter(isOpenTransactionAccount),
+    filters,
+    today,
+  )
+}
+
+/** כל מסמכי דף הכנסות (לא חשבון עסקה) */
+export function filterIncomePageDocs(
+  incomes: FinanceIncome[],
+  filters: FinanceFilters,
+  today = todayYmd(),
+): FinanceIncome[] {
+  return filterIncomes(
+    incomes.filter(isIncomePageDoc),
     filters,
     today,
   )
@@ -167,9 +190,9 @@ export function formatYmRangeLabel(from: string, to: string): string {
   return `${monthLabelHe(f)} – ${monthLabelHe(t)}`
 }
 
-/** מע״מ על הכנסה — סכום מלא של מס קבלה בלבד (לא חלקי, לא חשבונית עסקה) */
+/** מע״מ על הכנסה בפועל */
 export function incomeVatForDocument(inc: FinanceIncome): number {
-  if (!isTaxReceiptIncome(inc)) return 0
+  if (!isActualIncome(inc)) return 0
   return resolveIncomeVat(inc).vat
 }
 
@@ -314,9 +337,9 @@ export type FinanceSummary = {
   expenseNetTotal: number
   /** מע״מ לתשלום = עסקאות − תשומות */
   vatPayable: number
-  /** רווח גולמי = הכנסות נטו − הוצאות נטו */
+  /** רווח גולמי = הכנסות ברוטו − הוצאות ברוטו (לפני קיזוז מע״מ) */
   grossProfit: number
-  /** רווח נקי אמיתי = גולמי − מע״מ לתשלום */
+  /** רווח נקי אמיתי = רווח גולמי − מע״מ לתשלום */
   trueNetProfit: number
 
   /** יתרה לגבייה — גלובלי */
@@ -351,6 +374,42 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+export type BreakEven = {
+  /** הוצאות נטו בתקופה (העלות האמיתית לכיסוי) */
+  expenseNetTotal: number
+  /** הכנסה (כולל מע"מ) הדרושה כדי שרווח נקי אמיתי = 0 */
+  breakEvenGross: number
+  /** הכנסה (כולל מע"מ) שכבר נרשמה בתקופה */
+  incomeGross: number
+  /** כמה עוד צריך להכניס כדי להגיע לאיזון (0 אם כבר עברנו) */
+  remainingGross: number
+  /** האם עברנו את נקודת האיזון */
+  reached: boolean
+}
+
+/**
+ * נקודת איזון — מחזירה את ההכנסה (כולל מע"מ) הדרושה כדי לא להפסיד.
+ * בנוסחת הרווח הנקי האמיתי המע"מ מתקזז, ולכן ההכנסה נטו הדרושה = ההוצאות נטו,
+ * וההכנסה ברוטו הדרושה = הוצאות נטו × (1 + מע"מ).
+ */
+export function computeBreakEven(
+  summary: Pick<FinanceSummary, 'expenseNetTotal' | 'incomeGross'>,
+): BreakEven {
+  const breakEvenGross = roundMoney(
+    summary.expenseNetTotal * (1 + ISRAEL_VAT_RATE),
+  )
+  const remainingGross = roundMoney(
+    Math.max(0, breakEvenGross - summary.incomeGross),
+  )
+  return {
+    expenseNetTotal: summary.expenseNetTotal,
+    breakEvenGross,
+    incomeGross: summary.incomeGross,
+    remainingGross,
+    reached: summary.incomeGross >= breakEvenGross,
+  }
+}
+
 export function computeSummary(
   incomes: FinanceIncome[],
   expenses: FinanceExpense[],
@@ -358,7 +417,7 @@ export function computeSummary(
   projectIdsForClient: Set<string>,
   expenseTypes: FinanceExpenseTypeDef[],
 ): FinanceSummary {
-  const filteredTaxReceipts = filterTaxReceiptIncomes(incomes, filters)
+  const filteredTaxReceipts = filterActualIncomes(incomes, filters)
   const filteredCollectionInPeriod = filterCollectionIncomes(incomes, filters)
   const filteredExpenses = filterExpensesByClient(
     expenses,
@@ -417,8 +476,11 @@ export function computeSummary(
   expenseNonVatTotal = roundMoney(expenseNonVatTotal)
 
   const expenseNetTotal = roundMoney(expenseVatLiableNet + expenseNonVatTotal)
+  const expenseGrossTotal = roundMoney(expenseVatLiableGross + expenseNonVatTotal)
   const vatPayable = roundMoney(Math.max(0, incomeVat - expenseInputVat))
-  const grossProfit = roundMoney(incomeNet - expenseNetTotal)
+  // רווח גולמי = הכנסות (כולל מע״מ) − הוצאות (כולל מע״מ), לפני קיזוז מע״מ מול המדינה
+  const grossProfit = roundMoney(incomeGross - expenseGrossTotal)
+  // רווח נקי אמיתי = גולמי − מע״מ לתשלום (≡ הכנסות נטו − הוצאות נטו)
   const trueNetProfit = roundMoney(grossProfit - vatPayable)
 
   return {
@@ -452,6 +514,10 @@ export function computeSummary(
 export type ProfitLossRow = {
   ym: string
   label: string
+  /** הכנסות כולל מע״מ */
+  incomeGross: number
+  /** הוצאות כולל מע״מ */
+  expenseGross: number
   incomeNet: number
   expenseNet: number
   vatPayable: number
@@ -476,20 +542,28 @@ export function computeProfitLossRows(
   const typeMap = expenseTypeMap(expenseTypes)
   const rows: ProfitLossRow[] = []
 
-  for (let month = 1; month <= 12; month += 1) {
+  // עד החודש הנוכחי בלבד — בשנה הנוכחית לא מציגים חודשים עתידיים
+  const now = new Date()
+  const lastMonth =
+    year === now.getFullYear() ? now.getMonth() + 1 : 12
+
+  for (let month = 1; month <= lastMonth; month += 1) {
     const ym = `${year}-${String(month).padStart(2, '0')}`
 
+    let incomeGross = 0
     let incomeNet = 0
     let incomeVat = 0
     for (const inc of incomes) {
       if (!incomeAppliesToMonth(inc, ym)) continue
-      if (isTaxReceiptIncome(inc)) {
+      if (isActualIncome(inc)) {
         const vat = resolveIncomeVat(inc)
+        incomeGross += vat.gross
         incomeNet += vat.net
         incomeVat += vat.vat
       }
     }
 
+    let expenseGross = 0
     let expenseNet = 0
     let expenseInputVat = 0
     let fixedExpenses = 0
@@ -499,6 +573,7 @@ export function computeProfitLossRows(
       const def = resolveExpenseType(exp.type, typeMap)
       if (!expenseAppliesToMonth(exp, ym, def, incomes)) continue
       const breakdown = resolveExpenseRowVat(exp)
+      expenseGross += breakdown.gross
       expenseNet += breakdown.net
       if (resolveExpenseVatClass(exp) === 'vat_liable') {
         expenseInputVat += breakdown.vat
@@ -508,12 +583,15 @@ export function computeProfitLossRows(
       else platformExpenses += breakdown.net
     }
 
+    incomeGross = roundMoney(incomeGross)
     incomeNet = roundMoney(incomeNet)
     incomeVat = roundMoney(incomeVat)
+    expenseGross = roundMoney(expenseGross)
     expenseNet = roundMoney(expenseNet)
     expenseInputVat = roundMoney(expenseInputVat)
     const vatPayable = roundMoney(Math.max(0, incomeVat - expenseInputVat))
-    const grossProfit = roundMoney(incomeNet - expenseNet)
+    // רווח גולמי = ברוטו − ברוטו; רווח נקי = גולמי − מע״מ לתשלום
+    const grossProfit = roundMoney(incomeGross - expenseGross)
     const trueNetProfit = roundMoney(grossProfit - vatPayable)
     const totalExpenses = expenseNet
     const profitMargin =
@@ -522,6 +600,8 @@ export function computeProfitLossRows(
     rows.push({
       ym,
       label: monthLabelHe(ym),
+      incomeGross,
+      expenseGross,
       incomeNet,
       expenseNet,
       vatPayable,
@@ -537,7 +617,13 @@ export function computeProfitLossRows(
     })
   }
 
-  return rows.reverse()
+  // חיתוך חודשים מובילים ריקים — מתחילים מהחודש הראשון עם פעילות
+  const firstActive = rows.findIndex(
+    (r) => r.incomeGross !== 0 || r.expenseGross !== 0,
+  )
+  const trimmed = firstActive > 0 ? rows.slice(firstActive) : rows
+
+  return trimmed.reverse()
 }
 
 export const INCOME_STATUS_LABEL: Record<FinanceIncomeStatus, string> = {

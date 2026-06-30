@@ -11,6 +11,10 @@ type Props = {
   emptyOption?: { label: string }
   disabled?: boolean
   className?: string
+  /** מציג שדה חיפוש בראש הרשימה — לסינון חכם ברשימות ארוכות */
+  searchable?: boolean
+  /** טקסט placeholder לשדה החיפוש */
+  searchPlaceholder?: string
 }
 
 export function HubDropdownSelect({
@@ -21,28 +25,48 @@ export function HubDropdownSelect({
   emptyOption,
   disabled,
   className = '',
+  searchable = false,
+  searchPlaceholder = 'חיפוש…',
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [hi, setHi] = useState(0)
+  const [query, setQuery] = useState('')
 
-  const rows = useMemo(() => {
+  const allRows = useMemo(() => {
     if (emptyOption) {
       return [{ value: '', label: emptyOption.label }, ...options]
     }
     return options
   }, [options, emptyOption])
 
+  const rows = useMemo(() => {
+    if (!searchable) return allRows
+    const q = query.trim().toLowerCase()
+    if (!q) return allRows
+    return allRows.filter(
+      (r) => r.value === '' || r.label.toLowerCase().includes(q),
+    )
+  }, [allRows, searchable, query])
+
   const displayLabel = useMemo(() => {
-    const hit = rows.find((r) => r.value === value)
+    const hit = allRows.find((r) => r.value === value)
     return hit?.label ?? '—'
-  }, [rows, value])
+  }, [allRows, value])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setQuery('')
+      return
+    }
     const idx = rows.findIndex((r) => r.value === value)
     setHi(idx >= 0 ? idx : 0)
-  }, [open, rows, value])
+    if (searchable) {
+      const t = setTimeout(() => searchRef.current?.focus(), 0)
+      return () => clearTimeout(t)
+    }
+  }, [open, rows, value, searchable])
 
   useEffect(() => {
     if (!open) return
@@ -119,11 +143,42 @@ export function HubDropdownSelect({
         </span>
       </button>
       {open ? (
-        <ul
-          id={id ? `${id}-listbox` : undefined}
-          role="listbox"
-          className="absolute start-0 end-0 top-full z-[100] mt-1 max-h-[min(20rem,50vh)] overflow-y-auto rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] py-0 shadow-[var(--shadow-lg)]"
-        >
+        <div className="absolute start-0 end-0 top-full z-[100] mt-1 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] shadow-[var(--shadow-lg)]">
+          {searchable ? (
+            <div className="border-b border-[var(--border)] p-2">
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setOpen(false)
+                    return
+                  }
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setHi((i) => Math.min(i + 1, rows.length - 1))
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setHi((i) => Math.max(i - 1, 0))
+                  } else if (e.key === 'Enter' && rows[hi]) {
+                    e.preventDefault()
+                    pick(rows[hi]!.value)
+                  }
+                }}
+                placeholder={searchPlaceholder}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-right text-sm text-[var(--text-dark)] outline-none focus:border-[var(--border-dark)]"
+              />
+            </div>
+          ) : null}
+          <ul
+            id={id ? `${id}-listbox` : undefined}
+            role="listbox"
+            className="max-h-[min(18rem,45vh)] overflow-y-auto py-0"
+          >
           {rows.map((row, i) => {
             const isSelectedValue = row.value === value
             const isHi = i === hi
@@ -149,7 +204,16 @@ export function HubDropdownSelect({
               </li>
             )
           })}
-        </ul>
+          {rows.length === 0 ? (
+            <li
+              role="presentation"
+              className="px-3 py-3 text-center text-sm text-[var(--text-mid)]"
+            >
+              לא נמצאו תוצאות
+            </li>
+          ) : null}
+          </ul>
+        </div>
       ) : null}
     </div>
   )

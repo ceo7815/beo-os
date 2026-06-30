@@ -33,11 +33,22 @@ export const env = {
     keySecret: readString('MORNING_KEY_SECRET'),
   },
   sync: {
-    fromDate: readString('SYNC_FROM_DATE', '2026-04-01'),
+    fromDate: readString('SYNC_FROM_DATE', '2026-03-01'),
     overlapDays: Math.max(1, readPort('SYNC_OVERLAP_DAYS', 7)),
   },
 } as const
 
-export function morningConfigured(): boolean {
+export const MORNING_BASE_URLS = {
+  sandbox: 'https://sandbox.d.greeninvoice.co.il/api/v1',
+  production: 'https://api.greeninvoice.co.il/api/v1',
+} as const
+
+/** האם הוגדרו מפתחות Morning במשתני סביבה (fallback ל-Firestore) */
+export function morningEnvConfigured(): boolean {
   return Boolean(env.morning.keyId && env.morning.keySecret)
+}
+
+/** @deprecated שם ישן — נשמר לתאימות עם health route */
+export function morningConfigured(): boolean {
+  return morningEnvConfigured()
 }

@@ -431,6 +431,9 @@ export function Layout() {
                   }
                 >
                   <NavSubLink to="/finance" label="סקירה פיננסית" />
+                  <NavSubLink to="/finance/income" label="הכנסות" />
+                  <NavSubLink to="/finance/expenses" label="הוצאות" />
+                  <NavSubLink to="/finance/projects" label="פרויקטים" />
                   <NavSubLink
                     to="/collections"
                     label="גבייה"

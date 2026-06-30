@@ -14,6 +14,7 @@ import type { Client, ClientStatus } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import { memberIsSalesAgentFlag } from '../lib/salesAgent'
 import { ClientActivityModal } from '../components/ClientActivityModal'
+import { ClientsSyncButton } from '../components/ClientsSyncButton'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -319,9 +320,12 @@ export function Clients() {
             ניהול לקוחות ופרטי קשר
           </p>
         </div>
-        <button type="button" onClick={openNew} className="hub-btn-primary text-sm">
-          + לקוח חדש
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {canSetSalesAgent ? <ClientsSyncButton /> : null}
+          <button type="button" onClick={openNew} className="hub-btn-primary text-sm">
+            + לקוח חדש
+          </button>
+        </div>
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">

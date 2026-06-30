@@ -57,6 +57,15 @@ export const BUILTIN_FINANCE_EXPENSE_TYPES: FinanceExpenseTypeDef[] = [
     pnlCategory: 'fixed',
     builtIn: true,
   },
+  {
+    id: 'bank_fee',
+    label: 'עמלות בנק',
+    color: '#EF4444',
+    fieldMode: 'none',
+    autoRecurring: false,
+    pnlCategory: 'fixed',
+    builtIn: true,
+  },
 ]
 
 export const EXPENSE_TYPE_COLOR_PRESETS = [

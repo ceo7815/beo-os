@@ -29,6 +29,8 @@ import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Modal } from '../components/shared/Modal'
+import { ProjectFinanceSection } from '../components/finance/ProjectFinanceSection'
+import { userIsAdmin } from '../components/RequireAdmin'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 
 const taskStatusLabels: Record<TaskStatus, string> = {
@@ -142,7 +144,7 @@ export function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { users: teamMembers } = useUsers()
+  const { users: teamMembers, loading: usersLoading } = useUsers()
   const defaultAssigneeId = user?.uid ?? teamMembers[0]?.id ?? ''
 
   const { projects, updateProject } = useProjects()
@@ -151,6 +153,9 @@ export function ProjectDetail() {
   const { tasks, cycleStatus, deleteTask, addTask } = useTasks()
   const docs = useHubStore((s) => s.docs)
   const addDoc = useHubStore((s) => s.addDoc)
+  const hubUser = useHubStore((s) => s.currentUser)
+  const isAdmin =
+    Boolean(user) && !usersLoading && userIsAdmin(user?.uid, teamMembers, hubUser)
 
   const [taskFilter, setTaskFilter] = useState<TaskFilter>('all')
   const [taskModal, setTaskModal] = useState(false)
@@ -379,6 +384,15 @@ export function ProjectDetail() {
           </div>
         ) : null}
       </header>
+
+      {isAdmin ? (
+        <section>
+          <h2 className="mb-3 text-[18px] font-extrabold text-[var(--text-dark)]">
+            סקירה פיננסית
+          </h2>
+          <ProjectFinanceSection project={project} client={client} />
+        </section>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className="space-y-6">

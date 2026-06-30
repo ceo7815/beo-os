@@ -488,10 +488,14 @@ export function ClientActivityModal(props: Props) {
                     {h.domain}
                   </p>
                   <p className="mt-1 text-[11px] text-[var(--text-mid)]">
-                    שרת {h.server} · פקיפ {h.controlPanel}
+                    {h.serverType === 'private' ? 'שרת פרטי' : 'אחסון שיתופי'} ·{' '}
+                    {h.serverProvider || '—'}
+                    {h.registrar ? ` · רשם: ${h.registrar}` : ''}
                   </p>
                   <p className="mt-1 text-[10px] text-[var(--text-light)]">
-                    תוקף SSL {formatDateIL(h.sslExpiry)} · תוקף דומיין {formatDateIL(h.domainExpiry)}
+                    חידוש דומיין {formatDateIL(h.domainRenewalDate) || '—'} · תשלום
+                    אחסון {formatDateIL(h.hostingRenewalDate) || '—'}
+                    {h.greenInvoiceRetainer ? ' · רטיינר חשבונית ירוקה' : ''}
                   </p>
                 </li>
               ))}

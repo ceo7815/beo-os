@@ -15,7 +15,10 @@ import { AgentsAdmin } from './pages/AgentsAdmin'
 import { Clients } from './pages/Clients'
 import { Collections } from './pages/Collections'
 import { Dashboard } from './pages/Dashboard'
+import { Expenses } from './pages/Expenses'
 import { Finance } from './pages/Finance'
+import { FinanceProjects } from './pages/FinanceProjects'
+import { Income } from './pages/Income'
 import { Hosting } from './pages/Hosting'
 import { Campaigns } from './pages/Campaigns'
 import { Leads } from './pages/Leads'
@@ -68,6 +71,30 @@ export default function App() {
                     element={
                       <RequireAdmin>
                         <Finance />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/income"
+                    element={
+                      <RequireAdmin>
+                        <Income />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/expenses"
+                    element={
+                      <RequireAdmin>
+                        <Expenses />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/projects"
+                    element={
+                      <RequireAdmin>
+                        <FinanceProjects />
                       </RequireAdmin>
                     }
                   />

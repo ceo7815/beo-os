@@ -159,6 +159,9 @@ service cloud.firestore {
     match /financeExpenseTypes/{docId} {
       allow read, write: if isAdmin();
     }
+    match /financeImportRules/{docId} {
+      allow read, write: if isAdmin();
+    }
     match /hostingRecords/{docId} {
       allow read, write: if signedIn();
     }

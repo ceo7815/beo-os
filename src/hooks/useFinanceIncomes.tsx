@@ -32,7 +32,7 @@ import {
   type IncomePaymentInput,
 } from '../lib/financeIncomePayment'
 import { isFinanceHostingType } from '../lib/financeHostingTypes'
-import { incomeDocumentKind } from '../lib/financeIncomeDocument'
+import { incomeDocumentKind, incomeUsesPaymentAnchor } from '../lib/financeIncomeDocument'
 import { prorateVatBreakdown, resolveIncomeVat } from '../lib/israeliVat'
 import { db } from '../lib/firebase'
 import { docToFinanceIncome } from '../lib/firestoreMappers'
@@ -145,7 +145,10 @@ async function persistIncomePayments(
     patch.paidDate = last?.paidDate
   }
 
-  if (incomeDocumentKind(oldInc) === 'tax_receipt') {
+  if (
+    incomeDocumentKind(oldInc) === 'tax_invoice_receipt' ||
+    incomeDocumentKind(oldInc) === 'receipt'
+  ) {
     const docDate = oldInc.invoiceDate.trim().slice(0, 10)
     if (docDate) {
       patch.invoiceDate = docDate
@@ -317,7 +320,7 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
       }
       applyPaymentFields(row, data)
       const docDate = data.invoiceDate.slice(0, 10)
-      if (data.documentKind === 'tax_receipt') {
+      if (incomeUsesPaymentAnchor({ documentKind: data.documentKind })) {
         row.invoiceDate = docDate
         row.paidDate = docDate
       }
@@ -325,8 +328,9 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         status: data.status,
         paidAmount: data.paidAmount,
         paymentMethod: data.paymentMethod,
-        paidDate:
-          data.documentKind === 'tax_receipt' ? docDate : data.paidDate,
+        paidDate: incomeUsesPaymentAnchor({ documentKind: data.documentKind })
+          ? docDate
+          : data.paidDate,
         invoiceDate: docDate,
       })
       if (payments.length) row.payments = payments
@@ -384,6 +388,9 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         ) {
           next.projectId = patch.projectId.trim()
           next.hostingClient = false
+        } else if (patch.projectId === '' && patch.hostingClient !== true) {
+          // ביטול שיוך לפרויקט
+          next.projectId = ''
         }
         if (typeof patch.clientId === 'string' && patch.clientId.trim()) {
           next.clientId = patch.clientId.trim()
@@ -498,9 +505,10 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         const effectiveKind =
           (patch.documentKind ??
             (oldInc ? incomeDocumentKind(oldInc) : undefined)) ??
-          'transaction_invoice'
+          'transaction_account'
         if (
-          effectiveKind === 'tax_receipt' &&
+          (effectiveKind === 'tax_invoice_receipt' ||
+            effectiveKind === 'receipt') &&
           (patch.paidDate != null ||
             patch.invoiceDate != null ||
             Array.isArray(patch.payments))
@@ -571,7 +579,10 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         const oldInc = docToFinanceIncome(
           oldSnap as QueryDocumentSnapshot<DocumentData>,
         )
-        if (incomeDocumentKind(oldInc) === 'tax_receipt') {
+        if (
+    incomeDocumentKind(oldInc) === 'tax_invoice_receipt' ||
+    incomeDocumentKind(oldInc) === 'receipt'
+  ) {
           toastFsError(
             'כבר מס קבלה',
             new Error('already tax receipt'),
@@ -622,7 +633,7 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
             amountIncludesVat: oldInc.amountIncludesVat !== false,
             vatAmount: paidPortion.vat,
             amountBeforeVat: paidPortion.net,
-            documentKind: 'tax_receipt',
+            documentKind: 'tax_invoice_receipt',
             invoiceNumber: receiptNumber,
             invoiceDate: syncedDates.invoiceDate,
             status: 'paid',
@@ -686,7 +697,7 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
         await updateDoc(
           doc(db, 'financeIncomes', id),
           stripUndefined({
-            documentKind: 'tax_receipt',
+            documentKind: 'tax_invoice_receipt',
             sourceTransactionInvoiceId: id,
             invoiceDate: syncedDates.invoiceDate,
             paidDate: syncedDates.paidDate,

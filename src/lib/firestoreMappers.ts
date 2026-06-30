@@ -139,6 +139,11 @@ export function docToFinanceExpenseType(
 }
 
 const FINANCE_INCOME_DOCUMENT_KINDS: FinanceIncomeDocumentKind[] = [
+  'tax_invoice_receipt',
+  'tax_invoice',
+  'receipt',
+  'transaction_account',
+  'credit_invoice',
   'tax_receipt',
   'transaction_invoice',
 ]
@@ -202,6 +207,32 @@ export function docToFinanceIncome(
     x.sourceTransactionInvoiceId.trim()
       ? x.sourceTransactionInvoiceId.trim()
       : undefined
+  const source = x.source === 'green_invoice' ? 'green_invoice' : undefined
+  const greenInvoiceId =
+    typeof x.greenInvoiceId === 'string' && x.greenInvoiceId.trim()
+      ? x.greenInvoiceId.trim()
+      : undefined
+  const greenInvoiceType =
+    typeof x.greenInvoiceType === 'number' && !Number.isNaN(x.greenInvoiceType)
+      ? x.greenInvoiceType
+      : undefined
+  const greenInvoiceStatus =
+    typeof x.greenInvoiceStatus === 'number' &&
+    !Number.isNaN(x.greenInvoiceStatus)
+      ? x.greenInvoiceStatus
+      : undefined
+  const greenInvoiceNumber =
+    typeof x.greenInvoiceNumber === 'string' && x.greenInvoiceNumber.trim()
+      ? x.greenInvoiceNumber.trim()
+      : undefined
+  const greenInvoiceClientName =
+    typeof x.greenInvoiceClientName === 'string' && x.greenInvoiceClientName.trim()
+      ? x.greenInvoiceClientName.trim()
+      : undefined
+  const syncedAt =
+    typeof x.syncedAt === 'string' && x.syncedAt.trim()
+      ? x.syncedAt.trim()
+      : undefined
   return {
     id: d.id,
     projectId: String(x.projectId ?? ''),
@@ -224,6 +255,13 @@ export function docToFinanceIncome(
     monthlyRetainer: x.monthlyRetainer === true,
     hostingClient: x.hostingClient === true,
     ...(isFinanceHostingType(x.hostingType) ? { hostingType: x.hostingType } : {}),
+    ...(source ? { source } : {}),
+    ...(greenInvoiceId ? { greenInvoiceId } : {}),
+    ...(greenInvoiceType !== undefined ? { greenInvoiceType } : {}),
+    ...(greenInvoiceStatus !== undefined ? { greenInvoiceStatus } : {}),
+    ...(greenInvoiceNumber ? { greenInvoiceNumber } : {}),
+    ...(greenInvoiceClientName ? { greenInvoiceClientName } : {}),
+    ...(syncedAt ? { syncedAt } : {}),
     createdAt: timestampToIso(x.createdAt),
   }
 }
@@ -279,6 +317,18 @@ export function docToFinanceExpense(
     typeof x.linkedIncomeId === 'string' && x.linkedIncomeId.trim()
       ? x.linkedIncomeId.trim()
       : undefined
+  const paymentMethod =
+    x.paymentMethod === 'credit_card' || x.paymentMethod === 'bank_transfer'
+      ? x.paymentMethod
+      : undefined
+  const paidDate =
+    typeof x.paidDate === 'string' && x.paidDate.trim()
+      ? x.paidDate.slice(0, 10)
+      : undefined
+  const bankRef =
+    typeof x.bankRef === 'string' && x.bankRef.trim()
+      ? x.bankRef.trim()
+      : undefined
   const rawCid = x.clientId
   const clientId =
     rawCid !== undefined && rawCid !== null && String(rawCid).trim()
@@ -308,6 +358,10 @@ export function docToFinanceExpense(
       : {}),
     ...(pnlMonth ? { pnlMonth } : {}),
     ...(linkedIncomeId ? { linkedIncomeId } : {}),
+    ...(paymentMethod ? { paymentMethod } : {}),
+    ...(paidDate ? { paidDate } : {}),
+    ...(bankRef ? { bankRef } : {}),
+    ...(x.hostingExpense === true ? { hostingExpense: true } : {}),
     supplierInvoiceReceived: x.supplierInvoiceReceived === true,
     createdAt: timestampToIso(x.createdAt),
   }
@@ -432,6 +486,11 @@ export function docToClient(d: QueryDocumentSnapshot<DocumentData>): Client {
     typeof x.financeBalance === 'number' && !Number.isNaN(x.financeBalance)
       ? x.financeBalance
       : undefined
+  const greenInvoiceId =
+    typeof x.greenInvoiceId === 'string' && x.greenInvoiceId.trim()
+      ? x.greenInvoiceId.trim()
+      : undefined
+  const source = x.source === 'green_invoice' ? 'green_invoice' : undefined
   return {
     id: d.id,
     name: String(x.name ?? ''),
@@ -449,6 +508,8 @@ export function docToClient(d: QueryDocumentSnapshot<DocumentData>): Client {
     ...(city ? { city } : {}),
     ...(businessNotes ? { businessNotes } : {}),
     ...(financeBalance !== undefined ? { financeBalance } : {}),
+    ...(greenInvoiceId ? { greenInvoiceId } : {}),
+    ...(source ? { source } : {}),
   }
 }
 
@@ -1098,24 +1159,70 @@ function ymdPart(value: unknown): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(p) ? p : ''
 }
 
+function asServerType(v: unknown): HostingRecord['serverType'] {
+  return v === 'private' ? 'private' : 'shared'
+}
+
+function asDomainManager(v: unknown): HostingRecord['domainManager'] {
+  if (v === 'client' || v === 'external') return v
+  return 'agency'
+}
+
+function asBillingCycle(
+  v: unknown,
+  fallback: HostingRecord['hostingCycle'],
+): HostingRecord['hostingCycle'] {
+  if (
+    v === 'monthly' ||
+    v === 'yearly' ||
+    v === 'biennial' ||
+    v === 'oneTime'
+  )
+    return v
+  return fallback
+}
+
 export function docToHostingRecord(
   d: QueryDocumentSnapshot<DocumentData>,
 ): HostingRecord {
   const x = d.data()
+  const retainerRaw = x.retainerAmount
+  const retainerAmount =
+    typeof retainerRaw === 'number' && Number.isFinite(retainerRaw)
+      ? retainerRaw
+      : undefined
   return {
     id: d.id,
     clientId: String(x.clientId ?? ''),
     domain: String(x.domain ?? ''),
-    server: String(x.server ?? ''),
+    siteName: String(x.siteName ?? ''),
+
+    serverType: asServerType(x.serverType),
+    // back-compat: שדה "server" הישן → serverProvider
+    serverProvider: String(x.serverProvider ?? x.server ?? ''),
     serverLocation: String(x.serverLocation ?? ''),
+    hostingRenewalDate: ymdPart(x.hostingRenewalDate),
+    hostingCycle: asBillingCycle(x.hostingCycle, 'yearly'),
+
+    registrar: String(x.registrar ?? ''),
+    domainManager: asDomainManager(x.domainManager),
+    domainManagerNote: String(x.domainManagerNote ?? ''),
+    // back-compat: "domainExpiry" הישן → domainRenewalDate
+    domainRenewalDate: ymdPart(x.domainRenewalDate ?? x.domainExpiry),
+
+    greenInvoiceRetainer: Boolean(x.greenInvoiceRetainer),
+    retainerAmount,
+    retainerCycle: asBillingCycle(x.retainerCycle, 'monthly'),
+
+    sslExpiry: ymdPart(x.sslExpiry),
+    ipAddress: String(x.ipAddress ?? ''),
     controlPanel: String(x.controlPanel ?? ''),
     username: String(x.username ?? ''),
-    ipAddress: String(x.ipAddress ?? ''),
-    sslExpiry: ymdPart(x.sslExpiry),
-    domainExpiry: ymdPart(x.domainExpiry),
     platform: String(x.platform ?? ''),
     phpVersion: String(x.phpVersion ?? ''),
+
     notes: String(x.notes ?? ''),
     createdAt: timestampToIso(x.createdAt),
+    updatedAt: x.updatedAt ? timestampToIso(x.updatedAt) : '',
   }
 }

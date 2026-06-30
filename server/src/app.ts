@@ -3,6 +3,7 @@ import cors from '@fastify/cors'
 import { env } from './config/env.js'
 import { registerHealthRoutes } from './routes/health.js'
 import { registerApiRoutes } from './routes/api.js'
+import { registerMorningRoutes } from './routes/morning.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -19,6 +20,7 @@ export async function buildApp() {
 
   await registerHealthRoutes(app)
   await registerApiRoutes(app)
+  await registerMorningRoutes(app)
 
   app.setNotFoundHandler((_req, reply) => {
     reply.code(404).send({ ok: false, error: 'not_found', message: 'נתיב לא קיים' })

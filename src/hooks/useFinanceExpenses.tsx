@@ -13,16 +13,22 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDocs,
   onSnapshot,
   serverTimestamp,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToFinanceExpense } from '../lib/firestoreMappers'
 import { db } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
-import type { FinanceExpense, FinanceExpenseVatClass } from '../types'
+import type {
+  FinanceExpense,
+  FinanceExpenseVatClass,
+  FinancePaymentMethod,
+} from '../types'
 
 export type NewFinanceExpenseInput = {
   type: string
@@ -45,6 +51,10 @@ export type NewFinanceExpenseInput = {
   linkedIncomeId?: string
   recurring: boolean
   supplierInvoiceReceived?: boolean
+  paymentMethod?: FinancePaymentMethod
+  paidDate?: string
+  bankRef?: string
+  hostingExpense?: boolean
 }
 
 export type FinanceExpensePatchInput = {
@@ -68,6 +78,7 @@ export type FinanceExpensePatchInput = {
   linkedIncomeId?: string | null
   recurring?: boolean
   supplierInvoiceReceived?: boolean
+  hostingExpense?: boolean
 }
 
 type FinanceExpensesContextValue = {
@@ -75,12 +86,52 @@ type FinanceExpensesContextValue = {
   loading: boolean
   error: Error | null
   addExpense: (data: NewFinanceExpenseInput) => Promise<void>
+  addExpensesBatch: (rows: NewFinanceExpenseInput[]) => Promise<number>
   updateExpense: (id: string, patch: FinanceExpensePatchInput) => Promise<void>
   deleteExpense: (id: string) => Promise<void>
+  deleteAllExpenses: () => Promise<number>
 }
 
 const FinanceExpensesContext =
   createContext<FinanceExpensesContextValue | null>(null)
+
+/** בונה רשומת Firestore להוצאה — משותף ל-add בודד ול-batch ייבוא */
+function buildExpenseRow(data: NewFinanceExpenseInput): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    type: data.type,
+    amount: Math.round(data.amount * 100) / 100,
+    amountIncludesVat: data.amountIncludesVat !== false,
+    billingMonth: data.billingMonth.slice(0, 7),
+    recurring: data.recurring === true,
+    createdAt: serverTimestamp(),
+  }
+  if (typeof data.vatLiable === 'boolean') row.vatLiable = data.vatLiable
+  if (data.vatClass) row.vatClass = data.vatClass
+  if (data.projectId?.trim()) row.projectId = data.projectId.trim()
+  if (data.clientId?.trim()) row.clientId = data.clientId.trim()
+  if (data.supplierId?.trim()) row.supplierId = data.supplierId.trim()
+  if (data.supplierName?.trim()) row.supplierName = data.supplierName.trim()
+  if (data.platformName?.trim()) row.platformName = data.platformName.trim()
+  if (data.name?.trim()) row.name = data.name.trim()
+  if (data.employeeName?.trim()) row.employeeName = data.employeeName.trim()
+  if (typeof data.vatAmount === 'number' && Number.isFinite(data.vatAmount)) {
+    row.vatAmount = Math.round(data.vatAmount * 100) / 100
+  }
+  if (
+    typeof data.amountBeforeVat === 'number' &&
+    Number.isFinite(data.amountBeforeVat)
+  ) {
+    row.amountBeforeVat = Math.round(data.amountBeforeVat * 100) / 100
+  }
+  if (data.description?.trim()) row.description = data.description.trim()
+  if (data.paymentMethod) row.paymentMethod = data.paymentMethod
+  if (data.paidDate?.trim()) row.paidDate = data.paidDate.trim().slice(0, 10)
+  if (data.bankRef?.trim()) row.bankRef = data.bankRef.trim()
+  if (data.pnlMonth?.trim()) row.pnlMonth = data.pnlMonth.trim().slice(0, 7)
+  if (data.linkedIncomeId?.trim()) row.linkedIncomeId = data.linkedIncomeId.trim()
+  if (data.hostingExpense === true) row.hostingExpense = true
+  return row
+}
 
 export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
@@ -115,45 +166,37 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
 
   const addExpense = useCallback(async (data: NewFinanceExpenseInput) => {
     try {
-      const row: Record<string, unknown> = {
-        type: data.type,
-        amount: Math.round(data.amount * 100) / 100,
-        amountIncludesVat: data.amountIncludesVat !== false,
-        billingMonth: data.billingMonth.slice(0, 7),
-        recurring: data.recurring === true,
-        createdAt: serverTimestamp(),
-      }
-      if (typeof data.vatLiable === 'boolean') {
-        row.vatLiable = data.vatLiable
-      }
-      if (data.vatClass) row.vatClass = data.vatClass
-      if (data.projectId?.trim()) row.projectId = data.projectId.trim()
-      if (data.clientId?.trim()) row.clientId = data.clientId.trim()
-      if (data.supplierId?.trim()) row.supplierId = data.supplierId.trim()
-      if (data.supplierName?.trim()) row.supplierName = data.supplierName.trim()
-      if (data.platformName?.trim()) row.platformName = data.platformName.trim()
-      if (data.name?.trim()) row.name = data.name.trim()
-      if (data.employeeName?.trim()) row.employeeName = data.employeeName.trim()
-      if (typeof data.vatAmount === 'number' && Number.isFinite(data.vatAmount)) {
-        row.vatAmount = Math.round(data.vatAmount * 100) / 100
-      }
-      if (
-        typeof data.amountBeforeVat === 'number' &&
-        Number.isFinite(data.amountBeforeVat)
-      ) {
-        row.amountBeforeVat = Math.round(data.amountBeforeVat * 100) / 100
-      }
-      if (data.description?.trim()) row.description = data.description.trim()
-      if (data.pnlMonth?.trim()) row.pnlMonth = data.pnlMonth.trim().slice(0, 7)
-      if (data.linkedIncomeId?.trim()) {
-        row.linkedIncomeId = data.linkedIncomeId.trim()
-      }
+      const row = buildExpenseRow(data)
       await addDoc(collection(db, 'financeExpenses'), row)
       toastFsSuccess('ההוצאה נוספה')
     } catch (e) {
       toastFsError('שגיאה בשמירת ההוצאה', e, 'addExpense')
     }
   }, [])
+
+  const addExpensesBatch = useCallback(
+    async (rows: NewFinanceExpenseInput[]): Promise<number> => {
+      if (rows.length === 0) return 0
+      try {
+        let written = 0
+        for (let i = 0; i < rows.length; i += 400) {
+          const batch = writeBatch(db)
+          for (const data of rows.slice(i, i + 400)) {
+            const ref = doc(collection(db, 'financeExpenses'))
+            batch.set(ref, buildExpenseRow(data))
+            written += 1
+          }
+          await batch.commit()
+        }
+        toastFsSuccess(`יובאו ${written} הוצאות`)
+        return written
+      } catch (e) {
+        toastFsError('שגיאה בייבוא ההוצאות', e, 'addExpensesBatch')
+        return 0
+      }
+    },
+    [],
+  )
 
   const updateExpense = useCallback(
     async (id: string, patch: FinanceExpensePatchInput) => {
@@ -260,6 +303,11 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
         if (typeof patch.recurring === 'boolean') {
           next.recurring = patch.recurring
         }
+        if (typeof patch.hostingExpense === 'boolean') {
+          next.hostingExpense = patch.hostingExpense
+            ? true
+            : (deleteField() as unknown as boolean)
+        }
         if (typeof patch.vatLiable === 'boolean') {
           next.vatLiable = patch.vatLiable
         } else if (patch.vatLiable === null) {
@@ -292,16 +340,45 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const deleteAllExpenses = useCallback(async (): Promise<number> => {
+    try {
+      const snap = await getDocs(collection(db, 'financeExpenses'))
+      if (snap.empty) return 0
+      const refs = snap.docs.map((d) => d.ref)
+      for (let i = 0; i < refs.length; i += 400) {
+        const batch = writeBatch(db)
+        for (const ref of refs.slice(i, i + 400)) batch.delete(ref)
+        await batch.commit()
+      }
+      toastFsSuccess(`נמחקו ${refs.length} הוצאות`)
+      return refs.length
+    } catch (e) {
+      toastFsError('שגיאה במחיקת ההוצאות', e, 'deleteAllExpenses')
+      return 0
+    }
+  }, [])
+
   const value = useMemo(
     () => ({
       expenses,
       loading,
       error,
       addExpense,
+      addExpensesBatch,
       updateExpense,
       deleteExpense,
+      deleteAllExpenses,
     }),
-    [expenses, loading, error, addExpense, updateExpense, deleteExpense],
+    [
+      expenses,
+      loading,
+      error,
+      addExpense,
+      addExpensesBatch,
+      updateExpense,
+      deleteExpense,
+      deleteAllExpenses,
+    ],
   )
 
   return (

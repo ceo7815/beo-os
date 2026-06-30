@@ -18,8 +18,23 @@ export interface FinanceIncomePaymentRecord {
 /** סוג הכנסה ללא פרויקט — אחסון / פורטל */
 export type FinanceHostingType = 'monthly' | 'yearly' | 'portal_monthly'
 
-/** סוג מסמך הכנסה — מס קבלה = הכנסה בפועל; עסקה = רווח צפוי בלבד */
-export type FinanceIncomeDocumentKind = 'tax_receipt' | 'transaction_invoice'
+/**
+ * סוגי מסמך הכנסה — תואם לחשבונית ירוקה (Morning).
+ * ערכים ישנים (tax_receipt / transaction_invoice) מנורמלים ב-mapper.
+ */
+export type FinanceIncomeDocumentKind =
+  | 'tax_invoice_receipt' // 320 חשבונית מס קבלה
+  | 'tax_invoice' // 305 חשבונית מס
+  | 'receipt' // 400 קבלה
+  | 'transaction_account' // 300 חשבון עסקה (גבייה)
+  | 'credit_invoice' // 330 חשבונית זיכוי
+  /** @deprecated — השתמשו ב-tax_invoice_receipt */
+  | 'tax_receipt'
+  /** @deprecated — השתמשו ב-transaction_account */
+  | 'transaction_invoice'
+
+/** מקור ההכנסה — ידני (היסטורי) או חשבונית ירוקה (מקור האמת) */
+export type FinanceIncomeSource = 'manual' | 'green_invoice'
 
 /** הכנסה במודול פיננסים — אדמין בלבד */
 export interface FinanceIncome {
@@ -61,6 +76,20 @@ export interface FinanceIncome {
   /** הרחבה לתצוגה — מופע חודשי של ריטיינר */
   isAutoOccurrence?: boolean
   sourceInvoiceDate?: string
+  /** מקור הרשומה — 'green_invoice' = סונכרן מחשבונית ירוקה (קריאה בלבד) */
+  source?: FinanceIncomeSource
+  /** מזהה המסמך בחשבונית ירוקה */
+  greenInvoiceId?: string
+  /** קוד סוג המסמך בחשבונית ירוקה (320 / 305 / 400 ...) */
+  greenInvoiceType?: number
+  /** קוד סטטוס המסמך בחשבונית ירוקה — 0 פתוח · 1 סגור · 2 נסגר ידנית · 3/4 מבוטל */
+  greenInvoiceStatus?: number
+  /** מספר המסמך בחשבונית ירוקה */
+  greenInvoiceNumber?: string
+  /** שם הלקוח כפי שמופיע בחשבונית ירוקה (לרשומות ללא התאמה ללקוח) */
+  greenInvoiceClientName?: string
+  /** ISO — מתי סונכרן לאחרונה מחשבונית ירוקה */
+  syncedAt?: string
 }
 
 export type FinanceExpenseFieldMode = 'none' | 'supplier' | 'platform' | 'salary'
@@ -118,6 +147,14 @@ export interface FinanceExpense {
   amountBeforeVat?: number
   description?: string
   recurring: boolean
+  /** אמצעי תשלום — עו״ש / כרטיס אשראי */
+  paymentMethod?: FinancePaymentMethod
+  /** YYYY-MM-DD — תאריך תשלום בפועל (מהבנק) */
+  paidDate?: string
+  /** אסמכתא ייחודית מקובץ הבנק — למניעת ייבוא כפול */
+  bankRef?: string
+  /** true = הוצאת אחסון (שרתים/דומיינים) — משויכת ל"אחסון אתרים" הפיננסי */
+  hostingExpense?: boolean
   /** YYYY-MM — חודש תשלום בפועל */
   billingMonth: string
   /** YYYY-MM — חודש לרווח והפסד (כשמקושר לפרויקט/עסקה) */
@@ -513,6 +550,10 @@ export interface Client {
   businessNotes?: string
   /** יתרת חוב פתוחה מהכנסות (תשלום חלקי) — ₪ */
   financeBalance?: number
+  /** מזהה הלקוח בחשבונית ירוקה — כשסונכרן משם */
+  greenInvoiceId?: string
+  /** מקור הלקוח — 'green_invoice' = סונכרן מחשבונית ירוקה */
+  source?: 'manual' | 'green_invoice'
 }
 
 /** סוג עסקה במסלול ניהול אדמין — `deals` */
@@ -562,22 +603,69 @@ export interface Deal {
   createdByUserId?: string
 }
 
-/** רשומה במאגר אחסון — מידע בלבד (ללא תשלומים) */
+/** סוג שרת האחסון */
+export type HostingServerType = 'shared' | 'private'
+
+/** מי מנהל את הדומיין */
+export type DomainManager = 'agency' | 'client' | 'external'
+
+/** מחזור חיוב לאחסון / רטיינר */
+export type HostingBillingCycle = 'monthly' | 'yearly' | 'biennial' | 'oneTime'
+
+/**
+ * רשומה במאגר אחסון ודומיינים — אתר אחד.
+ * מקשרת אתר ללקוח עם כל פרטי השרת, הדומיין, מועדי החידוש והרטיינר.
+ */
 export interface HostingRecord {
   id: string
+  /** שיוך ללקוח (חובה) */
   clientId: string
+  /** דומיין ראשי / כתובת האתר */
   domain: string
-  server: string
+  /** שם תצוגה ידידותי (אופציונלי) */
+  siteName: string
+
+  // ── שרת ואחסון ──
+  /** אחסון שיתופי או שרת פרטי */
+  serverType: HostingServerType
+  /** ספק/שם השרת (Hostinger, AWS, שרת פרטי…) */
+  serverProvider: string
+  /** מיקום השרת (ישראל / חו״ל / דאטה־סנטר) */
   serverLocation: string
+  /** תאריך תשלום/חידוש אחסון (YYYY-MM-DD) */
+  hostingRenewalDate: string
+  /** מחזור חיוב אחסון */
+  hostingCycle: HostingBillingCycle
+
+  // ── דומיין ──
+  /** רשם הדומיינים (GoDaddy, Cloudflare, Hostinger…) */
+  registrar: string
+  /** מי מנהל את הדומיין */
+  domainManager: DomainManager
+  /** הערה על מנהל הדומיין כשהוא חיצוני (שם/חברה) */
+  domainManagerNote: string
+  /** תאריך חידוש דומיין (YYYY-MM-DD) */
+  domainRenewalDate: string
+
+  // ── חיוב / רטיינר ──
+  /** האם קיים רטיינר אוטומטי בחשבונית ירוקה */
+  greenInvoiceRetainer: boolean
+  /** סכום הרטיינר בש״ח (אם קיים) */
+  retainerAmount?: number
+  /** מחזור חיוב הרטיינר */
+  retainerCycle: HostingBillingCycle
+
+  // ── טכני (אופציונלי) ──
+  sslExpiry: string
+  ipAddress: string
   controlPanel: string
   username: string
-  ipAddress: string
-  sslExpiry: string
-  domainExpiry: string
   platform: string
   phpVersion: string
+
   notes: string
   createdAt: string
+  updatedAt: string
 }
 
 export interface Project {
