@@ -143,10 +143,12 @@ export function MorningSyncPanel() {
 
       {!firebaseReady ? (
         <div className="mt-3 rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-          השרת אינו מחובר ל-Firebase Admin. יש להגדיר{' '}
+          השרת אינו מחובר ל-Firebase Admin. בפיתוח:{' '}
           <code className="rounded bg-amber-100 px-1">FIREBASE_SERVICE_ACCOUNT_PATH</code>{' '}
-          בקובץ <code className="rounded bg-amber-100 px-1">server/.env.local</code>{' '}
-          ולהפעיל מחדש את השרת.
+          ב-<code className="rounded bg-amber-100 px-1">server/.env.local</code>.
+          בפרודקשן (xCloud): הוסף{' '}
+          <code className="rounded bg-amber-100 px-1">FIREBASE_SERVICE_ACCOUNT_B64</code>{' '}
+          ל-Environment ועשה Deploy מחדש.
           {status?.firebaseReason ? (
             <span className="mt-1 block opacity-80">{status.firebaseReason}</span>
           ) : null}

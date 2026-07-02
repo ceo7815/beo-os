@@ -29,11 +29,8 @@ function resolveServiceAccountPath(): string {
   return resolve(serverRoot, raw)
 }
 
-/** ניסיון 1 — קובץ service account (FIREBASE_SERVICE_ACCOUNT_PATH) */
-function tryServiceAccount(): App | null {
-  const saPath = resolveServiceAccountPath()
-  if (!saPath) return null
-  const json = readFileSync(saPath, 'utf8')
+function initFromServiceAccountJson(json: string): App | null {
+  if (!json.trim()) return null
   const serviceAccount = JSON.parse(json) as Record<string, unknown>
   return initializeApp({
     credential: cert(serviceAccount as Parameters<typeof cert>[0]),
@@ -41,7 +38,28 @@ function tryServiceAccount(): App | null {
   })
 }
 
-/** ניסיון 2 — Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS) */
+/** ניסיון 1 — קובץ service account (FIREBASE_SERVICE_ACCOUNT_PATH) */
+function tryServiceAccountFile(): App | null {
+  const saPath = resolveServiceAccountPath()
+  if (!saPath) return null
+  const json = readFileSync(saPath, 'utf8')
+  return initFromServiceAccountJson(json)
+}
+
+/** ניסיון 2 — JSON במשתנה סביבה (FIREBASE_SERVICE_ACCOUNT_JSON) */
+function tryServiceAccountJson(): App | null {
+  return initFromServiceAccountJson(env.firebaseServiceAccountJson)
+}
+
+/** ניסיון 3 — Base64 של JSON (FIREBASE_SERVICE_ACCOUNT_B64) */
+function tryServiceAccountB64(): App | null {
+  const raw = env.firebaseServiceAccountB64
+  if (!raw) return null
+  const json = Buffer.from(raw, 'base64').toString('utf8')
+  return initFromServiceAccountJson(json)
+}
+
+/** ניסיון 4 — Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS) */
 function tryApplicationDefault(): App | null {
   if (!process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()) return null
   return initializeApp({
@@ -60,7 +78,9 @@ export function getFirebaseAdmin(): FirebaseAdminState {
   }
 
   const attempts: Array<{ label: string; fn: () => App | null }> = [
-    { label: 'service account', fn: tryServiceAccount },
+    { label: 'service account file', fn: tryServiceAccountFile },
+    { label: 'service account json', fn: tryServiceAccountJson },
+    { label: 'service account b64', fn: tryServiceAccountB64 },
     { label: 'application default', fn: tryApplicationDefault },
   ]
 
@@ -83,7 +103,7 @@ export function getFirebaseAdmin(): FirebaseAdminState {
     reason:
       errors.length > 0
         ? `אימות Firebase Admin נכשל — ${errors.join(' · ')}`
-        : 'חסר FIREBASE_SERVICE_ACCOUNT_PATH ב-server/.env.local',
+        : 'חסר FIREBASE_SERVICE_ACCOUNT_PATH / FIREBASE_SERVICE_ACCOUNT_B64',
   }
   return cached
 }

@@ -1,10 +1,34 @@
-# Hub POS — React static + Nginx
+# Hub POS — React static + Nginx + API server
 # Domain: pos.hub.co.il → host Nginx → 127.0.0.1:3002
-# xCloud: set VITE_* env vars in the app settings (no env_file here).
+# xCloud Environment: VITE_* (frontend build) + FIREBASE_SERVICE_ACCOUNT_B64 (API)
 
 services:
+  hub-pos-api:
+    container_name: hub-pos-api
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      NODE_ENV: production
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8787
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://pos.hub.co.il}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      FIREBASE_SERVICE_ACCOUNT_B64: ${FIREBASE_SERVICE_ACCOUNT_B64:-}
+      SYNC_FROM_DATE: ${SYNC_FROM_DATE:-2026-03-01}
+      SYNC_OVERLAP_DAYS: ${SYNC_OVERLAP_DAYS:-7}
+      MORNING_ENV: ${MORNING_ENV:-production}
+      MORNING_KEY_ID: ${MORNING_KEY_ID:-}
+      MORNING_KEY_SECRET: ${MORNING_KEY_SECRET:-}
+    restart: unless-stopped
+    networks:
+      - bakrayot-proxy
+
   hub-pos:
     container_name: hub-pos-web
+    depends_on:
+      - hub-pos-api
     build:
       context: .
       dockerfile: Dockerfile

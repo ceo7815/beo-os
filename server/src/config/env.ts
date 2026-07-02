@@ -27,6 +27,10 @@ export const env = {
   port: readPort('SERVER_PORT', 8787),
   corsOrigins: readOrigins(readString('CORS_ORIGINS')),
   firebaseServiceAccountPath: readString('FIREBASE_SERVICE_ACCOUNT_PATH'),
+  /** JSON גולמי — לפרודקשן ב-xCloud (משתנה סביבה אחד) */
+  firebaseServiceAccountJson: readString('FIREBASE_SERVICE_ACCOUNT_JSON'),
+  /** Base64 של JSON — נוח להדבקה בפאנל xCloud */
+  firebaseServiceAccountB64: readString('FIREBASE_SERVICE_ACCOUNT_B64'),
   morning: {
     env: readString('MORNING_ENV', 'sandbox') as 'sandbox' | 'production',
     keyId: readString('MORNING_KEY_ID'),
