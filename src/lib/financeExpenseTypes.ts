@@ -10,6 +10,7 @@ import {
   expensePaymentMonth,
 } from './financeExpensePnl'
 import { monthsInRange, normalizeYmRange } from './financeMonthRange'
+import { expenseAccrualMonth, isSalaryLikeExpense } from './financeSalaryMonth'
 
 export const BUILTIN_FINANCE_EXPENSE_TYPES: FinanceExpenseTypeDef[] = [
   {
@@ -134,6 +135,13 @@ export function expenseAppliesToMonth(
   typeDef: FinanceExpenseTypeDef,
   incomes: FinanceIncome[] = [],
 ): boolean {
+  if (isSalaryLikeExpense(exp, typeDef)) {
+    return expenseAccrualMonth(exp) === targetYm
+  }
+  const explicitPnl = exp.pnlMonth?.trim().slice(0, 7)
+  if (explicitPnl && !exp.projectId?.trim()) {
+    return explicitPnl === targetYm
+  }
   if (exp.projectId?.trim()) {
     return deriveExpensePnlMonth(exp, incomes) === targetYm
   }

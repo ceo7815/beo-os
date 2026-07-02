@@ -79,13 +79,14 @@ export type FinanceExpensePatchInput = {
   recurring?: boolean
   supplierInvoiceReceived?: boolean
   hostingExpense?: boolean
+  paidDate?: string | null
 }
 
 type FinanceExpensesContextValue = {
   expenses: FinanceExpense[]
   loading: boolean
   error: Error | null
-  addExpense: (data: NewFinanceExpenseInput) => Promise<void>
+  addExpense: (data: NewFinanceExpenseInput) => Promise<boolean>
   addExpensesBatch: (rows: NewFinanceExpenseInput[]) => Promise<number>
   updateExpense: (id: string, patch: FinanceExpensePatchInput) => Promise<void>
   deleteExpense: (id: string) => Promise<void>
@@ -164,13 +165,15 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
     return () => unsub()
   }, [user])
 
-  const addExpense = useCallback(async (data: NewFinanceExpenseInput) => {
+  const addExpense = useCallback(async (data: NewFinanceExpenseInput): Promise<boolean> => {
     try {
       const row = buildExpenseRow(data)
       await addDoc(collection(db, 'financeExpenses'), row)
       toastFsSuccess('ההוצאה נוספה')
+      return true
     } catch (e) {
       toastFsError('שגיאה בשמירת ההוצאה', e, 'addExpense')
+      return false
     }
   }, [])
 
@@ -320,6 +323,11 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
         }
         if (typeof patch.supplierInvoiceReceived === 'boolean') {
           next.supplierInvoiceReceived = patch.supplierInvoiceReceived
+        }
+        if (patch.paidDate === null) {
+          next.paidDate = deleteField()
+        } else if (typeof patch.paidDate === 'string' && patch.paidDate.trim()) {
+          next.paidDate = patch.paidDate.trim().slice(0, 10)
         }
         if (Object.keys(next).length === 0) return
         await updateDoc(doc(db, 'financeExpenses', id), stripUndefined(next))

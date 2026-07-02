@@ -10,7 +10,8 @@ export async function readWorkbookRows(file: File): Promise<unknown[][]> {
   if (!ws) return []
   return XLSX.utils.sheet_to_json<unknown[]>(ws, {
     header: 1,
-    raw: true,
+    // false = טקסט מעוצב מהתא (למשל זיכויים בסוגריים "(750)")
+    raw: false,
     defval: '',
     blankrows: false,
   })
@@ -44,12 +45,22 @@ export function excelSerialToYmd(value: unknown): string {
   return ''
 }
 
+/** מפרק סכום מתא אקסל — כולל פורמט חשבונאי (750) או 750- */
 export function cellToNumber(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
-    const cleaned = value.replace(/[^\d.,-]/g, '').replace(/,/g, '')
-    const n = Number(cleaned)
-    if (Number.isFinite(n)) return n
+    const raw = value.trim()
+    if (!raw) return 0
+    const parenNegative = /^\(.*\)$/.test(raw)
+    const trailingNegative = /-$/.test(raw) && !raw.startsWith('-')
+    const cleaned = raw
+      .replace(/[()]/g, '')
+      .replace(/[^\d.,-]/g, '')
+      .replace(/,/g, '')
+    let n = Number(cleaned)
+    if (!Number.isFinite(n)) return 0
+    if (parenNegative || trailingNegative) return -Math.abs(n)
+    return n
   }
   return 0
 }

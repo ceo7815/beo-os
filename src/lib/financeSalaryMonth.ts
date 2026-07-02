@@ -1,0 +1,112 @@
+import { addMonths } from './financeMonthRange'
+
+/** משכורת — חודש ברירת מחדל = חודש לפני תאריך התשלום (תשלום ביוני = משכורת מאי) */
+export function defaultSalaryMonthFromPayment(paidDateYmd: string): string {
+  const ym = paidDateYmd.trim().slice(0, 7)
+  if (!/^\d{4}-\d{2}$/.test(ym)) return ym
+  return addMonths(ym, -1)
+}
+
+/** מזהה העברות / הו"ק שכנראה משכורת */
+export function looksLikeSalaryTransfer(description: string): boolean {
+  const t = description.trim()
+  return (
+    /^הו"ק\s/i.test(t) ||
+    /^העברה\s/i.test(t) ||
+    /משכורת/i.test(t)
+  )
+}
+
+/** שולף שם מהעברה: "העברה לאמה חן בנק..." → "אמה חן" */
+export function extractEmployeeFromTransfer(description: string): string {
+  const t = description.trim()
+  const hk = t.match(/^הו"ק\s+(?:ל)?(.+?)(?:\s+ל(?:סניף|בנק)|$)/i)
+  if (hk?.[1]) return hk[1].trim()
+  const tr = t.match(/^העברה\s+ל(.+?)(?:\s+בנק|,|$)/i)
+  if (tr?.[1]) return tr[1].trim()
+  return t
+}
+
+/** מפרק MM.YYYY / MM/YYYY / MM-YYYY מתוך הערה */
+export function parseSalaryMonthFromText(text: string): string | null {
+  const t = text.trim()
+  const m = t.match(/(?:^|\D)(0?[1-9]|1[0-2])[./-](20\d{2})(?:\D|$)/)
+  if (!m) return null
+  return `${m[2]}-${m[1].padStart(2, '0')}`
+}
+
+export function resolveSalaryBillingMonth(
+  paidDateYmd: string,
+  note?: string,
+  explicit?: string,
+): string {
+  if (explicit?.trim().slice(0, 7).match(/^\d{4}-\d{2}$/)) {
+    return explicit.trim().slice(0, 7)
+  }
+  const fromNote = note ? parseSalaryMonthFromText(note) : null
+  if (fromNote) return fromNote
+  return defaultSalaryMonthFromPayment(paidDateYmd)
+}
+
+/** משכורת — תמיד נספרת לפי חודש המשכורת (billingMonth), לא תאריך התשלום */
+export function isSalaryExpense(
+  exp: { type?: string },
+  typeDef?: { fieldMode?: string },
+): boolean {
+  return exp.type === 'salary' || typeDef?.fieldMode === 'salary'
+}
+
+/** משכורת / העברה לעובד — גם אם נשמרה בטעות כספק */
+export function isSalaryLikeExpense(
+  exp: {
+    type?: string
+    name?: string
+    description?: string
+    employeeName?: string
+    paidDate?: string
+  },
+  typeDef?: { fieldMode?: string },
+): boolean {
+  if (isSalaryExpense(exp, typeDef)) return true
+  if (exp.employeeName?.trim()) return true
+  const text = `${exp.description ?? ''} ${exp.name ?? ''}`
+  if (/משכורת/i.test(text)) return true
+  return false
+}
+
+/**
+ * חודש שבו ההוצאה נספרת ברווח והפסד.
+ * משכורת ששולמה ביוני = מאי (מהערה, billingMonth, או חודש לפני התשלום).
+ */
+export function expenseAccrualMonth(exp: {
+  type?: string
+  name?: string
+  description?: string
+  employeeName?: string
+  billingMonth?: string
+  pnlMonth?: string
+  paidDate?: string
+}): string {
+  const text = `${exp.description ?? ''} ${exp.name ?? ''} ${exp.employeeName ?? ''}`
+  const fromText = parseSalaryMonthFromText(text)
+
+  if (fromText && (isSalaryLikeExpense(exp) || /משכורת/i.test(text))) {
+    return fromText
+  }
+
+  if (isSalaryLikeExpense(exp)) {
+    if (exp.pnlMonth?.trim()) return exp.pnlMonth.trim().slice(0, 7)
+    const bm = (exp.billingMonth ?? '').slice(0, 7)
+    const pay = exp.paidDate?.trim().slice(0, 7)
+    if (bm && pay && bm < pay) return bm
+    if (pay) return defaultSalaryMonthFromPayment(exp.paidDate!)
+    if (bm) return bm
+  }
+
+  return (exp.billingMonth ?? '').slice(0, 7)
+}
+
+/** @deprecated use expenseAccrualMonth */
+export function salaryPnlMonth(exp: { billingMonth?: string }): string {
+  return (exp.billingMonth ?? '').slice(0, 7)
+}

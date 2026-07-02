@@ -29,12 +29,16 @@ export type SkipReason =
   | 'pending'
   | 'empty'
   | 'header_meta'
+  | 'card_settlement'
+  | 'future'
 
 export const SKIP_REASON_LABEL: Record<SkipReason, string> = {
   summary: 'שורות סיכום / סה״כ',
   pending: 'עסקאות בקליטה (טרם נסלקו)',
   empty: 'שורות ריקות / ללא סכום',
   header_meta: 'כותרות ושורות מידע',
+  card_settlement: 'חיוב מרוכז כרטיס אשראי',
+  future: 'תנועות עתידיות',
 }
 
 export type ParseResult = {
@@ -48,6 +52,10 @@ export type ParseResult = {
   skippedReasons: Partial<Record<SkipReason, number>>
   /** אזהרות פענוח (פורמט לא מזוהה וכו') */
   warnings: string[]
+  /** נטו מחושב מהשורות: חיובים − זיכויים */
+  parsedNet?: number
+  /** סה״כ כפי שמופיע בשורת הסיכום בקובץ הבנק (אם זוהתה) */
+  fileTotal?: number
 }
 
 /** מנשק parser — מאפשר להוסיף PDF/CSV בעתיד בלי לשנות את האשף */

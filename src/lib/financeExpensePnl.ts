@@ -1,4 +1,9 @@
 import type { FinanceExpense, FinanceIncome } from '../types'
+import {
+  expenseAccrualMonth,
+  isSalaryExpense,
+  isSalaryLikeExpense,
+} from './financeSalaryMonth'
 import { isTaxReceiptIncome } from './financeIncomeDocument'
 import { incomePaymentDate } from './financeIncomePayment'
 
@@ -68,6 +73,7 @@ export function deriveExpensePnlMonth(
   exp: FinanceExpense,
   incomes: FinanceIncome[],
 ): string {
+  if (isSalaryLikeExpense(exp)) return expenseAccrualMonth(exp)
   if (exp.pnlMonth?.trim()) return exp.pnlMonth.slice(0, 7)
   if (!exp.projectId?.trim()) return exp.billingMonth.slice(0, 7)
 
@@ -83,6 +89,9 @@ export function expenseReportMonth(
 }
 
 export function expensePaymentMonth(exp: FinanceExpense): string {
+  if (isSalaryExpense(exp) && exp.paidDate?.trim()) {
+    return exp.paidDate.trim().slice(0, 7)
+  }
   return (exp.sourceBillingMonth ?? exp.billingMonth).slice(0, 7)
 }
 
@@ -90,6 +99,10 @@ export function expenseUsesPnlAttribution(
   exp: FinanceExpense,
   incomes: FinanceIncome[] = [],
 ): boolean {
+  if (isSalaryLikeExpense(exp)) {
+    const pay = exp.paidDate?.trim().slice(0, 7)
+    return !!pay && pay !== expenseAccrualMonth(exp)
+  }
   if (!exp.projectId?.trim()) return false
   return deriveExpensePnlMonth(exp, incomes) !== expensePaymentMonth(exp)
 }

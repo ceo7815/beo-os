@@ -626,6 +626,30 @@ export function computeProfitLossRows(
   return trimmed.reverse()
 }
 
+/** הכנסות שנספרו בדוח רווח והפסד לחודש — אותה לוגיקה כמו computeProfitLossRows */
+export function profitLossIncomesForMonth(
+  incomes: FinanceIncome[],
+  ym: string,
+): FinanceIncome[] {
+  return incomes.filter(
+    (inc) => incomeAppliesToMonth(inc, ym) && isActualIncome(inc),
+  )
+}
+
+/** הוצאות שנספרו בדוח רווח והפסד לחודש — אותה לוגיקה כמו computeProfitLossRows */
+export function profitLossExpensesForMonth(
+  expenses: FinanceExpense[],
+  expenseTypes: FinanceExpenseTypeDef[],
+  ym: string,
+  incomes: FinanceIncome[] = [],
+): FinanceExpense[] {
+  const typeMap = expenseTypeMap(expenseTypes)
+  return expenses.filter((exp) => {
+    const def = resolveExpenseType(exp.type, typeMap)
+    return expenseAppliesToMonth(exp, ym, def, incomes)
+  })
+}
+
 export const INCOME_STATUS_LABEL: Record<FinanceIncomeStatus, string> = {
   paid: 'שולם',
   pending: 'ממתין',

@@ -35,6 +35,8 @@ import {
   suggestLinkedIncome,
 } from '../lib/financeExpensePnl'
 import { toastFsSuccess } from '../lib/fsToast'
+import { parseSalaryMonthFromText } from '../lib/financeSalaryMonth'
+import { formatDateIL } from '../lib/dates'
 import { matchMonthlyRecurringExpense } from '../lib/financeRecurringCatalog'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import {
@@ -90,6 +92,7 @@ type ExpenseFormState = {
   amountIncludesVat: boolean
   description: string
   billingMonth: string
+  paidDate: string
   recurring: boolean
   supplierInvoiceReceived: boolean
   hostingExpense: boolean
@@ -109,6 +112,7 @@ const emptyExpenseForm = (): ExpenseFormState => ({
   amountIncludesVat: true,
   description: '',
   billingMonth: currentYm(),
+  paidDate: '',
   recurring: false,
   supplierInvoiceReceived: false,
   hostingExpense: false,
@@ -499,6 +503,11 @@ export function Expenses() {
         billingMonth: row.sourceBillingMonth ?? row.billingMonth,
       } as FinanceExpense)
     setEditingExpense(source)
+    const typeDef = resolveExpenseType(source.type, expenseTypeById)
+    const noteMonth =
+      typeDef.fieldMode === 'salary'
+        ? parseSalaryMonthFromText(source.description ?? '')
+        : null
     const includesVat = source.amountIncludesVat !== false
     const displayAmount = includesVat
       ? source.amount
@@ -529,7 +538,8 @@ export function Expenses() {
       vatClass: resolveExpenseVatClass(source),
       amountIncludesVat: includesVat,
       description: source.description ?? '',
-      billingMonth: source.billingMonth,
+      billingMonth: noteMonth ?? source.billingMonth,
+      paidDate: source.paidDate ?? '',
       recurring: source.recurring,
       supplierInvoiceReceived: source.supplierInvoiceReceived === true,
       hostingExpense: source.hostingExpense === true,
@@ -568,6 +578,7 @@ export function Expenses() {
     const employeeNameTrimmed = expenseForm.employeeName.trim()
     const projectIdTrimmed =
       typeDef.fieldMode === 'salary' ? '' : expenseForm.projectId.trim()
+    const isSalary = typeDef.fieldMode === 'salary'
     const pnlFields = resolveExpensePnlFields(
       projectIdTrimmed || undefined,
       expenseForm.linkedIncomeId,
@@ -590,10 +601,10 @@ export function Expenses() {
           : undefined,
       projectId: projectIdTrimmed || undefined,
       clientId:
-        typeDef.fieldMode === 'salary'
+        isSalary
           ? undefined
           : expenseForm.clientId.trim() || undefined,
-      ...pnlFields,
+      ...(isSalary ? { pnlMonth: expenseForm.billingMonth } : pnlFields),
       amount: vatBreakdown.gross,
       vatClass: expenseForm.vatClass,
       vatLiable: vatClassToLiable(expenseForm.vatClass),
@@ -610,6 +621,7 @@ export function Expenses() {
         typeDef.fieldMode === 'salary' ? employeeNameTrimmed : undefined,
       description: expenseForm.description.trim() || undefined,
       billingMonth: expenseForm.billingMonth,
+      paidDate: expenseForm.paidDate.trim() || undefined,
       recurring:
         typeDef.fieldMode === 'salary'
           ? expenseForm.recurring
@@ -634,10 +646,15 @@ export function Expenses() {
           typeDef.fieldMode === 'salary'
             ? null
             : expenseForm.clientId.trim() || null,
-        linkedIncomeId: projectIdTrimmed ? (pnlFields.linkedIncomeId ?? null) : null,
-        pnlMonth: projectIdTrimmed ? (pnlFields.pnlMonth ?? null) : null,
+        linkedIncomeId: isSalary ? null : projectIdTrimmed ? (pnlFields.linkedIncomeId ?? null) : null,
+        pnlMonth: isSalary
+          ? expenseForm.billingMonth
+          : projectIdTrimmed
+            ? (pnlFields.pnlMonth ?? null)
+            : null,
         employeeName:
           typeDef.fieldMode === 'salary' ? employeeNameTrimmed : null,
+        paidDate: expenseForm.paidDate.trim() || null,
         vatClass: expenseForm.vatClass,
         vatLiable: vatClassToLiable(expenseForm.vatClass),
         supplierInvoiceReceived: expenseForm.supplierInvoiceReceived,
@@ -954,19 +971,31 @@ export function Expenses() {
               <tbody>
                 {filteredExpenses.map((row) => {
                   const typeDef = resolveExpenseType(row.type, expenseTypeById)
+                  const isSalaryRow = typeDef.fieldMode === 'salary'
                   const vatClass = resolveExpenseVatClass(row)
                   const breakdown = resolveExpenseRowVat(row)
                   const payMonth = expensePaymentMonth(row)
                   const pnlAttributed =
-                    expenseUsesPnlAttribution(row, incomes) ||
-                    row.isPnlAttribution === true
+                    !isSalaryRow &&
+                    (expenseUsesPnlAttribution(row, incomes) ||
+                      row.isPnlAttribution === true)
+                  const displayMonth = isSalaryRow
+                    ? row.billingMonth
+                    : pnlAttributed
+                      ? payMonth
+                      : row.billingMonth
                   return (
                     <tr
                       key={`${row.id}-${row.pnlMonth ?? row.billingMonth}-${payMonth}`}
                       className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
                     >
                       <td className="px-3 py-3 align-top tabular-nums">
-                        {monthLabelHe(pnlAttributed ? payMonth : row.billingMonth)}
+                        <div>{monthLabelHe(displayMonth)}</div>
+                        {isSalaryRow && row.paidDate ? (
+                          <div className="mt-0.5 text-[10px] font-normal text-[var(--text-mid)]">
+                            שולם {formatDateIL(row.paidDate)}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-3 align-top">
                         <div className="font-semibold text-[var(--text-dark)]">
@@ -1394,7 +1423,26 @@ export function Expenses() {
                   }}
                   className={hubInputClass()}
                 />
+                {selectedExpenseType.fieldMode === 'salary' ? (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--text-mid)]">
+                    חודש המשכורת = תקופת העבודה (למשל מאי). התשלום בבנק יכול
+                    להיות בחודש הבא (למשל יוני).
+                  </p>
+                ) : null}
               </div>
+              {selectedExpenseType.fieldMode === 'salary' ? (
+                <div className="sm:col-span-2">
+                  <FieldLabel>תאריך תשלום בפועל (בבנק)</FieldLabel>
+                  <input
+                    type="date"
+                    value={expenseForm.paidDate}
+                    onChange={(e) =>
+                      setExpenseForm((f) => ({ ...f, paidDate: e.target.value }))
+                    }
+                    className={hubInputClass()}
+                  />
+                </div>
+              ) : null}
             </div>
             {expenseVatPreview && expenseForm.vatClass === 'vat_liable' ? (
               <div className="space-y-0.5 rounded-lg border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-[11px] text-[var(--text-mid)]">

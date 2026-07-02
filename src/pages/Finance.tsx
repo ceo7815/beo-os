@@ -8,6 +8,10 @@ import {
   FinanceKpiDetailModal,
   type FinanceMetricId,
 } from '../components/finance/FinanceKpiDetailModal'
+import {
+  FinancePnlMonthDetailModal,
+  type PnlMonthDetail,
+} from '../components/finance/FinancePnlMonthDetailModal'
 import { FinancePeriodFilter } from '../components/finance/FinancePeriodFilter'
 import { useFinancePeriodFilter } from '../hooks/useFinancePeriodFilter'
 import { useClients } from '../hooks/useClients'
@@ -36,6 +40,9 @@ export function Finance() {
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterClientId, setFilterClientId] = useState('')
   const [detailMetric, setDetailMetric] = useState<FinanceMetricId | null>(null)
+  const [pnlMonthDetail, setPnlMonthDetail] = useState<PnlMonthDetail | null>(
+    null,
+  )
 
   const projectIdsForClient = useMemo(() => {
     if (!filterClientId) return new Set<string>()
@@ -276,9 +283,12 @@ export function Finance() {
       </section>
 
       <section className={`rounded-2xl ${hubSectionClass(5)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
-        <h2 className="mb-4 text-lg font-extrabold text-[var(--text-dark)]">
+        <h2 className="mb-1 text-lg font-extrabold text-[var(--text-dark)]">
           דוח רווח והפסד לפי חודש
         </h2>
+        <p className="mb-4 text-[11px] text-[var(--text-mid)]">
+          לחצו על סכום הכנסות או הוצאות לפירוט השורות בחודש
+        </p>
         {loading ? (
           <p className="text-sm text-[var(--text-mid)]">טוען…</p>
         ) : (
@@ -308,11 +318,37 @@ export function Finance() {
                       style={{ backgroundColor: rowBg }}
                     >
                       <td className="px-2 py-2.5 font-semibold">{row.label}</td>
-                      <td className="px-2 py-2.5 tabular-nums text-[#10B981]">
-                        {formatNis(row.incomeGross)}
+                      <td className="px-2 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPnlMonthDetail({
+                              ym: row.ym,
+                              label: row.label,
+                              kind: 'income',
+                            })
+                          }
+                          className="tabular-nums font-bold text-[#10B981] underline-offset-2 hover:underline"
+                          title="פירוט הכנסות"
+                        >
+                          {formatNis(row.incomeGross)}
+                        </button>
                       </td>
-                      <td className="px-2 py-2.5 tabular-nums text-[#EF4444]">
-                        {formatNis(row.expenseGross)}
+                      <td className="px-2 py-2.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPnlMonthDetail({
+                              ym: row.ym,
+                              label: row.label,
+                              kind: 'expense',
+                            })
+                          }
+                          className="tabular-nums font-bold text-[#EF4444] underline-offset-2 hover:underline"
+                          title="פירוט הוצאות"
+                        >
+                          {formatNis(row.expenseGross)}
+                        </button>
                       </td>
                       <td className="px-2 py-2.5 tabular-nums text-[#6366F1]">
                         {formatNis(row.vatPayable)}
@@ -368,6 +404,15 @@ export function Finance() {
         clientNameById={clientNameById}
         projectNameById={projectNameById}
         periodLabel={period.filterRangeLabel}
+      />
+
+      <FinancePnlMonthDetailModal
+        detail={pnlMonthDetail}
+        onClose={() => setPnlMonthDetail(null)}
+        incomes={incomes}
+        expenses={expenses}
+        expenseTypes={expenseTypes}
+        clientNameById={clientNameById}
       />
     </div>
   )
