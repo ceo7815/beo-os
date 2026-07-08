@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { type User, onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   auth,
   db,
@@ -20,6 +20,7 @@ import { isFirestoreAutoSeedEnabled } from '../lib/firestoreSeedFlags'
 import { seedClients } from '../lib/seedClients'
 import { seedFirestore } from '../lib/seedData'
 import { useHubStore } from '../store/useStore'
+import { isPublicAppPath } from '../lib/publicRoutes'
 
 /**
  * Seed (CSV + דמו) רק אם VITE_ENABLE_FIRESTORE_SEED=true — לא נוגע בנתונים אמיתיים בפרודקשן.
@@ -102,6 +103,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const firebaseReady = isFirebaseConfigured()
@@ -135,14 +137,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           csvSeedDoneForUid = null
           setCurrentUser(null)
-          navigate('/login', { replace: true })
+          if (!isPublicAppPath(location.pathname)) {
+            navigate('/login', { replace: true })
+          }
         }
       } finally {
         setLoading(false)
       }
     })
     return () => unsub()
-  }, [firebaseReady, navigate])
+  }, [firebaseReady, navigate, location.pathname])
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email.trim(), password)
