@@ -20,7 +20,11 @@ const PROJECT_ID = 'hub-pos-f399c'
 
 let cached: FirebaseAdminState | null = null
 /** מטמון לתוצאת בדיקת ה-Firestore (אימות אמיתי שהאישורים עובדים) */
-let verifyCache: { ok: boolean; reason?: string } | null = null
+let verifyCache: { ok: boolean; reason?: string; expiresAt: number } | null =
+  null
+
+const VERIFY_OK_TTL_MS = 5 * 60 * 1000
+const VERIFY_FAIL_TTL_MS = 30 * 1000
 
 function resolveServiceAccountPath(): string {
   const raw = env.firebaseServiceAccountPath
@@ -116,23 +120,30 @@ export async function verifyFirebaseAdmin(): Promise<{
   ok: boolean
   reason?: string
 }> {
-  if (verifyCache) return verifyCache
+  if (verifyCache && Date.now() < verifyCache.expiresAt) {
+    return { ok: verifyCache.ok, reason: verifyCache.reason }
+  }
   const state = getFirebaseAdmin()
   if (state.status !== 'ready') {
-    verifyCache = { ok: false, reason: state.reason }
-    return verifyCache
+    verifyCache = {
+      ok: false,
+      reason: state.reason,
+      expiresAt: Date.now() + VERIFY_FAIL_TTL_MS,
+    }
+    return { ok: verifyCache.ok, reason: verifyCache.reason }
   }
   try {
     await getFirestore(state.app).collection('users').limit(1).get()
-    verifyCache = { ok: true }
+    verifyCache = { ok: true, expiresAt: Date.now() + VERIFY_OK_TTL_MS }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     verifyCache = {
       ok: false,
       reason: `Firestore לא נגיש עם האישורים הנוכחיים — ${msg}`,
+      expiresAt: Date.now() + VERIFY_FAIL_TTL_MS,
     }
   }
-  return verifyCache
+  return { ok: verifyCache.ok, reason: verifyCache.reason }
 }
 
 export function getAdminAuth() {

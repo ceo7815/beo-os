@@ -107,7 +107,11 @@ export function ExpenseReconciliationPanel({
       ) : null}
 
       {error ? (
-        <p className="mb-3 text-[12px] font-semibold text-[#DC2626]">{error}</p>
+        <p className="mb-3 text-[12px] font-semibold text-[#DC2626]">
+          {error.includes('RESOURCE_EXHAUSTED') || error.includes('Quota exceeded')
+            ? 'מכסת Firestore מלאה זמנית — נסו שוב בעוד דקה, או הפעילו חיוב ב-Firebase Console.'
+            : error}
+        </p>
       ) : null}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">

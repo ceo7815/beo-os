@@ -2,11 +2,34 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import { getAdminDb } from '../lib/firebaseAdmin.js'
 import { requireAuth } from './requireAuth.js'
 
+const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000
+const adminRoleCache = new Map<
+  string,
+  { isAdmin: boolean; expiresAt: number }
+>()
+
 function isAdminRole(role: unknown): boolean {
   const r = String(role ?? '')
     .trim()
     .toLowerCase()
   return r === 'admin' || r === 'superadmin'
+}
+
+function readCachedAdmin(uid: string): boolean | null {
+  const hit = adminRoleCache.get(uid)
+  if (!hit) return null
+  if (Date.now() > hit.expiresAt) {
+    adminRoleCache.delete(uid)
+    return null
+  }
+  return hit.isAdmin
+}
+
+function writeCachedAdmin(uid: string, isAdmin: boolean): void {
+  adminRoleCache.set(uid, {
+    isAdmin,
+    expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
+  })
 }
 
 /**
@@ -36,10 +59,23 @@ export async function requireAdmin(
     return
   }
 
+  const cached = readCachedAdmin(uid)
+  if (cached === false) {
+    reply.code(403).send({
+      ok: false,
+      error: 'forbidden',
+      message: 'נדרשת הרשאת מנהל',
+    })
+    return
+  }
+  if (cached === true) return
+
   try {
     const snap = await db.collection('users').doc(uid).get()
     const role = snap.exists ? snap.data()?.role : undefined
-    if (!isAdminRole(role)) {
+    const isAdmin = isAdminRole(role)
+    writeCachedAdmin(uid, isAdmin)
+    if (!isAdmin) {
       reply.code(403).send({
         ok: false,
         error: 'forbidden',

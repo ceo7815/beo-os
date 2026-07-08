@@ -26,7 +26,7 @@ export async function registerMorningRoutes(app: FastifyInstance): Promise<void>
     async () => {
       const verify = await verifyFirebaseAdmin()
       const firebaseReady = verify.ok
-      const creds = firebaseReady ? await loadMorningCredentials() : null
+      const creds = await loadMorningCredentials()
       const syncState = firebaseReady ? await readSyncState() : null
       return {
         ok: true,

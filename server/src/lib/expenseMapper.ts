@@ -6,6 +6,8 @@ export const GI_EXPENSE_DOC_TYPE = {
   RECEIPT: 20,
   INVOICE_RECEIPT: 30,
   OTHER: 40,
+  /** זיכוי / החזר */
+  CREDIT_NOTE: 330,
 } as const
 
 export type MappedExpense = {
@@ -115,6 +117,73 @@ function extractPayment(doc: MorningDocument): {
   }
 }
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+/**
+ * סכומים כפי שמוצגים ב-GI:
+ * - מטבע זר: amountLocal (שקלים) ולא amount (מטבע מקור)
+ * - זיכויים: businessAmount / businessVat (שליליים)
+ */
+function extractAmounts(doc: MorningDocument): {
+  amount: number
+  vatAmount?: number
+  amountBeforeVat?: number
+} | null {
+  const businessAmount = firstNumber(doc, ['businessAmount'])
+  const businessVat = firstNumber(doc, ['businessVat'])
+  const businessAmountExcludeVat = firstNumber(doc, [
+    'businessAmountExcludeVat',
+  ])
+
+  if (typeof businessAmount === 'number' && businessAmount < 0) {
+    const vatAmount =
+      typeof businessVat === 'number' ? round2(businessVat) : undefined
+    const amountBeforeVat =
+      typeof businessAmountExcludeVat === 'number'
+        ? round2(businessAmountExcludeVat)
+        : vatAmount !== undefined
+          ? round2(businessAmount - vatAmount)
+          : undefined
+    return {
+      amount: round2(businessAmount),
+      ...(vatAmount !== undefined ? { vatAmount } : {}),
+      ...(amountBeforeVat !== undefined ? { amountBeforeVat } : {}),
+    }
+  }
+
+  const amount =
+    firstNumber(doc, ['amountLocal', 'amount', 'amountWithVat', 'total']) ?? 0
+  if (amount === 0) return null
+
+  const vatRaw = firstNumber(doc, [
+    'businessVat',
+    'vatAccounting',
+    'vat',
+    'vatAmount',
+  ])
+  const vatAmount =
+    typeof vatRaw === 'number' ? round2(vatRaw) : undefined
+  const amountExcludeVat = firstNumber(doc, [
+    'businessAmountExcludeVat',
+    'amountExcludeVat',
+    'amountExcludeLocal',
+  ])
+  const amountBeforeVat =
+    typeof amountExcludeVat === 'number'
+      ? round2(amountExcludeVat)
+      : vatAmount !== undefined
+        ? round2(amount - vatAmount)
+        : undefined
+
+  return {
+    amount: round2(amount),
+    ...(vatAmount !== undefined ? { vatAmount } : {}),
+    ...(amountBeforeVat !== undefined ? { amountBeforeVat } : {}),
+  }
+}
+
 /** ממפה הוצאה מ-Morning לשדות FinanceExpense */
 export function mapMorningExpense(doc: MorningDocument): MappedExpense | null {
   const greenInvoiceId = firstString(doc, ['id', '_id', 'expenseId'])
@@ -127,16 +196,8 @@ export function mapMorningExpense(doc: MorningDocument): MappedExpense | null {
   )
   if (!documentDate) return null
 
-  const amount =
-    firstNumber(doc, ['amount', 'amountWithVat', 'total', 'totalAmount']) ?? 0
-  if (amount <= 0) return null
-
-  const vatRaw = firstNumber(doc, ['vat', 'vatAmount'])
-  const vatAmount = typeof vatRaw === 'number' ? Math.abs(vatRaw) : undefined
-  const amountBeforeVat =
-    vatAmount !== undefined
-      ? Math.round((amount - vatAmount) * 100) / 100
-      : undefined
+  const amounts = extractAmounts(doc)
+  if (!amounts) return null
 
   const supplier = extractSupplier(doc)
   const payment = extractPayment(doc)
@@ -149,10 +210,12 @@ export function mapMorningExpense(doc: MorningDocument): MappedExpense | null {
     greenInvoiceDocType: docType,
     greenInvoiceDocKind: docKindForType(docType),
     greenInvoiceNumber: number,
-    amount: Math.round(amount * 100) / 100,
+    amount: amounts.amount,
     amountIncludesVat: true,
-    ...(vatAmount !== undefined ? { vatAmount } : {}),
-    ...(amountBeforeVat !== undefined ? { amountBeforeVat } : {}),
+    ...(amounts.vatAmount !== undefined ? { vatAmount: amounts.vatAmount } : {}),
+    ...(amounts.amountBeforeVat !== undefined
+      ? { amountBeforeVat: amounts.amountBeforeVat }
+      : {}),
     documentDate,
     ...(payment.paidDate ? { paidDate: payment.paidDate } : {}),
     ...(payment.paymentMethod ? { paymentMethod: payment.paymentMethod } : {}),
