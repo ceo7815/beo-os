@@ -173,6 +173,7 @@ export function Layout() {
     location.pathname.startsWith('/campaigns') ||
     location.pathname.startsWith('/leads') ||
     location.pathname.startsWith('/tasks') ||
+    location.pathname.startsWith('/hourly-services') ||
     location.pathname.startsWith('/calendar') ||
     location.pathname.startsWith('/prompts') ||
     location.pathname.startsWith('/hosting')
@@ -380,6 +381,7 @@ export function Layout() {
                   onClick={() => setSelectedClient(null)}
                 />
                 <NavSubLink to="/tasks" label="משימות" />
+                <NavSubLink to="/hourly-services" label="שירותי שעות" />
                 <NavSubLink to="/hosting" label="אחסון ודומיינים" />
 
                 <NavSubSectionLabel>יומן וכלים</NavSubSectionLabel>

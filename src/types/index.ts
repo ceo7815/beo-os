@@ -707,6 +707,72 @@ export interface Project {
   createdAt: string
 }
 
+/** סטטוס חשבון שירות שעות */
+export type HourlyServiceStatus = 'active' | 'paused' | 'closed'
+
+/** סוג שירות שעות */
+export type HourlyServiceKind =
+  | 'development'
+  | 'support'
+  | 'maintenance'
+  | 'consulting'
+
+/** קטגוריית עבודה ברשומת שעות */
+export type HourlyWorkCategory =
+  | 'development'
+  | 'support'
+  | 'meeting'
+  | 'documentation'
+  | 'qa'
+  | 'other'
+
+/** סטטוס רשומת שעות */
+export type HourlyEntryStatus = 'logged' | 'approved' | 'invoiced'
+
+/**
+ * חשבון שירות שעות ללקוח — Firestore: `hourlyServices/{id}`
+ */
+export interface HourlyService {
+  id: string
+  clientId: string
+  title: string
+  status: HourlyServiceStatus
+  serviceKind: HourlyServiceKind
+  /** תעריף שעה ₪ */
+  hourlyRate?: number
+  /** חבילת שעות כוללת ללקוח — נוצל מול רשומות העבודה */
+  hoursPackageTotal: number
+  /** קישור לפרויקט Hub (אופציונלי) */
+  projectId?: string
+  notes?: string
+  /** קישור שיתוף ציבורי ללקוח */
+  shareToken?: string
+  shareEnabled?: boolean
+  createdAt: string
+  updatedAt?: string
+}
+
+/**
+ * רשומת שעות — Firestore: `hourlyServices/{serviceId}/entries/{id}`
+ */
+export interface HourlyServiceEntry {
+  id: string
+  serviceId: string
+  clientId: string
+  performerId: string
+  performerName: string
+  workDate: string
+  startTime?: string
+  endTime?: string
+  hours: number
+  taskTitle: string
+  description?: string
+  workCategory: HourlyWorkCategory
+  billable: boolean
+  status: HourlyEntryStatus
+  createdAt: string
+}
+
 export interface Doc {
   id: string
   projectId: string

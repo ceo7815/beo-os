@@ -31,6 +31,9 @@ import { Calendar } from './pages/Calendar'
 import { MeetingSummaries } from './pages/MeetingSummaries'
 import { Tasks } from './pages/Tasks'
 import { Users } from './pages/Users'
+import { HourlyServices } from './pages/HourlyServices'
+import { HourlyServiceDetail } from './pages/HourlyServiceDetail'
+import { HourlyServiceShare } from './pages/HourlyServiceShare'
 import { Attendance } from './pages/Attendance'
 import { Vault } from './pages/Vault'
 
@@ -40,6 +43,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/share/hours/:token" element={<HourlyServiceShare />} />
           <Route element={<RequireAuth />}>
             <Route element={<FirestoreProviders />}>
               <Route path="agent" element={<AgentShell />}>
@@ -105,6 +109,11 @@ export default function App() {
                   <Route path="projects" element={<Projects />} />
                   <Route path="projects/:id" element={<ProjectDetail />} />
                   <Route path="tasks" element={<Tasks />} />
+                  <Route path="hourly-services" element={<HourlyServices />} />
+                  <Route
+                    path="hourly-services/:id"
+                    element={<HourlyServiceDetail />}
+                  />
                   <Route path="calendar" element={<Calendar />} />
                   <Route
                     path="calendar/summaries"

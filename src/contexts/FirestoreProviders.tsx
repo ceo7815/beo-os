@@ -15,6 +15,7 @@ import { CampaignsProvider } from '../hooks/useCampaigns'
 import { MeetingsProvider } from '../hooks/useMeetings'
 import { TasksProvider } from '../hooks/useTasks'
 import { UsersProvider } from '../hooks/useUsers'
+import { HourlyServicesProvider } from '../hooks/useHourlyServices'
 import { useAuth } from './AuthContext'
 
 /** ספקי Firestore — רק אחרי auth מוכן ומשתמש מחובר. */
@@ -37,11 +38,13 @@ export function FirestoreProviders() {
                       <LeadsProvider>
                         <TasksProvider>
                           <ProjectsProvider>
+                            <HourlyServicesProvider>
                             <MeetingsProvider>
                               <FirestoreDocsSync />
                               <HubRealtimeNotifications />
                               <Outlet />
                             </MeetingsProvider>
+                            </HourlyServicesProvider>
                           </ProjectsProvider>
                         </TasksProvider>
                       </LeadsProvider>

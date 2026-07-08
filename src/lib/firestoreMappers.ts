@@ -15,6 +15,8 @@ import type {
   Doc,
   DocType,
   HostingRecord,
+  HourlyService,
+  HourlyServiceEntry,
   AgentCommissionPayment,
   FinanceExpense,
   FinanceExpenseFieldMode,
@@ -1224,5 +1226,94 @@ export function docToHostingRecord(
     notes: String(x.notes ?? ''),
     createdAt: timestampToIso(x.createdAt),
     updatedAt: x.updatedAt ? timestampToIso(x.updatedAt) : '',
+  }
+}
+
+function asHourlyServiceStatus(v: unknown): HourlyService['status'] {
+  if (v === 'paused' || v === 'closed') return v
+  return 'active'
+}
+
+function asHourlyServiceKind(v: unknown): HourlyService['serviceKind'] {
+  if (v === 'support' || v === 'maintenance' || v === 'consulting') return v
+  return 'development'
+}
+
+function asHourlyWorkCategory(v: unknown): HourlyServiceEntry['workCategory'] {
+  if (
+    v === 'support' ||
+    v === 'meeting' ||
+    v === 'documentation' ||
+    v === 'qa' ||
+    v === 'other'
+  )
+    return v
+  return 'development'
+}
+
+function asHourlyEntryStatus(v: unknown): HourlyServiceEntry['status'] {
+  if (v === 'approved' || v === 'invoiced') return v
+  return 'logged'
+}
+
+function hhmmPart(v: unknown): string {
+  if (typeof v !== 'string') return ''
+  const m = /^(\d{1,2}):(\d{2})$/.exec(v.trim())
+  if (!m) return ''
+  return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`
+}
+
+export function docToHourlyService(
+  d: QueryDocumentSnapshot<DocumentData>,
+): HourlyService {
+  const x = d.data()
+  const hourlyRateRaw = x.hourlyRate
+  const packageRaw = x.hoursPackageTotal ?? x.monthlyHoursBudget
+  return {
+    id: d.id,
+    clientId: String(x.clientId ?? ''),
+    title: String(x.title ?? ''),
+    status: asHourlyServiceStatus(x.status),
+    serviceKind: asHourlyServiceKind(x.serviceKind),
+    hourlyRate:
+      typeof hourlyRateRaw === 'number' && Number.isFinite(hourlyRateRaw)
+        ? hourlyRateRaw
+        : undefined,
+    hoursPackageTotal:
+      typeof packageRaw === 'number' && Number.isFinite(packageRaw)
+        ? packageRaw
+        : 0,
+    projectId: x.projectId ? String(x.projectId) : undefined,
+    notes: x.notes ? String(x.notes) : undefined,
+    shareToken: x.shareToken ? String(x.shareToken) : undefined,
+    shareEnabled: x.shareEnabled === true,
+    createdAt: timestampToIso(x.createdAt),
+    updatedAt: x.updatedAt ? timestampToIso(x.updatedAt) : undefined,
+  }
+}
+
+export function docToHourlyServiceEntry(
+  d: QueryDocumentSnapshot<DocumentData>,
+  serviceId: string,
+): HourlyServiceEntry {
+  const x = d.data()
+  const hoursRaw = x.hours
+  return {
+    id: d.id,
+    serviceId: String(x.serviceId ?? serviceId),
+    clientId: String(x.clientId ?? ''),
+    performerId: String(x.performerId ?? ''),
+    performerName: String(x.performerName ?? ''),
+    workDate: ymdPart(x.workDate),
+    startTime: hhmmPart(x.startTime) || undefined,
+    endTime: hhmmPart(x.endTime) || undefined,
+    hours:
+      typeof hoursRaw === 'number' && Number.isFinite(hoursRaw) ? hoursRaw : 0,
+    taskTitle: String(x.taskTitle ?? ''),
+    description: x.description ? String(x.description) : undefined,
+    workCategory: asHourlyWorkCategory(x.workCategory),
+    billable: x.billable !== false,
+    status: asHourlyEntryStatus(x.status),
+    createdAt: timestampToIso(x.createdAt),
   }
 }

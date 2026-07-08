@@ -128,6 +128,21 @@ service cloud.firestore {
     match /projects/{docId} {
       allow read, write: if signedIn();
     }
+    match /hourlyServices/{serviceId} {
+      allow read, write: if signedIn();
+      match /entries/{entryId} {
+        allow read, write: if signedIn();
+      }
+    }
+    /** דוח שעות ציבורי ללקוח — גישה רק עם טוקן בקישור */
+    match /hourlyServicesPublic/{shareToken} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if signedIn();
+    }
+    match /{path=**}/entries/{entryId} {
+      allow read, write: if signedIn();
+    }
     match /suppliers/{docId} {
       allow read, write: if signedIn();
     }

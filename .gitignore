@@ -27,6 +27,7 @@ server/dist
 server/.env
 server/.env.local
 secrets/
+xcloud-environment.txt
 
 # Editor directories and files
 .vscode/*
