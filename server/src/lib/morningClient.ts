@@ -224,6 +224,124 @@ export class MorningClient {
     }
   }
 
+  /** חיפוש הוצאות בעמוד יחיד */
+  async searchExpenses(params: {
+    fromDate: string
+    toDate: string
+    page?: number
+    pageSize?: number
+    types?: number[]
+  }): Promise<SearchDocumentsResult> {
+    const body: Record<string, unknown> = {
+      fromDate: params.fromDate,
+      toDate: params.toDate,
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? 100,
+      sort: 'documentDate',
+    }
+    if (params.types && params.types.length > 0) body.type = params.types
+
+    const data = await this.authedRequest<{
+      items?: MorningDocument[]
+      total?: number
+      page?: number
+      pages?: number
+    }>('/expenses/search', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+
+    return {
+      items: Array.isArray(data.items) ? data.items : [],
+      total: typeof data.total === 'number' ? data.total : 0,
+      page: typeof data.page === 'number' ? data.page : (params.page ?? 1),
+      pages: typeof data.pages === 'number' ? data.pages : 1,
+    }
+  }
+
+  /** שליפת כל ההוצאות בטווח — עובר על כל העמודים */
+  async searchAllExpenses(params: {
+    fromDate: string
+    toDate: string
+    pageSize?: number
+    types?: number[]
+  }): Promise<MorningDocument[]> {
+    const pageSize = params.pageSize ?? 100
+    const all: MorningDocument[] = []
+    let page = 1
+    let pages = 1
+    do {
+      const result = await this.searchExpenses({ ...params, page, pageSize })
+      all.push(...result.items)
+      pages = result.pages || 1
+      page += 1
+      if (page > 500) break
+    } while (page <= pages)
+    return all
+  }
+
+  /** שליפת הוצאה בודדת מ-GI */
+  async getExpense(id: string): Promise<MorningDocument> {
+    return this.authedRequest<MorningDocument>(
+      `/expenses/${encodeURIComponent(id)}`,
+      { method: 'GET' },
+    )
+  }
+
+  /** קישור הורדה להוצאה — לעיתים זמין רק בתוצאות search */
+  async findExpenseDownloadUrl(
+    greenInvoiceId: string,
+  ): Promise<{ url: string } | null> {
+    const now = new Date()
+    const toDate = now.toISOString().slice(0, 10)
+    const from = new Date(now)
+    from.setFullYear(from.getFullYear() - 10)
+    const fromDate = from.toISOString().slice(0, 10)
+    const result = await this.searchExpenses({
+      fromDate,
+      toDate,
+      page: 1,
+      pageSize: 100,
+    })
+    const hit = result.items.find((item) => {
+      const id = item.id ?? item._id
+      return typeof id === 'string' && id === greenInvoiceId
+    })
+    const url =
+      typeof hit?.url === 'string' && /^https?:\/\//i.test(hit.url)
+        ? hit.url.trim()
+        : null
+    return url ? { url } : null
+  }
+
+  /** הורדת קובץ מכתובת חיצונית (קישור חתום מ-GI) */
+  async fetchBinaryUrl(
+    url: string,
+  ): Promise<{ data: ArrayBuffer; contentType: string | null }> {
+    await this.throttle()
+    const token = await this.getToken()
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) {
+      const res2 = await fetch(url)
+      if (!res2.ok) {
+        throw new MorningError(
+          `לא ניתן להוריד את המסמך (${res.status})`,
+          res.status,
+        )
+      }
+      return {
+        data: await res2.arrayBuffer(),
+        contentType: res2.headers.get('content-type'),
+      }
+    }
+    return {
+      data: await res.arrayBuffer(),
+      contentType: res.headers.get('content-type'),
+    }
+  }
+
   /** שליפת כל הלקוחות בפילוח active נתון — עובר על כל העמודים */
   async searchAllClients(
     active?: boolean,

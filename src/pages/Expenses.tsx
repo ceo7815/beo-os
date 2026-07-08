@@ -5,6 +5,18 @@ import { SupplierQuickSelect } from '../components/SupplierQuickSelect'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { EmptyState } from '../components/shared/EmptyState'
 import { ExpenseImportWizard } from '../components/finance/ExpenseImportWizard'
+import {
+  ExpenseReconciliationBadge,
+  ExpenseReconciliationPanel,
+} from '../components/finance/ExpenseReconciliationPanel'
+import {
+  canViewGiExpenseDocument,
+} from '../lib/expenseReconciliation'
+import {
+  GiExpenseDocumentButton,
+  resolveGiExpenseId,
+  resolveGiExpenseLabel,
+} from '../components/finance/GiExpenseDocumentButton'
 import { HubDropdownSelect } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
 import {
@@ -36,6 +48,10 @@ import {
 } from '../lib/financeExpensePnl'
 import { toastFsSuccess } from '../lib/fsToast'
 import { parseSalaryMonthFromText } from '../lib/financeSalaryMonth'
+import {
+  isGiOnlyRecord,
+  reconciliationRowMap,
+} from '../lib/expenseReconciliation'
 import { formatDateIL } from '../lib/dates'
 import { matchMonthlyRecurringExpense } from '../lib/financeRecurringCatalog'
 import { hubSectionClass } from '../lib/hubSectionBorder'
@@ -336,6 +352,11 @@ export function Expenses() {
     }
   }, [expensesLoading, expenses, updateExpense])
 
+  const reconciliationById = useMemo(
+    () => reconciliationRowMap(expenses, filterYmFrom, filterYmTo),
+    [expenses, filterYmFrom, filterYmTo],
+  )
+
   const filteredExpenses = useMemo(() => {
     let rows = [
       ...filterExpensesByClient(
@@ -346,6 +367,7 @@ export function Expenses() {
         incomes,
       ),
     ]
+    rows = rows.filter((e) => !isGiOnlyRecord(e))
     if (recurringFilter === 'fixed') {
       rows = rows.filter((e) => e.recurring === true)
     } else if (recurringFilter === 'variable') {
@@ -893,6 +915,12 @@ export function Expenses() {
       </section>
       ) : null}
 
+      <ExpenseReconciliationPanel
+        expenses={expenses}
+        ymFrom={filterYmFrom}
+        ymTo={filterYmTo}
+      />
+
       {activeTab === 'expenses' ? (
       <section className={`rounded-2xl ${hubSectionClass(7)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -965,6 +993,7 @@ export function Expenses() {
                   <th className="px-3 py-2 text-right">מע״מ</th>
                   <th className="px-3 py-2 text-right">נטו</th>
                   <th className="px-3 py-2 text-right">פרויקט</th>
+                  <th className="px-3 py-2 text-right">התאמה</th>
                   <th className="px-3 py-2 text-right">פעולות</th>
                 </tr>
               </thead>
@@ -1025,6 +1054,41 @@ export function Expenses() {
                           : '—'}
                       </td>
                       <td className="px-3 py-3 align-top">
+                        <ExpenseReconciliationBadge
+                          status={reconciliationById.get(row.id)?.status}
+                          linkedGi={reconciliationById.get(row.id)?.linkedGi}
+                        />
+                        {(() => {
+                          const linkedGi = reconciliationById.get(row.id)?.linkedGi
+                          if (!canViewGiExpenseDocument(row, linkedGi)) return null
+                          const giId = resolveGiExpenseId(linkedGi)
+                          const giMeta = resolveGiExpenseLabel(linkedGi!)
+                          const bankMerchant =
+                            row.name ?? row.supplierName ?? row.description
+                          return (
+                            <GiExpenseDocumentButton
+                              key={`gi-doc-${giId}`}
+                              greenInvoiceId={giId!}
+                              invoiceNumber={giMeta.invoiceNumber}
+                              supplierName={giMeta.supplierName}
+                              bankMerchantName={bankMerchant}
+                            />
+                          )
+                        })()}
+                        {row.source === 'green_invoice' ? (
+                          <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
+                            GI
+                            {row.greenInvoiceNumber
+                              ? ` #${row.greenInvoiceNumber}`
+                              : ''}
+                          </div>
+                        ) : row.bankRef ? (
+                          <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
+                            בנק
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-3 align-top">
                         <div className="flex flex-wrap gap-1.5">
                           <button type="button" className={uiBtnSmOutline} onClick={() => openEditExpense(row)}>
                             עריכה
@@ -1052,7 +1116,7 @@ export function Expenses() {
                   <td className="px-3 py-3 tabular-nums text-[#EF4444]">
                     {formatNis(expenseTotals.net)}
                   </td>
-                  <td className="px-3 py-3" colSpan={2} />
+                  <td className="px-3 py-3" colSpan={3} />
                 </tr>
               </tfoot>
             </table>

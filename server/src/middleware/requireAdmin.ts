@@ -46,7 +46,12 @@ export async function requireAdmin(
         message: 'נדרשת הרשאת מנהל',
       })
     }
-  } catch {
-    reply.code(403).send({ ok: false, error: 'forbidden' })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    reply.code(503).send({
+      ok: false,
+      error: 'admin_check_failed',
+      message: `בדיקת הרשאות מנהל נכשלה — ${msg}`,
+    })
   }
 }

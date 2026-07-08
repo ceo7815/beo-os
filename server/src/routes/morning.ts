@@ -9,6 +9,8 @@ import {
   saveMorningCredentials,
   type MorningEnv,
 } from '../lib/morningCredentials.js'
+import { runMorningExpenseSync, runExpenseReconcile } from '../lib/morningExpenseSync.js'
+import { fetchExpenseDocumentBuffer } from '../lib/expenseDocument.js'
 import { runMorningSync, resetAllIncomes, syncClients } from '../lib/morningSync.js'
 import { env } from '../config/env.js'
 
@@ -139,6 +141,87 @@ export async function registerMorningRoutes(app: FastifyInstance): Promise<void>
           ok: false,
           error: 'client_sync_failed',
           message: e instanceof Error ? e.message : 'סנכרון הלקוחות נכשל',
+        })
+      }
+    },
+  )
+
+  /** סנכרון הוצאות מחשבונית ירוקה + התאמה מול ייבוא בנק */
+  app.post(
+    '/api/integrations/morning/sync-expenses',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const fromDate =
+        typeof body.fromDate === 'string' && body.fromDate.trim()
+          ? body.fromDate.trim()
+          : undefined
+      try {
+        return await runMorningExpenseSync({ fromDate })
+      } catch (e) {
+        const status = e instanceof MorningError ? e.status : 500
+        reply.code(status >= 400 && status < 500 ? status : 502).send({
+          ok: false,
+          error: 'expense_sync_failed',
+          message: e instanceof Error ? e.message : 'סנכרון ההוצאות נכשל',
+        })
+      }
+    },
+  )
+
+  /** התאמה מחדש — בנק מול חשבונית ירוקה (ללא משיכה מ-GI) */
+  app.post(
+    '/api/integrations/morning/reconcile-expenses',
+    { preHandler: requireAdmin },
+    async (_req, reply) => {
+      try {
+        return await runExpenseReconcile()
+      } catch (e) {
+        const status = e instanceof MorningError ? e.status : 500
+        reply.code(status >= 400 && status < 500 ? status : 502).send({
+          ok: false,
+          error: 'reconcile_failed',
+          message: e instanceof Error ? e.message : 'ההתאמה נכשלה',
+        })
+      }
+    },
+  )
+
+  /** צפייה / הורדה במסמך הוצאה מצורף ב-GI (PDF) */
+  app.get(
+    '/api/integrations/morning/expenses/:greenInvoiceId/document',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const greenInvoiceId = String(
+        (req.params as { greenInvoiceId?: string }).greenInvoiceId ?? '',
+      ).trim()
+      if (!greenInvoiceId) {
+        reply.code(400).send({ ok: false, message: 'חסר מזהה הוצאה' })
+        return
+      }
+      const creds = await loadMorningCredentials()
+      if (!creds) {
+        reply.code(400).send({ ok: false, message: 'חיבור GI לא מוגדר' })
+        return
+      }
+      try {
+        const client = new MorningClient(creds)
+        const doc = await fetchExpenseDocumentBuffer(client, greenInvoiceId)
+        reply
+          .header('Content-Type', doc.mimeType)
+          .header(
+            'Content-Disposition',
+            `inline; filename="${encodeURIComponent(doc.fileName)}"`,
+          )
+          .send(doc.buffer)
+      } catch (e) {
+        const status = e instanceof MorningError ? e.status : 404
+        reply.code(status >= 400 && status < 500 ? status : 404).send({
+          ok: false,
+          message:
+            e instanceof Error
+              ? e.message
+              : 'לא ניתן לטעון את המסמך מחשבונית ירוקה',
         })
       }
     },

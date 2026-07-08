@@ -1,0 +1,184 @@
+import { useMemo } from 'react'
+import { useMorningIntegration } from '../../hooks/useMorningIntegration'
+import { toastFsSuccess } from '../../lib/fsToast'
+import {
+  RECONCILIATION_STATUS_LABEL,
+  reconciliationBadgeClass,
+  summarizeExpenseReconciliation,
+} from '../../lib/expenseReconciliation'
+import type { ExpenseReconciliationStatus, FinanceExpense } from '../../types'
+
+function formatDateTime(iso?: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('he-IL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+export function ExpenseReconciliationPanel({
+  expenses,
+  ymFrom,
+  ymTo,
+}: {
+  expenses: FinanceExpense[]
+  ymFrom: string
+  ymTo: string
+}) {
+  const { status, busy, error, syncExpenses, reconcileExpenses } =
+    useMorningIntegration()
+
+  const summary = useMemo(
+    () => summarizeExpenseReconciliation(expenses, ymFrom, ymTo),
+    [expenses, ymFrom, ymTo],
+  )
+
+  const ss = status?.syncState as Record<string, unknown> | null | undefined
+  const lastExpenseSyncAt =
+    typeof ss?.lastExpenseSyncAt === 'string' ? ss.lastExpenseSyncAt : undefined
+
+  const handleSync = async () => {
+    const result = await syncExpenses()
+    if (result) {
+      toastFsSuccess(
+        `סנכרון הושלם — ${result.fetched} מ-GI · ${result.matched} התאמות מלאות · ${result.bankMissingDocument} חסר ב-GI`,
+      )
+    }
+  }
+
+  const handleReconcile = async () => {
+    const result = await reconcileExpenses()
+    if (result) {
+      toastFsSuccess(
+        `התאמה עודכנה — ${result.matched} מלאות · ${result.bankMissingDocument} חסר ב-GI · ${result.giUnpaid} מסמכי GI ללא בנק`,
+      )
+    }
+  }
+
+  const connected = status?.connected ?? false
+
+  return (
+    <section className="rounded-2xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-extrabold text-[var(--text-dark)]">
+            התאמת הוצאות — בנק מול חשבונית ירוקה
+          </h2>
+          <p className="mt-1 text-[12px] text-[var(--text-mid)]">
+            הבנק = מקור האמת לתשלומים. חשבונית ירוקה = מקור האמת למסמכים.
+            הטבלה מציגה רק תשלומי בנק; מסמכי GI משמשים להתאמה מאחורי הקלעים.
+          </p>
+          {lastExpenseSyncAt ? (
+            <p className="mt-1 text-[11px] text-[var(--text-light)]">
+              סנכרון אחרון: {formatDateTime(lastExpenseSyncAt)}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleReconcile()}
+            className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-sm font-semibold text-[var(--orange)] transition hover:bg-[var(--orange-light)] disabled:opacity-50"
+          >
+            {busy ? 'מריץ…' : 'התאם מחדש'}
+          </button>
+          <button
+            type="button"
+            disabled={!connected || busy}
+            onClick={() => void handleSync()}
+            className="hub-btn-orange text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? 'מסנכרן…' : 'סנכרן הוצאות מ-GI'}
+          </button>
+        </div>
+      </div>
+
+      {!connected ? (
+        <p className="mb-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[12px] text-[#92400E]">
+          חיבור לחשבונית ירוקה לא מוגדר — הגדירו מפתחות בדף פיננסים → סנכרון
+          Morning.
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="mb-3 text-[12px] font-semibold text-[#DC2626]">{error}</p>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {(
+          [
+            ['matched', 'התאמה מלאה', summary.matched, 'text-[#166534]'],
+            [
+              'bank_missing_document',
+              'חסר בחשבונית ירוקה',
+              summary.bankMissingDocument,
+              'text-[#92400E]',
+            ],
+            [
+              'document_not_required',
+              'לא נדרש מסמך',
+              summary.documentNotRequired,
+              'text-[#166534]',
+            ],
+            ['gi_unpaid', 'מסמך GI ללא בנק', summary.giUnpaid, 'text-[#1E40AF]'],
+          ] as const
+        ).map(([id, label, count, color]) => (
+          <div
+            key={id}
+            className="rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-3 text-right"
+          >
+            <div className="text-[11px] font-bold text-[var(--text-mid)]">
+              {label}
+            </div>
+            <div className={`mt-1 text-2xl font-extrabold tabular-nums ${color}`}>
+              {count}
+            </div>
+            <div className="mt-0.5 text-[10px] text-[var(--text-light)]">
+              {RECONCILIATION_STATUS_LABEL[id]}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-3 text-[11px] text-[var(--text-mid)]">
+        תשלומי בנק בתקופה: {summary.totalBank} · מסמכי GI בתקופה:{' '}
+        {summary.totalGi}
+        {summary.giUnpaid > 0 ? (
+          <>
+            {' '}
+            · {summary.giUnpaid} מסמכי GI ללא תשלום מותאם (ייתכן חיוב בחודש
+            אחר או טיוטה ב-GI)
+          </>
+        ) : null}
+      </p>
+    </section>
+  )
+}
+
+export function ExpenseReconciliationBadge({
+  status,
+  linkedGi,
+}: {
+  status?: ExpenseReconciliationStatus
+  linkedGi?: FinanceExpense
+}) {
+  if (!status || status === 'manual_ok') return null
+  const giNum = linkedGi?.greenInvoiceNumber
+  const giSupplier =
+    linkedGi?.greenInvoiceSupplierName ?? linkedGi?.supplierName
+  return (
+    <span
+      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${reconciliationBadgeClass(status)}`}
+    >
+      {RECONCILIATION_STATUS_LABEL[status]}
+      {status === 'matched' && giNum ? ` · #${giNum}` : ''}
+      {status === 'matched' && giSupplier ? ` · ${giSupplier}` : ''}
+    </span>
+  )
+}

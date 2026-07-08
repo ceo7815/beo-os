@@ -141,7 +141,7 @@ export function MorningSyncPanel() {
         </div>
       </div>
 
-      {!firebaseReady ? (
+      {!loading && status && !firebaseReady ? (
         <div className="mt-3 rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
           השרת אינו מחובר ל-Firebase Admin. בפיתוח:{' '}
           <code className="rounded bg-amber-100 px-1">FIREBASE_SERVICE_ACCOUNT_PATH</code>{' '}
@@ -149,9 +149,17 @@ export function MorningSyncPanel() {
           בפרודקשן (xCloud): הוסף{' '}
           <code className="rounded bg-amber-100 px-1">FIREBASE_SERVICE_ACCOUNT_B64</code>{' '}
           ל-Environment ועשה Deploy מחדש.
-          {status?.firebaseReason ? (
+          {status.firebaseReason ? (
             <span className="mt-1 block opacity-80">{status.firebaseReason}</span>
           ) : null}
+        </div>
+      ) : null}
+
+      {!loading && !status && error ? (
+        <div className="mt-3 rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          לא ניתן לטעון את מצב החיבור מהשרת. ודא שהשרת רץ (
+          <code className="rounded bg-amber-100 px-1">npm run dev:all</code>
+          ) ורענן את הדף.
         </div>
       ) : null}
 

@@ -16,6 +16,13 @@ export type MorningSyncState = {
   lastClientsUpdated?: number
   lastClientsActive?: number
   lastClientsInactive?: number
+  lastExpenseSyncAt?: string
+  lastExpenseFromDate?: string
+  lastExpenseToDate?: string
+  lastExpenseFetched?: number
+  lastExpenseImported?: number
+  lastExpenseMatched?: number
+  lastExpenseBankMissingDocument?: number
 }
 
 export type ClientSyncResult = {
@@ -50,6 +57,25 @@ export type MorningSyncResult = {
   unmatchedClients: number
   durationMs: number
   clients?: ClientSyncResult
+}
+
+export type MorningExpenseSyncResult = {
+  ok: true
+  fromDate: string
+  toDate: string
+  fetched: number
+  imported: number
+  matched: number
+  bankMissingDocument: number
+  durationMs: number
+}
+
+export type MorningReconcileResult = {
+  ok: true
+  matched: number
+  bankMissingDocument: number
+  giUnpaid: number
+  durationMs: number
 }
 
 export function useMorningIntegration() {
@@ -141,6 +167,51 @@ export function useMorningIntegration() {
     }
   }, [refresh])
 
+  const syncExpenses = useCallback(
+    async (fromDate?: string): Promise<MorningExpenseSyncResult | null> => {
+      setBusy(true)
+      setError(null)
+      try {
+        const result = await apiFetch<MorningExpenseSyncResult>(
+          '/api/integrations/morning/sync-expenses',
+          {
+            method: 'POST',
+            body: JSON.stringify(fromDate ? { fromDate } : {}),
+          },
+        )
+        await refresh()
+        return result
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'סנכרון ההוצאות נכשל')
+        return null
+      } finally {
+        setBusy(false)
+      }
+    },
+    [refresh],
+  )
+
+  const reconcileExpenses = useCallback(
+    async (): Promise<MorningReconcileResult | null> => {
+      setBusy(true)
+      setError(null)
+      try {
+        const result = await apiFetch<MorningReconcileResult>(
+          '/api/integrations/morning/reconcile-expenses',
+          { method: 'POST' },
+        )
+        await refresh()
+        return result
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'ההתאמה נכשלה')
+        return null
+      } finally {
+        setBusy(false)
+      }
+    },
+    [refresh],
+  )
+
   const resetIncomes = useCallback(async (): Promise<number | null> => {
     setBusy(true)
     setError(null)
@@ -167,6 +238,8 @@ export function useMorningIntegration() {
     connect,
     sync,
     syncClients,
+    syncExpenses,
+    reconcileExpenses,
     resetIncomes,
   }
 }

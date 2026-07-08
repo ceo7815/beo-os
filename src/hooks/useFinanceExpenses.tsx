@@ -127,7 +127,10 @@ function buildExpenseRow(data: NewFinanceExpenseInput): Record<string, unknown> 
   if (data.description?.trim()) row.description = data.description.trim()
   if (data.paymentMethod) row.paymentMethod = data.paymentMethod
   if (data.paidDate?.trim()) row.paidDate = data.paidDate.trim().slice(0, 10)
-  if (data.bankRef?.trim()) row.bankRef = data.bankRef.trim()
+  if (data.bankRef?.trim()) {
+    row.bankRef = data.bankRef.trim()
+    row.source = 'bank_import'
+  }
   if (data.pnlMonth?.trim()) row.pnlMonth = data.pnlMonth.trim().slice(0, 7)
   if (data.linkedIncomeId?.trim()) row.linkedIncomeId = data.linkedIncomeId.trim()
   if (data.hostingExpense === true) row.hostingExpense = true

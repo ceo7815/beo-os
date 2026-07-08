@@ -331,6 +331,68 @@ export function docToFinanceExpense(
     typeof x.bankRef === 'string' && x.bankRef.trim()
       ? x.bankRef.trim()
       : undefined
+  const sourceRaw = String(x.source ?? '').trim()
+  const source =
+    sourceRaw === 'bank_import' ||
+    sourceRaw === 'green_invoice' ||
+    sourceRaw === 'manual'
+      ? (sourceRaw as FinanceExpense['source'])
+      : bankRef
+        ? 'bank_import'
+        : undefined
+  const greenInvoiceId =
+    typeof x.greenInvoiceId === 'string' && x.greenInvoiceId.trim()
+      ? x.greenInvoiceId.trim()
+      : undefined
+  const greenInvoiceDocType =
+    typeof x.greenInvoiceDocType === 'number' &&
+    !Number.isNaN(x.greenInvoiceDocType)
+      ? x.greenInvoiceDocType
+      : undefined
+  const greenInvoiceDocKindRaw = String(x.greenInvoiceDocKind ?? '').trim()
+  const greenInvoiceDocKind =
+    greenInvoiceDocKindRaw === 'invoice' ||
+    greenInvoiceDocKindRaw === 'receipt' ||
+    greenInvoiceDocKindRaw === 'invoice_receipt' ||
+    greenInvoiceDocKindRaw === 'other'
+      ? (greenInvoiceDocKindRaw as FinanceExpense['greenInvoiceDocKind'])
+      : undefined
+  const greenInvoiceNumber =
+    typeof x.greenInvoiceNumber === 'string' && x.greenInvoiceNumber.trim()
+      ? x.greenInvoiceNumber.trim()
+      : undefined
+  const greenInvoiceSupplierName =
+    typeof x.greenInvoiceSupplierName === 'string' &&
+    x.greenInvoiceSupplierName.trim()
+      ? x.greenInvoiceSupplierName.trim()
+      : undefined
+  const greenInvoiceSupplierTaxId =
+    typeof x.greenInvoiceSupplierTaxId === 'string' &&
+    x.greenInvoiceSupplierTaxId.trim()
+      ? x.greenInvoiceSupplierTaxId.trim()
+      : undefined
+  const matchedExpenseId =
+    typeof x.matchedExpenseId === 'string' && x.matchedExpenseId.trim()
+      ? x.matchedExpenseId.trim()
+      : undefined
+  const linkedGreenInvoiceId =
+    typeof x.linkedGreenInvoiceId === 'string' && x.linkedGreenInvoiceId.trim()
+      ? x.linkedGreenInvoiceId.trim()
+      : undefined
+  const reconciliationStatusRaw = String(x.reconciliationStatus ?? '').trim()
+  const reconciliationStatus =
+    reconciliationStatusRaw === 'matched' ||
+    reconciliationStatusRaw === 'bank_missing_document' ||
+    reconciliationStatusRaw === 'gi_unpaid' ||
+    reconciliationStatusRaw === 'document_not_required' ||
+    reconciliationStatusRaw === 'manual_ok' ||
+    reconciliationStatusRaw === 'manual_pending'
+      ? (reconciliationStatusRaw as FinanceExpense['reconciliationStatus'])
+      : undefined
+  const syncedAt =
+    typeof x.syncedAt === 'string' && x.syncedAt.trim()
+      ? x.syncedAt.trim()
+      : undefined
   const rawCid = x.clientId
   const clientId =
     rawCid !== undefined && rawCid !== null && String(rawCid).trim()
@@ -363,6 +425,17 @@ export function docToFinanceExpense(
     ...(paymentMethod ? { paymentMethod } : {}),
     ...(paidDate ? { paidDate } : {}),
     ...(bankRef ? { bankRef } : {}),
+    ...(source ? { source } : {}),
+    ...(greenInvoiceId ? { greenInvoiceId } : {}),
+    ...(greenInvoiceDocType !== undefined ? { greenInvoiceDocType } : {}),
+    ...(greenInvoiceDocKind ? { greenInvoiceDocKind } : {}),
+    ...(greenInvoiceNumber ? { greenInvoiceNumber } : {}),
+    ...(greenInvoiceSupplierName ? { greenInvoiceSupplierName } : {}),
+    ...(greenInvoiceSupplierTaxId ? { greenInvoiceSupplierTaxId } : {}),
+    ...(matchedExpenseId ? { matchedExpenseId } : {}),
+    ...(linkedGreenInvoiceId ? { linkedGreenInvoiceId } : {}),
+    ...(reconciliationStatus ? { reconciliationStatus } : {}),
+    ...(syncedAt ? { syncedAt } : {}),
     ...(x.hostingExpense === true ? { hostingExpense: true } : {}),
     supplierInvoiceReceived: x.supplierInvoiceReceived === true,
     createdAt: timestampToIso(x.createdAt),

@@ -117,6 +117,18 @@ export interface FinanceExpenseTypeDef {
 /** מזהה סוג — מובנה (fixed/supplier/platform) או מזהה מסמך מותאם */
 export type FinanceExpenseTypeId = string
 
+export type FinanceExpenseSource = 'manual' | 'bank_import' | 'green_invoice'
+
+export type GiExpenseDocKind = 'invoice' | 'receipt' | 'invoice_receipt' | 'other'
+
+export type ExpenseReconciliationStatus =
+  | 'matched'
+  | 'bank_missing_document'
+  | 'gi_unpaid'
+  | 'document_not_required'
+  | 'manual_ok'
+  | 'manual_pending'
+
 /** הוצאה במודול פיננסים — אדמין בלבד */
 export interface FinanceExpense {
   id: string
@@ -163,6 +175,21 @@ export interface FinanceExpense {
   linkedIncomeId?: string
   /** האם התקבלה חשבונית (כל סוגי ההוצאות) */
   supplierInvoiceReceived?: boolean
+  /** מקור הרשומה — ידני / ייבוא בנק / חשבונית ירוקה */
+  source?: FinanceExpenseSource
+  /** מזהה הוצאה בחשבונית ירוקה */
+  greenInvoiceId?: string
+  /** קוד סוג מסמך ב-GI (10 חשבונית · 20 קבלה · 30 חשבונית+קבלה · 40 אחר) */
+  greenInvoiceDocType?: number
+  greenInvoiceDocKind?: GiExpenseDocKind
+  greenInvoiceNumber?: string
+  greenInvoiceSupplierName?: string
+  greenInvoiceSupplierTaxId?: string
+  /** קישור בין תשלום בנק לרשומת GI (מזהה מסמך Firestore) */
+  matchedExpenseId?: string
+  linkedGreenInvoiceId?: string
+  reconciliationStatus?: ExpenseReconciliationStatus
+  syncedAt?: string
   createdAt: string
   /** הרחבה לתצוגה — הוצאה קבועה/חוזרת לחודש אחר */
   isAutoOccurrence?: boolean
