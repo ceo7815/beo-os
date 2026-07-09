@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import { env } from '../config/env.js'
 import { getAdminDb } from '../lib/firebaseAdmin.js'
 import { requireAuth } from './requireAuth.js'
 
@@ -30,6 +31,31 @@ function writeCachedAdmin(uid: string, isAdmin: boolean): void {
     isAdmin,
     expiresAt: Date.now() + ADMIN_CACHE_TTL_MS,
   })
+}
+
+function adminByEmail(email?: string): boolean {
+  if (!email || env.adminEmails.length === 0) return false
+  return env.adminEmails.includes(email.trim().toLowerCase())
+}
+
+async function readAdminRole(uid: string): Promise<string | undefined> {
+  const db = getAdminDb()
+  if (!db) return undefined
+  let lastErr: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const snap = await db.collection('users').doc(uid).get()
+      return snap.exists ? (snap.data()?.role as string | undefined) : undefined
+    } catch (e) {
+      lastErr = e
+      const msg = e instanceof Error ? e.message : String(e)
+      if (!msg.includes('RESOURCE_EXHAUSTED') && !msg.includes('Quota')) {
+        throw e
+      }
+      await new Promise((r) => setTimeout(r, 600 * (attempt + 1)))
+    }
+  }
+  throw lastErr
 }
 
 /**
@@ -70,9 +96,13 @@ export async function requireAdmin(
   }
   if (cached === true) return
 
+  if (adminByEmail(req.authUser?.email)) {
+    writeCachedAdmin(uid, true)
+    return
+  }
+
   try {
-    const snap = await db.collection('users').doc(uid).get()
-    const role = snap.exists ? snap.data()?.role : undefined
+    const role = await readAdminRole(uid)
     const isAdmin = isAdminRole(role)
     writeCachedAdmin(uid, isAdmin)
     if (!isAdmin) {
@@ -84,6 +114,10 @@ export async function requireAdmin(
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
+    if (adminByEmail(req.authUser?.email)) {
+      writeCachedAdmin(uid, true)
+      return
+    }
     reply.code(503).send({
       ok: false,
       error: 'admin_check_failed',

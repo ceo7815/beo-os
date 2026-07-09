@@ -919,6 +919,8 @@ export function Expenses() {
         expenses={expenses}
         ymFrom={filterYmFrom}
         ymTo={filterYmTo}
+        typeById={expenseTypeById}
+        projectNameById={projectNameById}
       />
 
       {activeTab === 'expenses' ? (

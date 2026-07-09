@@ -279,6 +279,10 @@ export function docToFinanceExpense(
     typeof x.supplierName === 'string' && x.supplierName.trim()
       ? x.supplierName.trim()
       : undefined
+  const supplierTaxId =
+    typeof x.supplierTaxId === 'string' && x.supplierTaxId.trim()
+      ? x.supplierTaxId.trim()
+      : undefined
   const rawSid = x.supplierId
   const supplierId =
     rawSid !== undefined && rawSid !== null && String(rawSid).trim()
@@ -337,9 +341,11 @@ export function docToFinanceExpense(
     sourceRaw === 'green_invoice' ||
     sourceRaw === 'manual'
       ? (sourceRaw as FinanceExpense['source'])
-      : bankRef
-        ? 'bank_import'
-        : undefined
+      : d.id.startsWith('gi_')
+        ? 'green_invoice'
+        : bankRef
+          ? 'bank_import'
+          : undefined
   const greenInvoiceId =
     typeof x.greenInvoiceId === 'string' && x.greenInvoiceId.trim()
       ? x.greenInvoiceId.trim()
@@ -405,6 +411,7 @@ export function docToFinanceExpense(
     type: normalizeFinanceExpenseTypeId(x.type),
     supplierId,
     supplierName,
+    ...(supplierTaxId ? { supplierTaxId } : {}),
     platformName,
     amount:
       typeof x.amount === 'number' && !Number.isNaN(x.amount) ? x.amount : 0,

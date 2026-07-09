@@ -1,12 +1,21 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useMorningIntegration } from '../../hooks/useMorningIntegration'
 import { toastFsSuccess } from '../../lib/fsToast'
 import {
+  auditExpenseDuplicates,
+  listMissingGiBankExpenses,
+  listUnpaidGiExpenses,
   RECONCILIATION_STATUS_LABEL,
   reconciliationBadgeClass,
   summarizeExpenseReconciliation,
 } from '../../lib/expenseReconciliation'
-import type { ExpenseReconciliationStatus, FinanceExpense } from '../../types'
+import type {
+  ExpenseReconciliationStatus,
+  FinanceExpense,
+  FinanceExpenseTypeDef,
+} from '../../types'
+import { MissingGiExpenseReportModal } from './MissingGiExpenseReportModal'
+import { UnpaidGiExpenseReportModal } from './UnpaidGiExpenseReportModal'
 
 function formatDateTime(iso?: string): string {
   if (!iso) return '—'
@@ -25,16 +34,37 @@ export function ExpenseReconciliationPanel({
   expenses,
   ymFrom,
   ymTo,
+  typeById,
+  projectNameById,
 }: {
   expenses: FinanceExpense[]
   ymFrom: string
   ymTo: string
+  typeById?: Map<string, FinanceExpenseTypeDef>
+  projectNameById?: Map<string, string>
 }) {
+  const [reportOpen, setReportOpen] = useState(false)
+  const [unpaidReportOpen, setUnpaidReportOpen] = useState(false)
   const { status, busy, error, syncExpenses, reconcileExpenses } =
     useMorningIntegration()
 
   const summary = useMemo(
     () => summarizeExpenseReconciliation(expenses, ymFrom, ymTo),
+    [expenses, ymFrom, ymTo],
+  )
+
+  const missingCount = useMemo(
+    () => listMissingGiBankExpenses(expenses, ymFrom, ymTo).length,
+    [expenses, ymFrom, ymTo],
+  )
+
+  const unpaidGiCount = useMemo(
+    () => listUnpaidGiExpenses(expenses, ymFrom, ymTo).length,
+    [expenses, ymFrom, ymTo],
+  )
+
+  const duplicateAudit = useMemo(
+    () => auditExpenseDuplicates(expenses, ymFrom, ymTo),
     [expenses, ymFrom, ymTo],
   )
 
@@ -80,6 +110,22 @@ export function ExpenseReconciliationPanel({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={missingCount === 0}
+            onClick={() => setReportOpen(true)}
+            className="rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-sm font-semibold text-[#92400E] transition hover:bg-[#FEF3C7] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            דוח PDF — חסר ב-GI ({missingCount})
+          </button>
+          <button
+            type="button"
+            disabled={unpaidGiCount === 0}
+            onClick={() => setUnpaidReportOpen(true)}
+            className="rounded-[10px] border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-2 text-sm font-semibold text-[#1E40AF] transition hover:bg-[#DBEAFE] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            דוח PDF — חסר בבנק ({unpaidGiCount})
+          </button>
           <button
             type="button"
             disabled={busy}
@@ -161,6 +207,46 @@ export function ExpenseReconciliationPanel({
           </>
         ) : null}
       </p>
+
+      <div className="mt-3 rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2.5 text-[11px] text-[#166534]">
+        <div className="font-bold">מניעת כפילויות בסיכומים</div>
+        <p className="mt-1 leading-relaxed">
+          ב-Firestore: {duplicateAudit.firestoreTotal} רשומות · נספרות בדוחות:{' '}
+          {duplicateAudit.countedInReports} · מסמכי GI מוסתרים:{' '}
+          {duplicateAudit.giHiddenCount}
+          {duplicateAudit.giHiddenGrossInPeriod > 0
+            ? ` (₪${duplicateAudit.giHiddenGrossInPeriod.toLocaleString('he-IL')} לא נספרו פעמיים)`
+            : ''}
+          · התאמות בנק↔GI: {duplicateAudit.matchedPairs}
+        </p>
+        {duplicateAudit.duplicateBankRefGroups > 0 ? (
+          <p className="mt-1 font-semibold text-[#92400E]">
+            אזהרה: {duplicateAudit.duplicateBankRefRows} שורות בנק עם אסמכתא
+            כפולה ({duplicateAudit.duplicateBankRefGroups} קבוצות) — ייתכן
+            ייבוא כפול מהבנק.
+          </p>
+        ) : (
+          <p className="mt-1">אין כפילויות ייבוא בנק (אסמכתאות ייחודיות).</p>
+        )}
+      </div>
+
+      <MissingGiExpenseReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        expenses={expenses}
+        ymFrom={ymFrom}
+        ymTo={ymTo}
+        typeById={typeById}
+        projectNameById={projectNameById}
+      />
+
+      <UnpaidGiExpenseReportModal
+        open={unpaidReportOpen}
+        onClose={() => setUnpaidReportOpen(false)}
+        expenses={expenses}
+        ymFrom={ymFrom}
+        ymTo={ymTo}
+      />
     </section>
   )
 }

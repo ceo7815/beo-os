@@ -61,7 +61,9 @@ for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
   const batch = db.batch()
   for (const m of slice) {
     const ref = db.collection('financeExpenses').doc(GI_DOC_PREFIX + m.greenInvoiceId)
-    const billingMonth = ymFromDate(m.paidDate ?? m.documentDate)
+      const billingMonth = ymFromDate(
+        m.reportingDate ?? m.paidDate ?? m.documentDate,
+      )
     batch.set(
       ref,
       stripUndefined({

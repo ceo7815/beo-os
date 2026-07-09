@@ -40,6 +40,11 @@ export const env = {
     fromDate: readString('SYNC_FROM_DATE', '2026-03-01'),
     overlapDays: Math.max(1, readPort('SYNC_OVERLAP_DAYS', 7)),
   },
+  /** מיילים שמורשים כמנהל כשקריאת Firestore users נכשלת (מופרד בפסיקים) */
+  adminEmails: readString('ADMIN_EMAILS')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
 } as const
 
 export const MORNING_BASE_URLS = {

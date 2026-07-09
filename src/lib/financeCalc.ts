@@ -21,6 +21,7 @@ import {
   expenseTypeMap,
   resolveExpenseType,
 } from './financeExpenseTypes'
+import { expensesForFinancialTotals } from './expenseSource'
 import type {
   FinanceExpense,
   FinanceExpenseTypeDef,
@@ -307,12 +308,14 @@ export function filterExpensesByClient(
   expenseTypes: FinanceExpenseTypeDef[],
   incomes: FinanceIncome[] = [],
 ): FinanceExpense[] {
-  return expandExpensesForFilters(
-    expenses,
-    filters,
-    projectIdsForClient,
-    expenseTypeMap(expenseTypes),
-    incomes,
+  return expensesForFinancialTotals(
+    expandExpensesForFilters(
+      expenses,
+      filters,
+      projectIdsForClient,
+      expenseTypeMap(expenseTypes),
+      incomes,
+    ),
   )
 }
 
@@ -540,6 +543,7 @@ export function computeProfitLossRows(
   year = new Date().getFullYear(),
 ): ProfitLossRow[] {
   const typeMap = expenseTypeMap(expenseTypes)
+  const countableExpenses = expensesForFinancialTotals(expenses)
   const rows: ProfitLossRow[] = []
 
   // עד החודש הנוכחי בלבד — בשנה הנוכחית לא מציגים חודשים עתידיים
@@ -569,7 +573,7 @@ export function computeProfitLossRows(
     let fixedExpenses = 0
     let supplierExpenses = 0
     let platformExpenses = 0
-    for (const exp of expenses) {
+    for (const exp of countableExpenses) {
       const def = resolveExpenseType(exp.type, typeMap)
       if (!expenseAppliesToMonth(exp, ym, def, incomes)) continue
       const breakdown = resolveExpenseRowVat(exp)
@@ -644,7 +648,7 @@ export function profitLossExpensesForMonth(
   incomes: FinanceIncome[] = [],
 ): FinanceExpense[] {
   const typeMap = expenseTypeMap(expenseTypes)
-  return expenses.filter((exp) => {
+  return expensesForFinancialTotals(expenses).filter((exp) => {
     const def = resolveExpenseType(exp.type, typeMap)
     return expenseAppliesToMonth(exp, ym, def, incomes)
   })

@@ -20,6 +20,8 @@ export type MappedExpense = {
   vatAmount?: number
   amountBeforeVat?: number
   documentDate: string
+  /** תאריך דיווח ב-GI (לרוב חודש המסמך לצורכי התאמה) */
+  reportingDate?: string
   paidDate?: string
   paymentMethod?: 'bank_transfer' | 'credit_card'
   supplierName: string
@@ -89,12 +91,19 @@ function extractSupplier(doc: MorningDocument): {
   greenInvoiceId: string
 } {
   const supplier = (doc.supplier ?? {}) as Record<string, unknown>
+  const dataBlock = doc.data as Record<string, unknown> | undefined
+  const nestedSupplier = (dataBlock?.supplier ?? {}) as Record<string, unknown>
   const name =
     firstString(supplier, ['name', 'companyName']) ||
+    firstString(nestedSupplier, ['name', 'companyName']) ||
     firstString(doc, ['supplierName', 'name'])
-  const taxId = firstString(supplier, ['taxId', 'vatId', 'idNumber', 'taxid'])
+  const taxId =
+    firstString(supplier, ['taxId', 'vatId', 'idNumber', 'taxid']) ||
+    firstString(nestedSupplier, ['taxId', 'vatId', 'idNumber', 'taxid'])
   const greenInvoiceId =
-    firstString(supplier, ['id', '_id']) || firstString(doc, ['supplierId'])
+    firstString(supplier, ['id', '_id']) ||
+    firstString(nestedSupplier, ['id', '_id']) ||
+    firstString(doc, ['supplierId'])
   return { name, taxId, greenInvoiceId }
 }
 
@@ -196,6 +205,8 @@ export function mapMorningExpense(doc: MorningDocument): MappedExpense | null {
   )
   if (!documentDate) return null
 
+  const reportingDate = normalizeDate(doc.reportingDate) || undefined
+
   const amounts = extractAmounts(doc)
   if (!amounts) return null
 
@@ -217,6 +228,7 @@ export function mapMorningExpense(doc: MorningDocument): MappedExpense | null {
       ? { amountBeforeVat: amounts.amountBeforeVat }
       : {}),
     documentDate,
+    ...(reportingDate ? { reportingDate } : {}),
     ...(payment.paidDate ? { paidDate: payment.paidDate } : {}),
     ...(payment.paymentMethod ? { paymentMethod: payment.paymentMethod } : {}),
     supplierName: supplier.name,

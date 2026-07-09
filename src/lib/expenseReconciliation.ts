@@ -1,10 +1,21 @@
 import type {
   ExpenseReconciliationStatus,
   FinanceExpense,
+  FinanceExpenseTypeDef,
   GiExpenseDocKind,
 } from '../types'
-import { addMonths } from './financeCalc'
+import { addMonths } from './financeMonthRange'
+import { resolveExpenseType } from './financeExpenseTypes'
+import { isSalaryLikeExpense, isPayrollGiExemptExpense } from './financeSalaryMonth'
+import { isStatutoryGiExemptExpense } from './financeExpenseVat'
+import {
+  isBankExpense,
+  isGiOnlyRecord,
+  expensesForFinancialTotals,
+} from './expenseSource'
 import { merchantKey } from './bankImport/matching'
+
+export { isGiOnlyRecord, isBankExpense } from './expenseSource'
 
 export type ExpenseReconciliationSummary = {
   matched: number
@@ -37,10 +48,10 @@ export const GI_DOC_KIND_LABEL: Record<GiExpenseDocKind, string> = {
 }
 
 /** סוגי הוצאה שבדרך כלל אין להם חשבונית מס ב-GI */
-const GI_EXEMPT_TYPE_IDS = new Set(['bank_fee'])
+const GI_EXEMPT_TYPE_IDS = new Set(['bank_fee', 'salary'])
 
 const AMOUNT_TOLERANCE = 0.05
-const AMOUNT_PERCENT_TOLERANCE = 0.025
+const AMOUNT_PERCENT_TOLERANCE = 0.04
 
 export type ExpensePair = {
   bank: FinanceExpense
@@ -111,12 +122,76 @@ export function amountsCompatible(
       if (amountsMatch(ba, ga)) return true
     }
   }
+  if (isSaasSupplierPair(bank, gi)) {
+    for (const ba of amountCandidates(bank)) {
+      for (const ga of amountCandidates(gi)) {
+        if (amountsMatchPercent(ba, ga, SAAS_AMOUNT_PERCENT_TOLERANCE)) {
+          return true
+        }
+      }
+    }
+  }
   return false
 }
 
 function monthsCompatible(a: string, b: string): boolean {
   if (a === b) return true
   return addMonths(a, -1) === b || addMonths(a, 1) === b
+}
+
+const SAAS_SUPPLIER_TOKENS = new Set([
+  'cursor',
+  'xcloud',
+  'openai',
+  'chatgpt',
+  'anthropic',
+  'claude',
+  'hetzner',
+  'hostinger',
+  'suno',
+])
+
+const SAAS_AMOUNT_PERCENT_TOLERANCE = 0.1
+
+function amountsMatchPercent(a: number, b: number, pct: number): boolean {
+  if (a <= 0 || b <= 0) return false
+  if (Math.abs(a - b) <= AMOUNT_TOLERANCE) return true
+  return Math.abs(a - b) / Math.max(a, b) <= pct
+}
+
+function isSaasSupplierPair(
+  bank: FinanceExpense,
+  gi: FinanceExpense,
+): boolean {
+  if (!suppliersCompatible(bank, gi)) return false
+  const tokens = new Set([
+    ...extractSignificantTokens(expenseLabel(bank)),
+    ...extractSignificantTokens(expenseLabel(gi)),
+  ])
+  for (const t of tokens) {
+    if (SAAS_SUPPLIER_TOKENS.has(t)) return true
+  }
+  return false
+}
+
+function saasMonthsCompatible(a: string, b: string): boolean {
+  if (a === b) return true
+  for (let d = -2; d <= 2; d++) {
+    if (d === 0) continue
+    if (addMonths(a, d) === b) return true
+  }
+  return false
+}
+
+function monthsCompatibleForPair(
+  bank: FinanceExpense,
+  gi: FinanceExpense,
+): boolean {
+  if (monthsCompatible(bank.billingMonth, gi.billingMonth)) return true
+  return (
+    isSaasSupplierPair(bank, gi) &&
+    saasMonthsCompatible(bank.billingMonth, gi.billingMonth)
+  )
 }
 
 function ymInRange(ym: string, from: string, to: string): boolean {
@@ -132,10 +207,99 @@ function tokenOverlap(a: string, b: string): boolean {
   return false
 }
 
+const SUPPLIER_ALIAS_GROUPS: string[][] = [
+  ['019', 'mobile', 'טלזר', 'telzar'],
+  ['google', 'workspace', 'commerce', 'ads'],
+  ['hostinger'],
+  ['cursor'],
+  ['openai', 'chatgpt'],
+  ['anthropic', 'claude'],
+  ['hetzner'],
+  ['xcloud', 'hosting'],
+  ['בזק', 'bezeq'],
+  ['ביטאיט', 'bitayit', 'paycall'],
+  ['חשמל', 'electric'],
+  ['suno'],
+  ['דומיין', 'domain', 'dnet', 'dns', 'נט', 'dehenet'],
+  ['כרמלטון', 'carmelton'],
+  ['ימים', 'מים'],
+  ['שטיינפלד', 'steinfeld'],
+  ['טימופיי', 'timofey', 'אס.טי.טי', 'לפיצקי'],
+  ['אמיל', 'emil'],
+  ['פרימיום', 'premium', 'express', 'אקספרס'],
+  ['ישראכרט', 'isracard'],
+  ['ביטוח', 'ביטוח לאומי', 'national'],
+]
+
+function extractSignificantTokens(raw: string): Set<string> {
+  let s = raw.trim().toLowerCase()
+  s = s.split('*')[0] ?? s
+  s = s.replace(/בע["״']?מ/g, '').replace(/בעמ/g, '')
+  const tokens = new Set<string>()
+  for (const p of s.split(/[^\p{L}\d]+/u).filter(Boolean)) {
+    if (/^\d{2,4}$/.test(p)) tokens.add(p)
+    else if (p.length >= 3) tokens.add(p)
+  }
+  return tokens
+}
+
+const ALIAS_SUBSTRING_MIN_LEN = 4
+
+function aliasTokenMatches(token: string, needle: string): boolean {
+  if (token === needle) return true
+  if (
+    needle.length >= ALIAS_SUBSTRING_MIN_LEN &&
+    token.includes(needle)
+  ) {
+    return true
+  }
+  if (
+    token.length >= ALIAS_SUBSTRING_MIN_LEN &&
+    needle.includes(token)
+  ) {
+    return true
+  }
+  return false
+}
+
+function aliasGroupOverlap(ta: Set<string>, tb: Set<string>): boolean {
+  const has = (tokens: Set<string>, needle: string) => {
+    if (tokens.has(needle)) return true
+    for (const t of tokens) {
+      if (aliasTokenMatches(t, needle)) return true
+    }
+    return false
+  }
+  for (const group of SUPPLIER_ALIAS_GROUPS) {
+    const inA = group.some((g) => has(ta, g))
+    const inB = group.some((g) => has(tb, g))
+    if (inA && inB) return true
+  }
+  return false
+}
+
+function significantTokenOverlap(a: string, b: string): boolean {
+  const ta = extractSignificantTokens(a)
+  const tb = extractSignificantTokens(b)
+  for (const t of ta) {
+    if (tb.has(t)) return true
+  }
+  return aliasGroupOverlap(ta, tb)
+}
+
+function normalizeTaxId(raw: string | undefined): string {
+  if (!raw) return ''
+  return raw.replace(/\D/g, '')
+}
+
 function suppliersCompatible(
   bank: FinanceExpense,
   gi: FinanceExpense,
 ): boolean {
+  const giTax = normalizeTaxId(gi.greenInvoiceSupplierTaxId)
+  const bankTax = normalizeTaxId(bank.supplierTaxId)
+  if (giTax && bankTax && giTax === bankTax) return true
+
   const bk = expenseMerchantKey(expenseLabel(bank))
   const gk = expenseMerchantKey(expenseLabel(gi))
   if (!bk || !gk) return false
@@ -143,7 +307,8 @@ function suppliersCompatible(
     bk === gk ||
     bk.includes(gk) ||
     gk.includes(bk) ||
-    tokenOverlap(bk, gk)
+    tokenOverlap(bk, gk) ||
+    significantTokenOverlap(expenseLabel(bank), expenseLabel(gi))
   )
 }
 
@@ -166,56 +331,210 @@ export function scoreExpensePair(
   if (!suppliersCompatible(bank, gi)) return -1
 
   const sameMonth = bank.billingMonth === gi.billingMonth
-  const nearMonth = monthsCompatible(bank.billingMonth, gi.billingMonth)
+  const nearMonth = monthsCompatibleForPair(bank, gi)
   const dayDiff = daysApart(expenseDate(bank), expenseDate(gi))
-  if (!nearMonth && dayDiff > 45) return -1
+  const maxDayDiff = isSaasSupplierPair(bank, gi) ? 120 : 90
+  if (!nearMonth && dayDiff > maxDayDiff) return -1
 
   let score = 100
   if (sameMonth) score += 50
-  else if (nearMonth) score += 20
+  else if (nearMonth) score += 25
+  else score += 10
   score += 40
-  score -= Math.min(dayDiff, 20)
+  score -= Math.min(dayDiff, 35)
   return score
-}
-
-/** רשומת GI טהורה — נשמרת רק להתאמה, לא מוצגת בטבלת הבנק */
-export function isGiOnlyRecord(exp: FinanceExpense): boolean {
-  return (
-    (exp.source === 'green_invoice' || exp.id.startsWith('gi_')) &&
-    !exp.bankRef
-  )
 }
 
 export function isGiExpense(exp: FinanceExpense): boolean {
   return exp.source === 'green_invoice' || Boolean(exp.greenInvoiceId)
 }
 
-export function isBankExpense(exp: FinanceExpense): boolean {
-  return Boolean(exp.bankRef) || exp.source === 'bank_import'
+export function requiresGiDocument(
+  exp: FinanceExpense,
+  typeById?: Map<string, FinanceExpenseTypeDef>,
+): boolean {
+  if (!isBankExpense(exp)) return false
+  if (GI_EXEMPT_TYPE_IDS.has(exp.type)) return false
+  const typeDef = typeById
+    ? resolveExpenseType(exp.type, typeById)
+    : undefined
+  if (isSalaryLikeExpense(exp, typeDef)) return false
+  if (isPayrollGiExemptExpense(exp)) return false
+  if (isStatutoryGiExemptExpense(exp)) return false
+  return true
 }
 
-export function requiresGiDocument(exp: FinanceExpense): boolean {
-  if (!isBankExpense(exp)) return false
-  return !GI_EXEMPT_TYPE_IDS.has(exp.type)
+function sumMatchesBank(bankAmount: number, giAmounts: number[]): boolean {
+  const sum = Math.round(giAmounts.reduce((a, b) => a + b, 0) * 100) / 100
+  return amountsMatch(bankAmount, sum)
+}
+
+function pairCombinedGiAmounts(
+  bankRows: FinanceExpense[],
+  giRows: FinanceExpense[],
+  usedBank: Set<string>,
+  usedGi: Set<string>,
+  pairs: ExpensePair[],
+): void {
+  for (const bank of bankRows) {
+    if (usedBank.has(bank.id) || bank.amount <= 0) continue
+
+    const candidates = giRows.filter(
+      (g) =>
+        !usedGi.has(g.id) &&
+        g.amount > 0 &&
+        monthsCompatibleForPair(bank, g) &&
+        suppliersCompatible(bank, g),
+    )
+    if (candidates.length < 2) continue
+
+    let matched: FinanceExpense[] | null = null
+
+    for (let i = 0; i < candidates.length; i++) {
+      for (let j = i + 1; j < candidates.length; j++) {
+        const pair = [candidates[i]!, candidates[j]!]
+        if (sumMatchesBank(bank.amount, pair.map((g) => g.amount))) {
+          matched = pair
+          break
+        }
+      }
+      if (matched) break
+    }
+
+    if (!matched && candidates.length >= 3) {
+      outer: for (let i = 0; i < candidates.length; i++) {
+        for (let j = i + 1; j < candidates.length; j++) {
+          for (let k = j + 1; k < candidates.length; k++) {
+            const trio = [candidates[i]!, candidates[j]!, candidates[k]!]
+            if (sumMatchesBank(bank.amount, trio.map((g) => g.amount))) {
+              matched = trio
+              break outer
+            }
+          }
+        }
+      }
+    }
+
+    if (!matched) continue
+
+    const comboAnchor = matched[0]!
+    if (!matched.every((g) => suppliersCompatible(comboAnchor, g))) {
+      continue
+    }
+
+    usedBank.add(bank.id)
+    for (const gi of matched) {
+      usedGi.add(gi.id)
+      pairs.push({ bank, gi, score: 145 })
+    }
+  }
+}
+
+function isUniqueAmountPair(
+  bank: FinanceExpense,
+  gi: FinanceExpense,
+  bankRows: FinanceExpense[],
+  giRows: FinanceExpense[],
+  usedBank: Set<string>,
+  usedGi: Set<string>,
+): boolean {
+  if (!amountsCompatible(bank, gi)) return false
+  if (!suppliersCompatible(bank, gi)) return false
+  const bankMonth = bank.billingMonth
+  const giMonth = gi.billingMonth
+  if (bankMonth !== giMonth && !monthsCompatibleForPair(bank, gi)) return false
+
+  const bankPeers = bankRows.filter(
+    (b) =>
+      !usedBank.has(b.id) &&
+      (b.billingMonth === bankMonth ||
+        monthsCompatibleForPair(b, gi)) &&
+      amountsCompatible(b, gi),
+  )
+  const giPeers = giRows.filter(
+    (g) =>
+      !usedGi.has(g.id) &&
+      (g.billingMonth === giMonth || monthsCompatibleForPair(bank, g)) &&
+      amountsCompatible(bank, g),
+  )
+  return (
+    bankPeers.length === 1 &&
+    giPeers.length === 1 &&
+    bankPeers[0]!.id === bank.id &&
+    giPeers[0]!.id === gi.id
+  )
+}
+
+function pairUniqueAmounts(
+  bankRows: FinanceExpense[],
+  giRows: FinanceExpense[],
+  usedBank: Set<string>,
+  usedGi: Set<string>,
+  pairs: ExpensePair[],
+): void {
+  for (const bank of bankRows) {
+    if (usedBank.has(bank.id)) continue
+    for (const gi of giRows) {
+      if (usedGi.has(gi.id)) continue
+      if (
+        !isUniqueAmountPair(bank, gi, bankRows, giRows, usedBank, usedGi)
+      ) {
+        continue
+      }
+      usedBank.add(bank.id)
+      usedGi.add(gi.id)
+      pairs.push({ bank, gi, score: 130 })
+      break
+    }
+  }
 }
 
 export function computeExpensePairs(expenses: FinanceExpense[]): ExpensePair[] {
   const giRows = expenses.filter(isGiOnlyRecord)
   const bankRows = expenses.filter(isBankExpense)
+  const giById = new Map(giRows.map((g) => [g.id, g]))
+  const giByInvoiceId = new Map(
+    giRows
+      .filter((g) => g.greenInvoiceId)
+      .map((g) => [g.greenInvoiceId!, g]),
+  )
+
+  const usedBank = new Set<string>()
+  const usedGi = new Set<string>()
+  const pairs: ExpensePair[] = []
+
+  for (const bank of bankRows) {
+    let gi: FinanceExpense | undefined
+    if (bank.matchedExpenseId && giById.has(bank.matchedExpenseId)) {
+      gi = giById.get(bank.matchedExpenseId)
+    } else if (bank.linkedGreenInvoiceId) {
+      gi = giByInvoiceId.get(bank.linkedGreenInvoiceId)
+    }
+    if (!gi || usedBank.has(bank.id) || usedGi.has(gi.id)) continue
+    if (!amountsCompatible(bank, gi) || !suppliersCompatible(bank, gi)) {
+      continue
+    }
+    usedBank.add(bank.id)
+    usedGi.add(gi.id)
+    pairs.push({ bank, gi, score: 250 })
+  }
+
+  pairCombinedGiAmounts(bankRows, giRows, usedBank, usedGi, pairs)
+  pairUniqueAmounts(bankRows, giRows, usedBank, usedGi, pairs)
+
   const candidates: ExpensePair[] = []
 
   for (const bank of bankRows) {
+    if (usedBank.has(bank.id)) continue
     for (const gi of giRows) {
+      if (usedGi.has(gi.id)) continue
       const score = scoreExpensePair(bank, gi, bankRows, giRows)
-      if (score < 110) continue
+      if (score < 95) continue
       candidates.push({ bank, gi, score })
     }
   }
 
   candidates.sort((a, b) => b.score - a.score)
-  const usedBank = new Set<string>()
-  const usedGi = new Set<string>()
-  const pairs: ExpensePair[] = []
 
   for (const c of candidates) {
     if (usedBank.has(c.bank.id) || usedGi.has(c.gi.id)) continue
@@ -244,7 +563,11 @@ export function buildReconciledExpenseRows(
   ymTo?: string,
 ): ReconciledExpenseRow[] {
   const pairs = computeExpensePairs(expenses)
-  const bankPair = new Map(pairs.map((p) => [p.bank.id, p]))
+  const bankPair = new Map<string, ExpensePair>()
+  for (const p of pairs) {
+    const prev = bankPair.get(p.bank.id)
+    if (!prev || p.score > prev.score) bankPair.set(p.bank.id, p)
+  }
   const matchedGiIds = new Set(pairs.map((p) => p.gi.id))
   const rows: ReconciledExpenseRow[] = []
 
@@ -362,6 +685,44 @@ export function summarizeExpenseReconciliation(
   return summary
 }
 
+/** תשלומי בנק שחסר להם מסמך ב-GI — ממוינים לפי תאריך */
+export function listMissingGiBankExpenses(
+  expenses: FinanceExpense[],
+  ymFrom?: string,
+  ymTo?: string,
+): FinanceExpense[] {
+  const rows = buildReconciledExpenseRows(expenses, ymFrom, ymTo)
+  return rows
+    .filter(
+      (r) =>
+        r.status === 'bank_missing_document' && !isGiOnlyRecord(r.expense),
+    )
+    .map((r) => r.expense)
+    .sort((a, b) => {
+      const da = a.paidDate ?? `${a.billingMonth}-01`
+      const db = b.paidDate ?? `${b.billingMonth}-01`
+      return db.localeCompare(da)
+    })
+}
+
+/** מסמכי GI בתקופה ללא תשלום בנק מותאם — ממוינים לפי תאריך מסמך */
+export function listUnpaidGiExpenses(
+  expenses: FinanceExpense[],
+  ymFrom?: string,
+  ymTo?: string,
+): FinanceExpense[] {
+  const rows = buildReconciledExpenseRows(expenses, ymFrom, ymTo)
+  return rows
+    .filter((r) => r.status === 'gi_unpaid' && isGiOnlyRecord(r.expense))
+    .filter((r) => r.expense.amount > 0)
+    .map((r) => r.expense)
+    .sort((a, b) => {
+      const da = a.paidDate ?? `${a.billingMonth}-01`
+      const db = b.paidDate ?? `${b.billingMonth}-01`
+      return db.localeCompare(da)
+    })
+}
+
 export function reconciliationBadgeClass(
   status: ExpenseReconciliationStatus | undefined,
 ): string {
@@ -376,5 +737,59 @@ export function reconciliationBadgeClass(
       return 'bg-[#DBEAFE] text-[#1E40AF]'
     default:
       return 'bg-[var(--surface-muted)] text-[var(--text-mid)]'
+  }
+}
+
+export type ExpenseDuplicateAudit = {
+  firestoreTotal: number
+  countedInReports: number
+  giHiddenCount: number
+  giHiddenGrossInPeriod: number
+  matchedPairs: number
+  duplicateBankRefGroups: number
+  duplicateBankRefRows: number
+}
+
+/** בדיקת כפילויות — מסמכי GI לא נספרים בדוחות; רק בנק/ידני */
+export function auditExpenseDuplicates(
+  expenses: FinanceExpense[],
+  ymFrom?: string,
+  ymTo?: string,
+): ExpenseDuplicateAudit {
+  const pairs = computeExpensePairs(expenses)
+  const giHidden = expenses.filter(isGiOnlyRecord)
+  const counted = expensesForFinancialTotals(expenses)
+
+  let giHiddenGrossInPeriod = 0
+  for (const g of giHidden) {
+    if (ymFrom && ymTo && (g.billingMonth < ymFrom || g.billingMonth > ymTo)) {
+      continue
+    }
+    if (g.amount > 0) giHiddenGrossInPeriod += g.amount
+  }
+
+  const byRef = new Map<string, number>()
+  for (const e of expenses) {
+    if (!isBankExpense(e) || !e.bankRef?.trim()) continue
+    const ref = e.bankRef.trim()
+    byRef.set(ref, (byRef.get(ref) ?? 0) + 1)
+  }
+  let duplicateBankRefGroups = 0
+  let duplicateBankRefRows = 0
+  for (const n of byRef.values()) {
+    if (n > 1) {
+      duplicateBankRefGroups += 1
+      duplicateBankRefRows += n
+    }
+  }
+
+  return {
+    firestoreTotal: expenses.length,
+    countedInReports: counted.length,
+    giHiddenCount: giHidden.length,
+    giHiddenGrossInPeriod: Math.round(giHiddenGrossInPeriod * 100) / 100,
+    matchedPairs: pairs.length,
+    duplicateBankRefGroups,
+    duplicateBankRefRows,
   }
 }

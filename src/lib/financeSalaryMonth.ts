@@ -11,10 +11,25 @@ export function defaultSalaryMonthFromPayment(paidDateYmd: string): string {
 export function looksLikeSalaryTransfer(description: string): boolean {
   const t = description.trim()
   return (
-    /^הו"ק\s/i.test(t) ||
+    /הו["״']?ק/i.test(t) ||
     /^העברה\s/i.test(t) ||
     /משכורת/i.test(t)
   )
+}
+
+/** הו"ק ידועות / עובדים — לא נדרש מסמך GI */
+export function isPayrollGiExemptExpense(exp: {
+  name?: string
+  description?: string
+  employeeName?: string
+  supplierName?: string
+}): boolean {
+  const text = [exp.name, exp.description, exp.employeeName, exp.supplierName]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  if (/יובל\s*שכטר|yuval\s*shechter/i.test(text)) return true
+  return false
 }
 
 /** שולף שם מהעברה: "העברה לאמה חן בנק..." → "אמה חן" */
@@ -71,6 +86,7 @@ export function isSalaryLikeExpense(
   if (exp.employeeName?.trim()) return true
   const text = `${exp.description ?? ''} ${exp.name ?? ''}`
   if (/משכורת/i.test(text)) return true
+  if (looksLikeSalaryTransfer(text)) return true
   return false
 }
 

@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase-admin/firestore'
+import type { Firestore, QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { FieldValue } from 'firebase-admin/firestore'
 import { env } from '../config/env.js'
 import { getAdminDb } from './firebaseAdmin.js'
@@ -13,6 +13,7 @@ import {
   computeExpensePairs,
   isBankExpense,
   isGiOnlyRecord,
+  requiresGiDocument,
 } from './expenseReconcileCore.js'
 
 const EXPENSES_COLLECTION = 'financeExpenses'
@@ -57,57 +58,79 @@ type StoredExpense = {
   supplierInvoiceReceived?: boolean
 }
 
+function mapStoredExpenseDoc(d: QueryDocumentSnapshot): StoredExpense {
+  const x = d.data()
+  return {
+    id: d.id,
+    amount: typeof x.amount === 'number' ? x.amount : 0,
+    amountBeforeVat:
+      typeof x.amountBeforeVat === 'number' ? x.amountBeforeVat : undefined,
+    vatAmount: typeof x.vatAmount === 'number' ? x.vatAmount : undefined,
+    type: typeof x.type === 'string' ? x.type : undefined,
+    paidDate:
+      typeof x.paidDate === 'string' && x.paidDate.trim()
+        ? x.paidDate.trim().slice(0, 10)
+        : undefined,
+    billingMonth:
+      typeof x.billingMonth === 'string' ? x.billingMonth.slice(0, 7) : '',
+    bankRef:
+      typeof x.bankRef === 'string' && x.bankRef.trim()
+        ? x.bankRef.trim()
+        : undefined,
+    source: typeof x.source === 'string' ? x.source : undefined,
+    greenInvoiceId:
+      typeof x.greenInvoiceId === 'string' ? x.greenInvoiceId : undefined,
+    greenInvoiceNumber:
+      typeof x.greenInvoiceNumber === 'string'
+        ? x.greenInvoiceNumber
+        : undefined,
+    supplierName:
+      typeof x.supplierName === 'string' ? x.supplierName : undefined,
+    greenInvoiceSupplierName:
+      typeof x.greenInvoiceSupplierName === 'string'
+        ? x.greenInvoiceSupplierName
+        : undefined,
+    greenInvoiceSupplierTaxId:
+      typeof x.greenInvoiceSupplierTaxId === 'string'
+        ? x.greenInvoiceSupplierTaxId
+        : undefined,
+    supplierTaxId:
+      typeof x.supplierTaxId === 'string' ? x.supplierTaxId : undefined,
+    name: typeof x.name === 'string' ? x.name : undefined,
+    description: typeof x.description === 'string' ? x.description : undefined,
+    supplierInvoiceReceived: x.supplierInvoiceReceived === true,
+  }
+}
+
+/** טעינה בעמודים — מונעת RESOURCE_EXHAUSTED על אוסף גדול */
 async function loadStoredExpenses(db: Firestore): Promise<StoredExpense[]> {
-  const snap = await db.collection(EXPENSES_COLLECTION).get()
-  return snap.docs.map((d) => {
-    const x = d.data()
-    return {
-      id: d.id,
-      amount: typeof x.amount === 'number' ? x.amount : 0,
-      amountBeforeVat:
-        typeof x.amountBeforeVat === 'number' ? x.amountBeforeVat : undefined,
-      vatAmount: typeof x.vatAmount === 'number' ? x.vatAmount : undefined,
-      type: typeof x.type === 'string' ? x.type : undefined,
-      paidDate:
-        typeof x.paidDate === 'string' && x.paidDate.trim()
-          ? x.paidDate.trim().slice(0, 10)
-          : undefined,
-      billingMonth:
-        typeof x.billingMonth === 'string' ? x.billingMonth.slice(0, 7) : '',
-      bankRef:
-        typeof x.bankRef === 'string' && x.bankRef.trim()
-          ? x.bankRef.trim()
-          : undefined,
-      source: typeof x.source === 'string' ? x.source : undefined,
-      greenInvoiceId:
-        typeof x.greenInvoiceId === 'string' ? x.greenInvoiceId : undefined,
-      greenInvoiceNumber:
-        typeof x.greenInvoiceNumber === 'string'
-          ? x.greenInvoiceNumber
-          : undefined,
-      supplierName:
-        typeof x.supplierName === 'string' ? x.supplierName : undefined,
-      greenInvoiceSupplierName:
-        typeof x.greenInvoiceSupplierName === 'string'
-          ? x.greenInvoiceSupplierName
-          : undefined,
-      greenInvoiceSupplierTaxId:
-        typeof x.greenInvoiceSupplierTaxId === 'string'
-          ? x.greenInvoiceSupplierTaxId
-          : undefined,
-      supplierTaxId:
-        typeof x.supplierTaxId === 'string' ? x.supplierTaxId : undefined,
-      name: typeof x.name === 'string' ? x.name : undefined,
-      description: typeof x.description === 'string' ? x.description : undefined,
-      supplierInvoiceReceived: x.supplierInvoiceReceived === true,
+  const all: StoredExpense[] = []
+  const pageSize = 150
+  let lastDoc: QueryDocumentSnapshot | undefined
+
+  while (true) {
+    let q = db
+      .collection(EXPENSES_COLLECTION)
+      .orderBy('__name__')
+      .limit(pageSize)
+    if (lastDoc) q = q.startAfter(lastDoc)
+    const snap = await q.get()
+    if (snap.empty) break
+    for (const d of snap.docs) {
+      all.push(mapStoredExpenseDoc(d))
     }
-  })
+    lastDoc = snap.docs[snap.docs.length - 1]
+    if (snap.size < pageSize) break
+    await new Promise((r) => setTimeout(r, 200))
+  }
+
+  return all
 }
 
 function asFinanceExpense(row: StoredExpense) {
   return {
     ...row,
-    type: GI_EXPENSE_TYPE,
+    type: row.type ?? GI_EXPENSE_TYPE,
     recurring: false,
     createdAt: '',
   }
@@ -152,16 +175,26 @@ async function persistExpenseReconciliation(
 
   for (const exp of expenses) {
     if (isBankExpense(asFinanceExpense(exp)) && !matchedBank.has(exp.id)) {
-        updates.push({
+      const needsDoc = requiresGiDocument(exp)
+      updates.push({
         id: exp.id,
-        patch: {
-          reconciliationStatus: 'bank_missing_document',
-          supplierInvoiceReceived: false,
-          matchedExpenseId: FieldValue.delete(),
-          matchedBankExpenseId: FieldValue.delete(),
-          linkedGreenInvoiceId: FieldValue.delete(),
-          greenInvoiceNumber: FieldValue.delete(),
-        },
+        patch: needsDoc
+          ? {
+              reconciliationStatus: 'bank_missing_document',
+              supplierInvoiceReceived: false,
+              matchedExpenseId: FieldValue.delete(),
+              matchedBankExpenseId: FieldValue.delete(),
+              linkedGreenInvoiceId: FieldValue.delete(),
+              greenInvoiceNumber: FieldValue.delete(),
+            }
+          : {
+              reconciliationStatus: 'document_not_required',
+              supplierInvoiceReceived: false,
+              matchedExpenseId: FieldValue.delete(),
+              matchedBankExpenseId: FieldValue.delete(),
+              linkedGreenInvoiceId: FieldValue.delete(),
+              greenInvoiceNumber: FieldValue.delete(),
+            },
       })
     } else if (isGiOnlyRecord(exp) && !matchedGi.has(exp.id)) {
       updates.push({
@@ -188,7 +221,9 @@ async function persistExpenseReconciliation(
   let giUnpaid = 0
   for (const exp of expenses) {
     const fe = asFinanceExpense(exp)
-    if (isBankExpense(fe) && !matchedBank.has(exp.id)) bankMissingDocument += 1
+    if (isBankExpense(fe) && !matchedBank.has(exp.id) && requiresGiDocument(exp)) {
+      bankMissingDocument += 1
+    }
     if (isGiOnlyRecord(fe) && !matchedGi.has(exp.id)) giUnpaid += 1
   }
 
@@ -262,7 +297,9 @@ export async function runMorningExpenseSync(options?: {
       const ref = db
         .collection(EXPENSES_COLLECTION)
         .doc(GI_DOC_PREFIX + m.greenInvoiceId)
-      const billingMonth = ymFromDate(m.paidDate ?? m.documentDate)
+      const billingMonth = ymFromDate(
+        m.reportingDate ?? m.paidDate ?? m.documentDate,
+      )
       const row = stripUndefined({
         type: GI_EXPENSE_TYPE,
         amount: m.amount,
@@ -302,11 +339,17 @@ export async function runMorningExpenseSync(options?: {
     await batch.commit()
   }
 
-  const allRows = await loadStoredExpenses(db)
-  const { matched, bankMissingDocument } = await persistExpenseReconciliation(
-    db,
-    allRows,
-  )
+  let matched = 0
+  let bankMissingDocument = 0
+  try {
+    const allRows = await loadStoredExpenses(db)
+    const result = await persistExpenseReconciliation(db, allRows)
+    matched = result.matched
+    bankMissingDocument = result.bankMissingDocument
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.warn(`[expense-sync] reconcile skipped: ${msg}`)
+  }
 
   const prevState = (await readSyncState()) ?? {}
   await writeSyncState({

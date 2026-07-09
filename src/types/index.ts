@@ -141,6 +141,8 @@ export interface FinanceExpense {
   supplierId?: string
   /** שם מסונכרן — לתצוגה / רשומות ישנות */
   supplierName?: string
+  /** ח.פ / ע.מ של הספק — מיובא מהבנק או מ-GI */
+  supplierTaxId?: string
   platformName?: string
   /** שם ההוצאה — לזיהוי מהיר (למשל שכירות, Google Ads) */
   name?: string

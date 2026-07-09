@@ -41,6 +41,12 @@ export const MONTHLY_RECURRING_EXPENSE_RULES: RecurringExpenseRule[] = [
     keywordOnly: true,
   },
   {
+    id: 'meitav-dash',
+    label: 'מיטב דש',
+    terms: ['מיטב דש', 'מיטב', 'meitav'],
+    keywordOnly: true,
+  },
+  {
     id: 'google-workspace',
     label: 'Google Workspace',
     terms: ['google workspace'],
