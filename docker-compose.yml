@@ -21,6 +21,12 @@ services:
       MORNING_ENV: ${MORNING_ENV:-production}
       MORNING_KEY_ID: ${MORNING_KEY_ID:-}
       MORNING_KEY_SECRET: ${MORNING_KEY_SECRET:-}
+      BOT_API_KEY: ${BOT_API_KEY:-}
+    # Exposed on the host so the server's reverse proxy (nginx, outside Docker) can route
+    # pos.hub.co.il/api/... to this container - previously only reachable from other containers
+    # on bakrayot-proxy, which is exactly why /api/bot-data 404'd when called from the internet.
+    ports:
+      - "127.0.0.1:8787:8787"
     restart: unless-stopped
     networks:
       - bakrayot-proxy
