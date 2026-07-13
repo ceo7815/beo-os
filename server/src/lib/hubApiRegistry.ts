@@ -138,23 +138,23 @@ function actorFields(actor: Actor, uname: string): Record<string, unknown> {
   }
 }
 
-function applyListFilters(items: Record<string, unknown>[], query: Record<string, string | undefined>): Record<string, unknown>[] {
-  let out = items
-  const status = query.status?.trim()
-  if (status) out = out.filter((i) => String(i.status ?? '').toLowerCase() === status.toLowerCase())
-  for (const key of ['clientId', 'projectId', 'assigneeId', 'ownerId'] as const) {
-    const v = query[key]?.trim()
-    if (v) out = out.filter((i) => String(i[key] ?? '') === v)
-  }
-  const q = query.q?.trim().toLowerCase()
-  if (q) {
-    out = out.filter((i) => {
-      const hay = [i.name, i.title, i.company, i.email, i.domain, i.description].filter((x) => typeof x === 'string').join(' ').toLowerCase()
-      return hay.includes(q)
-    })
-  }
-  return out
+// Equality filters (status/clientId/projectId/assigneeId/ownerId) are handled server-side in the
+// Firestore query now (see handleGet) so the row limit is spent on matching rows. Only `q`
+// free-text search stays in-memory here, since Firestore has no substring/contains operator.
+const TEXT_SEARCH_FIELDS = ['name', 'title', 'company', 'email', 'domain', 'description'] as const
+
+function applyTextSearch(items: Record<string, unknown>[], rawQ: string | undefined): Record<string, unknown>[] {
+  const q = rawQ?.trim().toLowerCase()
+  if (!q) return items
+  return items.filter((i) => {
+    const hay = TEXT_SEARCH_FIELDS.map((f) => i[f]).filter((x) => typeof x === 'string').join(' ').toLowerCase()
+    return hay.includes(q)
+  })
 }
+
+// Fields we allow the bot to filter on via an exact-match Firestore `where`. Equality-only queries
+// across these need no composite index.
+const EQUALITY_FILTER_KEYS = ['status', 'clientId', 'projectId', 'assigneeId', 'ownerId'] as const
 
 // --- create validators/builders (ported 1:1 from the Cloud Function version) ---
 
@@ -709,17 +709,19 @@ export async function handleGet(entity: EntityName, id: string, reqQuery: Record
     return ok(200, { ok: true, entity, item: serializeDoc(snap.id, snap.data()!) })
   }
 
-  const snap = await db().collection(col).limit(limit).get()
-  let items = snap.docs.map((d) => serializeDoc(d.id, d.data()))
-  const filters: Record<string, string | undefined> = {
-    status: typeof reqQuery.status === 'string' ? reqQuery.status : undefined,
-    clientId: typeof reqQuery.clientId === 'string' ? reqQuery.clientId : undefined,
-    projectId: typeof reqQuery.projectId === 'string' ? reqQuery.projectId : undefined,
-    assigneeId: typeof reqQuery.assigneeId === 'string' ? reqQuery.assigneeId : undefined,
-    ownerId: typeof reqQuery.ownerId === 'string' ? reqQuery.ownerId : undefined,
-    q: typeof reqQuery.q === 'string' ? reqQuery.q : undefined,
+  // Push exact-match filters into the query BEFORE .limit() so the cap is spent on matching rows.
+  // Previously these ran in-memory AFTER .limit(N): a status/owner filter only ever saw the first N
+  // docs (ordered by id) and silently dropped every match past that window, so the same request
+  // could return a different, incomplete count each call.
+  let query: FirebaseFirestore.Query = db().collection(col)
+  for (const key of EQUALITY_FILTER_KEYS) {
+    const v = typeof reqQuery[key] === 'string' ? (reqQuery[key] as string).trim() : ''
+    if (v) query = query.where(key, '==', v)
   }
-  items = applyListFilters(items, filters)
+
+  const snap = await query.limit(limit).get()
+  let items = snap.docs.map((d) => serializeDoc(d.id, d.data()))
+  items = applyTextSearch(items, typeof reqQuery.q === 'string' ? reqQuery.q : undefined)
   return ok(200, { ok: true, entity, count: items.length, limit, items })
 }
 
