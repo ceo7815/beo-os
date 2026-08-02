@@ -508,7 +508,7 @@ function DocumentThumb({
       </button>
     )
   }
-  if (isImageDocument(fileName, url)) {
+  if (isImageDocument(fileName)) {
     return (
       <button type="button" onClick={onOpen} className="shrink-0" title="צפייה">
         <img

@@ -173,10 +173,10 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
           return [...prev, optimistic]
         })
         toastFsSuccess('הפרויקט נוסף בהצלחה')
-        return true
+        return ref.id
       } catch (e) {
         toastFsError('שגיאה בשמירת הפרויקט', e, 'addProject')
-        return false
+        return null
       }
     },
     [],

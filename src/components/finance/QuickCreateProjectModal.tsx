@@ -50,7 +50,10 @@ export function QuickCreateProjectModal({
     if (!trimmed || saving) return
     setSaving(true)
     try {
-      const ownerId = currentUser?.id?.trim() || 'system'
+      const ownerId =
+        typeof currentUser?.id === 'string' && currentUser.id.trim()
+          ? currentUser.id.trim()
+          : 'system'
       const id = await addProject({
         name: trimmed,
         type: 'client',
@@ -77,7 +80,7 @@ export function QuickCreateProjectModal({
         if (!saving) onClose()
       }}
       title="פרויקט מהיר"
-      size="sm"
+      size="md"
     >
       <div className="space-y-4 text-right">
         <p className="text-[12px] leading-relaxed text-[var(--text-mid)]">

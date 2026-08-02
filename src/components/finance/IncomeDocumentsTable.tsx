@@ -18,7 +18,6 @@ import {
 } from '../../lib/financeHostingTypes'
 import {
   clientScopedAssignOptionsWithHosting,
-  HOURLY_ASSIGN_PREFIX,
   HOSTING_ASSIGN_PREFIX,
   hourlyAssignValue,
   type HourlyAssignSource,
