@@ -3,6 +3,7 @@ import {
   expenseSearchBlob,
   matchMonthlyRecurringExpense,
 } from './financeRecurringCatalog'
+import { looksLikeTaxAuthorityPayment } from './financeSalaryMonth'
 
 export const EXPENSE_VAT_CLASS_LABEL: Record<FinanceExpenseVatClass, string> = {
   vat_liable: 'תשומות (חייב מע״מ)',
@@ -133,6 +134,10 @@ export function suggestExpenseVatClass(exp: {
 }): FinanceExpenseVatClass {
   const text = expenseSearchBlob(exp)
   if (STATUTORY_TERMS.some((t) => text.includes(t.toLowerCase()))) {
+    return 'statutory'
+  }
+  /** גבייה של רשות המסים — אין מולה חשבונית מס, ולכן אינה תשומות */
+  if (looksLikeTaxAuthorityPayment(text)) {
     return 'statutory'
   }
   if (

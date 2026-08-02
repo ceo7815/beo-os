@@ -81,19 +81,30 @@ export function isSalaryLikeExpense(
 /**
  * תשלומי חובה לרשויות. כמו משכורת, הם משולמים בחודש שאחרי התקופה
  * שעבורה הם נגבים: מע״מ, ניכויים וביטוח לאומי של יוני יורדים ביולי.
+ *
+ * הצירופים מלאים ולא מילה בודדת, מפני ש«מע״מ» לבדו מופיע בתיאורים
+ * רגילים («כולל מע״מ») והיה גורר הוצאות ספק תמימות לחודש הקודם.
  */
-const TAX_TERMS = [
-  'ביטוח לאומי',
-  'מס הכנסה',
-  'ניכויים',
-  'נציבות מס',
-  'מקדמות מס',
-  'מע״מ',
-  'מע"מ',
-  'מעמ',
-  'שע״מ',
-  'שע"מ',
+const TAX_AUTHORITY_PATTERNS: RegExp[] = [
+  /ביטוח\s*לאומי/,
+  /מס\s*הכנסה/,
+  /נציבות\s*מס/,
+  /מקדמות\s*מס/,
+  /רשות\s*המי?סים/,
+  /(?:^|\s)מ["״']?ה\s*ניכויים/,
+  /(?:^|\s)ניכויים(?:\s|$)/,
+  /שע["״']?מ(?:\s|$)/,
+  /גביית\s*מע["״']?מ/,
+  /תשלום\s*מע["״']?מ/,
+  /מע["״']?מ\s*לתשלום/,
 ]
+
+/** תשלום לרשות מס — לפי צירוף מזהה בשם התנועה */
+export function looksLikeTaxAuthorityPayment(text: string): boolean {
+  const t = text.trim()
+  if (!t) return false
+  return TAX_AUTHORITY_PATTERNS.some((re) => re.test(t))
+}
 
 export function isTaxExpense(
   exp: {
@@ -106,13 +117,14 @@ export function isTaxExpense(
 ): boolean {
   if (exp.type === 'tax' || typeDef?.id === 'tax') return true
   /**
-   * רשומות שנוצרו לפני שהיה סוג "מסים" נשמרו כהוצאה כללית או כספק.
-   * הן מזוהות לפי שם הרשות, ורק כשהן מסומנות כתשלום חוקי ללא מע״מ —
-   * כדי שספק בעל שם דומה לא ייכנס בטעות לכלל הצבירה.
+   * רשומות שנוצרו לפני שהיה סוג "מסים" נשמרו כהוצאה כללית, כפטורה או
+   * כספק. הן מזוהות לפי שם הרשות — ובלבד שלא נדרש עליהן מע״מ תשומות,
+   * שהרי לתשלום לרשות אין חשבונית מס לקיזוז.
    */
-  if (exp.vatClass !== 'statutory') return false
-  const text = `${exp.name ?? ''} ${exp.description ?? ''}`
-  return TAX_TERMS.some((term) => text.includes(term))
+  if (exp.vatClass === 'vat_liable') return false
+  return looksLikeTaxAuthorityPayment(
+    `${exp.name ?? ''} ${exp.description ?? ''}`,
+  )
 }
 
 /** הוצאות שנספרות בחודש שעבורו שולמו, ולא בחודש התשלום */
