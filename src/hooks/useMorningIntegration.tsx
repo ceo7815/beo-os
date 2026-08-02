@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch, ApiError } from '../lib/apiClient'
+import {
+  applyMorningClients,
+  applyMorningSyncPayload,
+  resetIncomesClientSide,
+  type MorningSyncPayload,
+} from '../lib/morningSyncApply'
 
 export type MorningEnv = 'sandbox' | 'production'
 
@@ -78,6 +84,15 @@ export type MorningReconcileResult = {
   durationMs: number
 }
 
+/** הודעה ברורה כשמכסת Firestore Admin חוסמת כתיבת הכנסות/לקוחות */
+function formatMorningError(e: unknown, fallback: string): string {
+  const raw = e instanceof ApiError ? e.message : e instanceof Error ? e.message : ''
+  if (/RESOURCE_EXHAUSTED|Quota exceeded|permission-denied/i.test(raw)) {
+    return 'השמירה ל-Firestore נחסמה זמנית (מכסה או הרשאה). המשיכה מחשבונית ירוקה הצליחה — נסו שוב בעוד כמה דקות כמנהל.'
+  }
+  return raw || fallback
+}
+
 export function useMorningIntegration() {
   const [status, setStatus] = useState<MorningStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -131,17 +146,36 @@ export function useMorningIntegration() {
       setBusy(true)
       setError(null)
       try {
-        const result = await apiFetch<MorningSyncResult>(
+        // השרת רק מושך מחשבונית ירוקה — השמירה לדאטהבייס בדפדפן (בלי Admin)
+        const payload = await apiFetch<MorningSyncPayload>(
           '/api/integrations/morning/sync',
           {
             method: 'POST',
             body: JSON.stringify(fromDate ? { fromDate } : {}),
           },
         )
+        const result = await applyMorningSyncPayload(payload)
+        await apiFetch('/api/integrations/morning/ack-sync', {
+          method: 'POST',
+          body: JSON.stringify({
+            lastSyncAt: new Date().toISOString(),
+            lastFromDate: result.fromDate,
+            lastToDate: result.toDate,
+            lastFetched: result.fetched,
+            lastImported: result.imported,
+            lastRemoved: result.removed,
+            lastUnmatchedClients: result.unmatchedClients,
+            lastClientsFetched: result.clients.fetched,
+            lastClientsCreated: result.clients.created,
+            lastClientsUpdated: result.clients.updated,
+            lastClientsActive: result.clients.active,
+            lastClientsInactive: result.clients.inactive,
+          }),
+        })
         await refresh()
         return result
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'הסנכרון נכשל')
+        setError(formatMorningError(e, 'הסנכרון נכשל'))
         return null
       } finally {
         setBusy(false)
@@ -154,14 +188,21 @@ export function useMorningIntegration() {
     setBusy(true)
     setError(null)
     try {
-      const result = await apiFetch<ClientSyncResult>(
-        '/api/integrations/morning/sync-clients',
-        { method: 'POST' },
-      )
+      const payload = await apiFetch<{
+        ok: true
+        mode: 'client_write'
+        clients: MorningSyncPayload['clients']
+      }>('/api/integrations/morning/sync-clients', { method: 'POST' })
+      const started = Date.now()
+      const stats = await applyMorningClients(payload.clients)
       await refresh()
-      return result
+      return {
+        ok: true,
+        ...stats,
+        durationMs: Date.now() - started,
+      }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'סנכרון הלקוחות נכשל')
+      setError(formatMorningError(e, 'סנכרון הלקוחות נכשל'))
       return null
     } finally {
       setBusy(false)
@@ -195,13 +236,10 @@ export function useMorningIntegration() {
     setBusy(true)
     setError(null)
     try {
-      const res = await apiFetch<{ ok: true; deleted: number }>(
-        '/api/integrations/morning/reset-incomes',
-        { method: 'POST' },
-      )
-      return res.deleted
+      // מחיקה מהדפדפן — בלי Admin SDK / מכסת שרת
+      return await resetIncomesClientSide()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'המחיקה נכשלה')
+      setError(formatMorningError(e, 'המחיקה נכשלה'))
       return null
     } finally {
       setBusy(false)

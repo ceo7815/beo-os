@@ -7,11 +7,16 @@ import {
   loadMorningCredentials,
   readSyncState,
   saveMorningCredentials,
+  writeSyncState,
   type MorningEnv,
 } from '../lib/morningCredentials.js'
 import { runExpenseReconcile } from '../lib/morningExpenseSync.js'
 import { fetchExpenseDocumentBuffer } from '../lib/expenseDocument.js'
-import { runMorningSync, resetAllIncomes, syncClients } from '../lib/morningSync.js'
+import {
+  fetchMorningClients,
+  fetchMorningSyncPayload,
+  resetAllIncomes,
+} from '../lib/morningSync.js'
 import { env } from '../config/env.js'
 
 function normalizeEnv(raw: unknown): MorningEnv {
@@ -110,7 +115,10 @@ export async function registerMorningRoutes(app: FastifyInstance): Promise<void>
     },
   )
 
-  /** סנכרון מלא — מושך את כל מסמכי ההכנסה מ-fromDate עד היום */
+  /**
+   * משיכת לקוחות + הכנסות מחשבונית ירוקה בלבד (בלי כתיבת Admin ל-Firestore).
+   * השמירה מתבצעת בדפדפן עם המשתמש המחובר.
+   */
   app.post(
     '/api/integrations/morning/sync',
     { preHandler: requireAdmin },
@@ -121,8 +129,7 @@ export async function registerMorningRoutes(app: FastifyInstance): Promise<void>
           ? body.fromDate.trim()
           : undefined
       try {
-        const result = await runMorningSync({ fromDate })
-        return result
+        return await fetchMorningSyncPayload({ fromDate })
       } catch (e) {
         const status = e instanceof MorningError ? e.status : 500
         reply.code(status >= 400 && status < 500 ? status : 502).send({
@@ -134,19 +141,39 @@ export async function registerMorningRoutes(app: FastifyInstance): Promise<void>
     },
   )
 
-  /** סנכרון לקוחות בלבד — מושך פעילים + לא פעילים מחשבונית ירוקה */
+  /** משיכת לקוחות בלבד — בלי כתיבת Admin ל-Firestore */
   app.post(
     '/api/integrations/morning/sync-clients',
     { preHandler: requireAdmin },
     async (_req, reply) => {
       try {
-        return await syncClients()
+        const clients = await fetchMorningClients()
+        return { ok: true, mode: 'client_write' as const, clients }
       } catch (e) {
         const status = e instanceof MorningError ? e.status : 500
         reply.code(status >= 400 && status < 500 ? status : 502).send({
           ok: false,
           error: 'client_sync_failed',
           message: e instanceof Error ? e.message : 'סנכרון הלקוחות נכשל',
+        })
+      }
+    },
+  )
+
+  /** שמירת סיכום סנכרון על דיסק השרת (אחרי שהדפדפן סיים לכתוב ל-Firestore) */
+  app.post(
+    '/api/integrations/morning/ack-sync',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const body = (req.body ?? {}) as Record<string, unknown>
+      try {
+        await writeSyncState(body)
+        return { ok: true }
+      } catch (e) {
+        reply.code(500).send({
+          ok: false,
+          error: 'ack_failed',
+          message: e instanceof Error ? e.message : 'שמירת מצב הסנכרון נכשלה',
         })
       }
     },

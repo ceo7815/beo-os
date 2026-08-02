@@ -83,6 +83,88 @@ export type ClientSyncResult = {
   durationMs: number
 }
 
+export type MorningSyncPayload = {
+  ok: true
+  mode: 'client_write'
+  fromDate: string
+  toDate: string
+  clients: MappedClient[]
+  incomes: MappedIncome[]
+}
+
+export type MorningClientsPayload = {
+  ok: true
+  mode: 'client_write'
+  clients: MappedClient[]
+}
+
+/**
+ * משיכת לקוחות מחשבונית ירוקה בלבד — בלי כתיבה ל-Firestore.
+ * השמירה מתבצעת בדפדפן עם המשתמש המחובר (לא Admin SDK).
+ */
+export async function fetchMorningClients(): Promise<MappedClient[]> {
+  const creds = await loadMorningCredentials()
+  if (!creds) throw new Error('Morning credentials not configured')
+
+  const client = new MorningClient(creds)
+  const [activeRaw, inactiveRaw] = await Promise.all([
+    client.searchAllClients(true),
+    client.searchAllClients(false),
+  ])
+
+  const byId = new Map<string, MappedClient>()
+  for (const raw of [...activeRaw, ...inactiveRaw]) {
+    const m = mapMorningClient(raw)
+    if (m) byId.set(m.greenInvoiceId, m)
+  }
+  return [...byId.values()]
+}
+
+/**
+ * משיכת לקוחות + הכנסות מחשבונית ירוקה — בלי כתיבה ל-Firestore.
+ */
+export async function fetchMorningSyncPayload(options?: {
+  fromDate?: string
+}): Promise<MorningSyncPayload> {
+  const creds = await loadMorningCredentials()
+  if (!creds) throw new Error('Morning credentials not configured')
+
+  const api = new MorningClient(creds)
+  const [activeRaw, inactiveRaw] = await Promise.all([
+    api.searchAllClients(true),
+    api.searchAllClients(false),
+  ])
+  const byId = new Map<string, MappedClient>()
+  for (const raw of [...activeRaw, ...inactiveRaw]) {
+    const m = mapMorningClient(raw)
+    if (m) byId.set(m.greenInvoiceId, m)
+  }
+  const clients = [...byId.values()]
+
+  const fromDate = (options?.fromDate ?? env.sync.fromDate).slice(0, 10)
+  const toDate = todayYmd()
+  const docs = await api.searchAllDocuments({
+    fromDate,
+    toDate,
+    types: INCOME_DOC_TYPES,
+    pageSize: 100,
+  })
+  const incomes: MappedIncome[] = []
+  for (const raw of docs) {
+    const m = mapMorningDocument(raw)
+    if (m) incomes.push(m)
+  }
+
+  return {
+    ok: true,
+    mode: 'client_write',
+    fromDate,
+    toDate,
+    clients,
+    incomes,
+  }
+}
+
 /**
  * סנכרון כל הלקוחות מחשבונית ירוקה ל-Firestore.
  * - מושך פעילים + לא פעילים.
