@@ -15,6 +15,8 @@ type Props = {
   searchable?: boolean
   /** טקסט placeholder לשדה החיפוש */
   searchPlaceholder?: string
+  /** הרחבת התפריט מעבר לרוחב הכפתור — לעמודת טבלה צרה עם ערכים ארוכים */
+  menuClassName?: string
 }
 
 export function HubDropdownSelect({
@@ -27,6 +29,7 @@ export function HubDropdownSelect({
   className = '',
   searchable = false,
   searchPlaceholder = 'חיפוש…',
+  menuClassName = '',
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -143,7 +146,9 @@ export function HubDropdownSelect({
         </span>
       </button>
       {open ? (
-        <div className="absolute start-0 end-0 top-full z-[100] mt-1 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] shadow-[var(--shadow-lg)]">
+        <div
+          className={`absolute start-0 end-0 top-full z-[100] mt-1 overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] shadow-[var(--shadow-lg)] ${menuClassName}`}
+        >
           {searchable ? (
             <div className="border-b border-[var(--border)] p-2">
               <input
