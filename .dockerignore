@@ -26,6 +26,11 @@ functions/node_modules
 functions/lib
 functions/src
 
+# בדיקות — מייבאות קוד server שלא נכנס ל-image של Vite
+**/__tests__
+**/*.test.ts
+**/*.spec.ts
+
 # מסמכים / IDE
 *.md
 !README.md
