@@ -27,7 +27,8 @@ async function loadPdfjs() {
 export async function extractPdfText(file: File): Promise<string> {
   const pdfjs = await loadPdfjs()
   const buffer = await file.arrayBuffer()
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise
+  const task = pdfjs.getDocument({ data: new Uint8Array(buffer) })
+  const doc = await task.promise
   try {
     const pages: string[] = []
     const count = Math.min(doc.numPages, MAX_PAGES)
@@ -54,7 +55,7 @@ export async function extractPdfText(file: File): Promise<string> {
     }
     return pages.join('\n')
   } finally {
-    await doc.destroy()
+    await task.destroy()
   }
 }
 

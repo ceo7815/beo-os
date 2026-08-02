@@ -9,7 +9,7 @@ function expense(over: Partial<FinanceExpense> = {}): FinanceExpense {
     type: 'supplier',
     amount: 651,
     amountIncludesVat: true,
-    vatClass: 'vat_exempt',
+    vatClass: 'exempt_supplier',
     recurring: false,
     billingMonth: '2026-07',
     paidDate: '2026-07-06',
