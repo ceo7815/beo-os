@@ -27,10 +27,10 @@ import {
   filterExpensesByClient,
   formatNis,
 } from '../lib/financeCalc'
+import { isOpenTransactionAccount } from '../lib/financeIncomeDocument'
 import { computeExpenseCoverage } from '../lib/expenseReconciliation'
 import { FinanceTabs } from '../components/finance/FinanceTabs'
 import { useFinanceAttention } from '../hooks/useFinanceAttention'
-import { hubSectionClass } from '../lib/hubSectionBorder'
 
 export function Finance() {
   const { clients } = useClients()
@@ -88,6 +88,21 @@ export function Finance() {
     [incomes, filters],
   )
 
+  /** חשבונות עסקה פתוחים — אותה לוגיקה כמו יתרה לגבייה (ללא פילטר תאריך) */
+  const detailCollectionIncomes = useMemo(() => {
+    return incomes.filter((row) => {
+      if (!isOpenTransactionAccount(row)) return false
+      if (filterProjectId && row.projectId !== filterProjectId) return false
+      if (filterClientId) {
+        const matchClient =
+          row.clientId === filterClientId ||
+          (row.projectId && projectIdsForClient.has(row.projectId))
+        if (!matchClient) return false
+      }
+      return true
+    })
+  }, [incomes, filterProjectId, filterClientId, projectIdsForClient])
+
   const detailExpenses = useMemo(
     () =>
       filterExpensesByClient(
@@ -138,16 +153,14 @@ export function Finance() {
   const loading = incomesLoading || expensesLoading
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
-      <header className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center md:justify-between">
-        <div className="min-w-0 text-right md:order-2 md:flex-1">
-          <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
-            סקירה פיננסית
-          </h1>
-          <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-            רווח והפסד, מע״מ ויתרה לגבייה — אדמין בלבד
-          </p>
-        </div>
+    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-5 px-4 py-6 sm:px-8">
+      <header className="flex flex-col gap-1 text-right">
+        <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
+          סקירה פיננסית
+        </h1>
+        <p className="text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
+          רווח והפסד · מע״מ · יתרה לגבייה · סנכרון הכנסות
+        </p>
       </header>
 
       <FinanceTabs badges={attention} />
@@ -170,7 +183,7 @@ export function Finance() {
 
       {filterClientId &&
       (clients.find((c) => c.id === filterClientId)?.financeBalance ?? 0) > 0 ? (
-        <div className="rounded-xl border border-[#F59E0B] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
+        <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
           <span className="font-bold">יתרת לקוח: </span>
           {formatNis(
             clients.find((c) => c.id === filterClientId)?.financeBalance ?? 0,
@@ -179,39 +192,48 @@ export function Finance() {
         </div>
       ) : null}
 
-      <section
-        className={`rounded-2xl ${hubSectionClass(1)} border-2 border-[#F59E0B] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}
-        aria-label="יתרה לגבייה"
+      <button
+        type="button"
+        onClick={() => setDetailMetric('collection')}
+        aria-label="יתרה לגבייה — לחצו לפירוט"
+        className="group w-full rounded-2xl border border-[#FDE68A] bg-gradient-to-l from-[#FFFBEB] to-[var(--dash-panel-bg)] p-4 text-right shadow-[0_1px_8px_rgba(0,0,0,0.04)] transition hover:-translate-y-0.5 hover:border-[#FBBF24] hover:shadow-[0_6px_18px_rgba(217,119,6,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange)] sm:p-5"
       >
-        <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#92400E]">
-          תמיד בראש · לא מושפע מפילטר תאריך
-        </div>
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="max-w-xl">
-            <div className="text-[14px] font-extrabold text-[#92400E]">
-              יתרה לגבייה
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="text-[11px] font-bold text-[#B45309]">
+                יתרה לגבייה · תמיד פעילה
+              </span>
+              <span className="rounded-md bg-[#FEF3C7] px-1.5 py-0.5 text-[10px] font-bold text-[#B45309] opacity-80 transition group-hover:opacity-100">
+                לחצו לפירוט ⓘ
+              </span>
             </div>
-            <div className="mt-2 text-[11px] leading-snug text-[var(--text-mid)]">
-              חשבונות עסקה (300) מחשבונית ירוקה — לא נספר כהכנסה
+            <div className="mt-1 text-[15px] font-extrabold text-[var(--text-dark)]">
+              חשבונות עסקה פתוחים
+            </div>
+            <div className="mt-1 text-[11px] leading-snug text-[var(--text-mid)]">
+              מסמכי 300 מחשבונית ירוקה — לא נספרים כהכנסה עד שמתקבל תשלום
             </div>
           </div>
-          <div className="text-[32px] font-extrabold tabular-nums leading-none text-[#F59E0B]">
+          <div className="text-[30px] font-extrabold tabular-nums leading-none text-[#D97706]">
             {formatNis(summary.collectionBalance)}
           </div>
         </div>
-      </section>
+      </button>
 
       <section aria-label="סיכום פיננסי" className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">
-            סיכום פיננסי
-          </h2>
-          <span className="text-[11px] text-[var(--text-mid)]">
-            {period.filterRangeLabel}
-          </span>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div className="text-right">
+            <h2 className="text-base font-extrabold text-[var(--text-dark)]">
+              סיכום לתקופה
+            </h2>
+            <p className="mt-0.5 text-[11px] text-[var(--text-mid)]">
+              לחצו על כרטיס לפירוט · {period.filterRangeLabel}
+            </p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
           <FinanceHeroCard
             tone="income"
             label='הכנסות (כולל מע"מ)'
@@ -281,24 +303,24 @@ export function Finance() {
           />
         </div>
 
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-2 py-3">
-          <div className="grid grid-cols-2 divide-x divide-[var(--border)] [direction:rtl] sm:grid-cols-5">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-2 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-5 sm:divide-x sm:divide-[var(--border)] sm:[direction:rtl]">
             <FinanceMiniStat
               label='מע"מ עסקאות'
               value={formatNis(summary.incomeVat)}
-              valueClass="text-[#6366F1]"
+              valueClass="text-[#4F46E5]"
               onClick={() => setDetailMetric('incomeVat')}
             />
             <FinanceMiniStat
               label='מע"מ תשומות'
               value={formatNis(summary.expenseInputVat)}
-              valueClass="text-[#8B5CF6]"
+              valueClass="text-[#7C3AED]"
               onClick={() => setDetailMetric('expenseInputVat')}
             />
             <FinanceMiniStat
               label='מע"מ לתשלום'
               value={formatNis(summary.vatPayable)}
-              valueClass="text-[#6366F1]"
+              valueClass="text-[#4F46E5]"
               onClick={() => setDetailMetric('vatPayable')}
             />
             <FinanceMiniStat
@@ -311,7 +333,7 @@ export function Finance() {
               label="רווח גולמי"
               value={formatNis(summary.grossProfit)}
               valueClass={
-                summary.grossProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
+                summary.grossProfit >= 0 ? 'text-[#059669]' : 'text-[#DC2626]'
               }
               onClick={() => setDetailMetric('grossProfit')}
             />
@@ -319,107 +341,112 @@ export function Finance() {
         </div>
       </section>
 
-      <section className={`rounded-2xl ${hubSectionClass(5)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
-        <h2 className="mb-1 text-lg font-extrabold text-[var(--text-dark)]">
-          דוח רווח והפסד לפי חודש
-        </h2>
-        <p className="mb-4 text-[11px] text-[var(--text-mid)]">
-          לחצו על סכום הכנסות או הוצאות לפירוט השורות בחודש
-        </p>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] sm:p-5">
+        <div className="mb-4 text-right">
+          <h2 className="text-base font-extrabold text-[var(--text-dark)]">
+            רווח והפסד לפי חודש
+          </h2>
+          <p className="mt-0.5 text-[11px] text-[var(--text-mid)]">
+            לחצו על הכנסות או הוצאות לפירוט השורות · ירוק = רווח · אדום = הפסד
+          </p>
+        </div>
         {loading ? (
-          <p className="text-sm text-[var(--text-mid)]">טוען…</p>
+          <p className="py-6 text-center text-sm text-[var(--text-mid)]">
+            טוען…
+          </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
             <table className="w-full min-w-[640px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
-                  <th className="px-2 py-2 text-right">חודש</th>
-                  <th className="px-2 py-2 text-right">הכנסות (כולל מע״מ)</th>
-                  <th className="px-2 py-2 text-right">הוצאות (כולל מע״מ)</th>
-                  <th className="px-2 py-2 text-right">מע״מ לתשלום</th>
-                  <th className="px-2 py-2 text-right">רווח נקי</th>
+              <thead className="sticky top-0 z-[1]">
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
+                  <th className="px-2.5 py-2.5 text-right">חודש</th>
+                  <th className="px-2.5 py-2.5 text-right">הכנסות</th>
+                  <th className="px-2.5 py-2.5 text-right">הוצאות</th>
+                  <th className="px-2.5 py-2.5 text-right">מע״מ לתשלום</th>
+                  <th className="px-2.5 py-2.5 text-right">רווח נקי</th>
                 </tr>
               </thead>
               <tbody>
-                {pnlRows.map((row) => {
-                  const rowBg =
-                    row.trueNetProfit > 0
-                      ? 'rgba(16,185,129,0.08)'
-                      : row.trueNetProfit < 0
-                        ? 'rgba(239,68,68,0.08)'
-                        : undefined
-                  return (
-                    <tr
-                      key={row.ym}
-                      className="border-b border-[var(--border)] transition hover:brightness-[0.98]"
-                      style={{ backgroundColor: rowBg }}
-                    >
-                      <td className="px-2 py-2.5 font-semibold">{row.label}</td>
-                      <td className="px-2 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPnlMonthDetail({
-                              ym: row.ym,
-                              label: row.label,
-                              kind: 'income',
-                            })
-                          }
-                          className="tabular-nums font-bold text-[#10B981] underline-offset-2 hover:underline"
-                          title="פירוט הכנסות"
-                        >
-                          {formatNis(row.incomeGross)}
-                        </button>
-                      </td>
-                      <td className="px-2 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPnlMonthDetail({
-                              ym: row.ym,
-                              label: row.label,
-                              kind: 'expense',
-                            })
-                          }
-                          className="tabular-nums font-bold text-[#EF4444] underline-offset-2 hover:underline"
-                          title="פירוט הוצאות"
-                        >
-                          {formatNis(row.expenseGross)}
-                        </button>
-                      </td>
-                      <td className="px-2 py-2.5 tabular-nums text-[#6366F1]">
-                        {formatNis(row.vatPayable)}
-                      </td>
-                      <td
-                        className={`px-2 py-2.5 tabular-nums font-bold ${
-                          row.trueNetProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
-                        }`}
+                {pnlRows.map((row) => (
+                  <tr
+                    key={row.ym}
+                    className={`border-b border-[var(--border)]/80 transition ${
+                      row.trueNetProfit > 0
+                        ? 'bg-[#F0FDF4] hover:bg-[#DCFCE7]'
+                        : row.trueNetProfit < 0
+                          ? 'bg-[#FEF2F2] hover:bg-[#FEE2E2]'
+                          : 'hover:bg-[var(--surface-muted)]/70'
+                    }`}
+                  >
+                    <td className="px-2.5 py-3 font-semibold text-[var(--text-dark)]">
+                      {row.label}
+                    </td>
+                    <td className="px-2.5 py-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPnlMonthDetail({
+                            ym: row.ym,
+                            label: row.label,
+                            kind: 'income',
+                          })
+                        }
+                        className="tabular-nums font-bold text-[#059669] underline-offset-2 hover:underline"
+                        title="פירוט הכנסות"
                       >
-                        {formatNis(row.trueNetProfit)}
-                      </td>
-                    </tr>
-                  )
-                })}
+                        {formatNis(row.incomeGross)}
+                      </button>
+                    </td>
+                    <td className="px-2.5 py-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPnlMonthDetail({
+                            ym: row.ym,
+                            label: row.label,
+                            kind: 'expense',
+                          })
+                        }
+                        className="tabular-nums font-bold text-[#DC2626] underline-offset-2 hover:underline"
+                        title="פירוט הוצאות"
+                      >
+                        {formatNis(row.expenseGross)}
+                      </button>
+                    </td>
+                    <td className="px-2.5 py-3 tabular-nums text-[#4F46E5]">
+                      {formatNis(row.vatPayable)}
+                    </td>
+                    <td
+                      className={`px-2.5 py-3 tabular-nums font-extrabold ${
+                        row.trueNetProfit >= 0
+                          ? 'text-[#059669]'
+                          : 'text-[#DC2626]'
+                      }`}
+                    >
+                      {formatNis(row.trueNetProfit)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/60 text-[13px] font-extrabold text-[var(--text-dark)]">
-                  <td className="px-2 py-3">סה״כ</td>
-                  <td className="px-2 py-3 tabular-nums text-[#10B981]">
+                <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/70 text-[13px] font-extrabold text-[var(--text-dark)]">
+                  <td className="px-2.5 py-3">סה״כ</td>
+                  <td className="px-2.5 py-3 tabular-nums text-[#059669]">
                     {formatNis(
                       pnlRows.reduce((s, r) => s + r.incomeGross, 0),
                     )}
                   </td>
-                  <td className="px-2 py-3 tabular-nums text-[#EF4444]">
+                  <td className="px-2.5 py-3 tabular-nums text-[#DC2626]">
                     {formatNis(
                       pnlRows.reduce((s, r) => s + r.expenseGross, 0),
                     )}
                   </td>
-                  <td className="px-2 py-3 tabular-nums text-[#6366F1]">
+                  <td className="px-2.5 py-3 tabular-nums text-[#4F46E5]">
                     {formatNis(
                       pnlRows.reduce((s, r) => s + r.vatPayable, 0),
                     )}
                   </td>
-                  <td className="px-2 py-3 tabular-nums text-[#10B981]">
+                  <td className="px-2.5 py-3 tabular-nums text-[#059669]">
                     {formatNis(
                       pnlRows.reduce((s, r) => s + r.trueNetProfit, 0),
                     )}
@@ -437,6 +464,7 @@ export function Finance() {
         summary={summary}
         incomes={detailIncomes}
         expenses={detailExpenses}
+        collectionIncomes={detailCollectionIncomes}
         expenseTypes={expenseTypes}
         clientNameById={clientNameById}
         projectNameById={projectNameById}

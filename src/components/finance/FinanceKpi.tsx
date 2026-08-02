@@ -56,25 +56,25 @@ export function FinanceHeroCard(props: {
 }) {
   const tone = props.tone ?? 'neutral'
   const valueClass = {
-    income: 'text-[#10B981]',
-    expense: 'text-[#EF4444]',
-    profit: 'text-[#10B981]',
+    income: 'text-[#059669]',
+    expense: 'text-[#DC2626]',
+    profit: 'text-[#059669]',
     neutral: 'text-[var(--text-dark)]',
   }[tone]
   const ring = props.emphasis
-    ? 'border-2 border-[#10B981] bg-[#F0FDF4] shadow-[0_4px_20px_rgba(16,185,129,0.12)]'
-    : 'border border-[var(--border)] bg-[var(--dash-panel-bg)] shadow-[0_2px_12px_rgba(0,0,0,0.06)]'
+    ? 'border border-[#A7F3D0] bg-[#F0FDF4] shadow-[0_1px_8px_rgba(16,185,129,0.1)]'
+    : 'border border-[var(--border)] bg-[var(--dash-panel-bg)] shadow-[0_1px_8px_rgba(0,0,0,0.04)]'
   const interactive = props.onClick
-    ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.1)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange)]'
+    ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(0,0,0,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange)]'
     : ''
   return (
     <button
       type="button"
       onClick={props.onClick}
       disabled={!props.onClick}
-      className={`flex flex-col rounded-2xl p-5 text-right ${ring} ${interactive}`}
+      className={`flex h-full min-h-[148px] flex-col rounded-2xl p-4 text-right sm:p-5 ${ring} ${interactive}`}
     >
-      <span className="flex items-center gap-1.5 text-[12px] font-bold text-[var(--text-mid)]">
+      <span className="flex items-center justify-end gap-1.5 text-[12px] font-bold text-[var(--text-mid)]">
         {props.label}
         {props.onClick ? (
           <span className="text-[10px] font-normal text-[var(--text-light)]">
@@ -83,14 +83,16 @@ export function FinanceHeroCard(props: {
         ) : null}
       </span>
       <span
-        className={`mt-2.5 text-[34px] font-extrabold tabular-nums leading-none ${valueClass}`}
+        className={`mt-3 text-[30px] font-extrabold tabular-nums leading-none sm:text-[32px] ${valueClass}`}
       >
         {props.value}
       </span>
       <span className="mt-2 text-[11px] leading-snug text-[var(--text-mid)]">
         {props.hint}
       </span>
-      {props.footer ? <span className="mt-2 block">{props.footer}</span> : null}
+      {props.footer ? (
+        <span className="mt-auto block pt-3">{props.footer}</span>
+      ) : null}
     </button>
   )
 }
@@ -103,20 +105,20 @@ export function FinanceMiniStat(props: {
   onClick?: () => void
 }) {
   const interactive = props.onClick
-    ? 'cursor-pointer rounded-lg transition hover:bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange)]'
+    ? 'cursor-pointer rounded-xl transition hover:bg-[var(--surface-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange)]'
     : ''
   return (
     <button
       type="button"
       onClick={props.onClick}
       disabled={!props.onClick}
-      className={`flex flex-col px-4 py-2 text-right ${interactive}`}
+      className={`flex min-h-[64px] w-full flex-col justify-center px-3 py-2.5 text-right sm:px-4 ${interactive}`}
     >
-      <span className="text-[11px] font-semibold text-[var(--text-mid)]">
+      <span className="text-[10.5px] font-semibold leading-snug text-[var(--text-mid)]">
         {props.label}
       </span>
       <span
-        className={`mt-1 text-[18px] font-extrabold tabular-nums leading-none ${props.valueClass ?? 'text-[var(--text-dark)]'}`}
+        className={`mt-1.5 text-[17px] font-extrabold tabular-nums leading-none sm:text-[18px] ${props.valueClass ?? 'text-[var(--text-dark)]'}`}
       >
         {props.value}
       </span>
@@ -154,7 +156,7 @@ export function FinanceFieldLabel({ children }: { children: ReactNode }) {
 }
 
 export function financeHubInputClass() {
-  return 'w-full rounded-xl border-2 border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2.5 text-sm text-[var(--text-dark)]'
+  return 'w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--text-dark)]'
 }
 
 export const financeUiBtnSmOutline =

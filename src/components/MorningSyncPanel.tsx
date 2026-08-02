@@ -65,7 +65,7 @@ export function MorningSyncPanel() {
   }
 
   const cardClass =
-    'rounded-2xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]'
+    'rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] sm:p-5'
 
   if (loading) {
     return (
@@ -81,22 +81,36 @@ export function MorningSyncPanel() {
 
   return (
     <section className={cardClass}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 text-right">
-          <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1 text-right">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span
-              className={`inline-block h-2.5 w-2.5 rounded-full ${
-                connected ? 'bg-emerald-500' : 'bg-gray-300'
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                connected
+                  ? 'bg-[#ECFDF5] text-[#047857]'
+                  : 'bg-[var(--surface-muted)] text-[var(--text-mid)]'
               }`}
-            />
-            <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">
-              חשבונית ירוקה — סנכרון הכנסות
-            </h2>
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  connected ? 'bg-[#10B981]' : 'bg-[var(--text-light)]'
+                }`}
+              />
+              {connected ? 'מחובר' : 'לא מחובר'}
+            </span>
+            {connected ? (
+              <span className="text-[11px] font-semibold text-[var(--text-light)]">
+                {status?.env === 'sandbox' ? 'סביבת בדיקות' : 'ייצור'}
+              </span>
+            ) : null}
           </div>
-          <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-mid)]">
+          <h2 className="mt-1.5 text-[15px] font-extrabold text-[var(--text-dark)]">
+            חשבונית ירוקה · סנכרון הכנסות
+          </h2>
+          <p className="mt-1 max-w-xl text-[12px] leading-relaxed text-[var(--text-mid)]">
             {connected
-              ? `מחובר (${status?.env === 'sandbox' ? 'סביבת בדיקות' : 'ייצור'}) · מושך מסמכים מ-${status?.fromDate ?? ''} ועד היום`
-              : 'מקור האמת היחיד להכנסות. התחבר עם מפתח ה-API כדי למשוך את כל המסמכים.'}
+              ? `מושך מסמכים מ־${status?.fromDate ?? '—'} עד היום · לקוחות + הכנסות בלבד`
+              : 'מקור האמת להכנסות. התחברו עם מפתח API כדי למשוך מסמכים.'}
           </p>
         </div>
 
@@ -107,15 +121,15 @@ export function MorningSyncPanel() {
                 type="button"
                 onClick={handleSync}
                 disabled={busy || !firebaseReady}
-                className="rounded-[10px] bg-[var(--orange)] px-4 py-2 text-[12px] font-bold text-white disabled:opacity-50"
+                className="rounded-[10px] bg-[var(--orange)] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:brightness-105 disabled:opacity-50"
               >
-                {busy ? 'מסנכרן…' : 'משוך הכל (לקוחות + הכנסות)'}
+                {busy ? 'מסנכרן…' : 'משוך הכל'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowConnect(true)}
                 disabled={busy || status?.credentialsFromEnv}
-                className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--surface)] px-3 py-2 text-[12px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)] disabled:opacity-50"
+                className="rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-[12px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)] disabled:opacity-50"
               >
                 החלף מפתח
               </button>
@@ -125,7 +139,7 @@ export function MorningSyncPanel() {
               type="button"
               onClick={() => setShowConnect(true)}
               disabled={!firebaseReady}
-              className="rounded-[10px] bg-[var(--orange)] px-4 py-2 text-[12px] font-bold text-white disabled:opacity-50"
+              className="rounded-[10px] bg-[var(--orange)] px-4 py-2.5 text-[12px] font-bold text-white shadow-sm transition hover:brightness-105 disabled:opacity-50"
             >
               התחבר לחשבונית ירוקה
             </button>
@@ -134,7 +148,7 @@ export function MorningSyncPanel() {
             type="button"
             onClick={() => void refresh()}
             disabled={busy}
-            className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--surface)] px-3 py-2 text-[12px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)] disabled:opacity-50"
+            className="rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-[12px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)] disabled:opacity-50"
           >
             רענן
           </button>
@@ -142,12 +156,12 @@ export function MorningSyncPanel() {
       </div>
 
       {!loading && status && !firebaseReady ? (
-        <div className="mt-3 rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+        <div className="mt-4 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-3.5 py-2.5 text-[12px] leading-relaxed text-[#92400E]">
           השרת אינו מחובר ל-Firebase Admin. בפיתוח:{' '}
-          <code className="rounded bg-amber-100 px-1">FIREBASE_SERVICE_ACCOUNT_PATH</code>{' '}
-          ב-<code className="rounded bg-amber-100 px-1">server/.env.local</code>.
+          <code className="rounded bg-[#FEF3C7] px-1">FIREBASE_SERVICE_ACCOUNT_PATH</code>{' '}
+          ב-<code className="rounded bg-[#FEF3C7] px-1">server/.env.local</code>.
           בפרודקשן (xCloud): הוסף{' '}
-          <code className="rounded bg-amber-100 px-1">FIREBASE_SERVICE_ACCOUNT_B64</code>{' '}
+          <code className="rounded bg-[#FEF3C7] px-1">FIREBASE_SERVICE_ACCOUNT_B64</code>{' '}
           ל-Environment ועשה Deploy מחדש.
           {status.firebaseReason ? (
             <span className="mt-1 block opacity-80">{status.firebaseReason}</span>
@@ -156,25 +170,27 @@ export function MorningSyncPanel() {
       ) : null}
 
       {!loading && !status && error ? (
-        <div className="mt-3 rounded-[10px] border border-[var(--border)] bg-[var(--surface-muted)]/50 px-3 py-2 text-[12px] text-[var(--text-mid)]">
-          סטטוס חשבונית ירוקה לא זמין זמנית (לרוב עומס/מכסת שרת). שאר
-          המערכת ממשיכה כרגיל — אפשר לעבוד בהוצאות ובהתאמות, ולסנכרן הכנסות
-          מאוחר יותר מ־pos.hub.co.il.
+        <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/60 px-3.5 py-2.5 text-[12px] leading-relaxed text-[var(--text-mid)]">
+          סטטוס חשבונית ירוקה לא זמין זמנית. אפשר להמשיך בעבודה בהוצאות
+          ובהתאמות, ולסנכרן הכנסות מאוחר יותר.
         </div>
       ) : null}
 
       {error && status ? (
-        <div className="mt-3 rounded-[10px] border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+        <div className="mt-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-[12px] text-[#B91C1C]">
           {error}
         </div>
       ) : null}
 
       {connected && ss ? (
-        <>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-4 space-y-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <StatBox label="סנכרון אחרון" value={formatDateTime(ss.lastSyncAt)} />
             <StatBox label="מסמכים יובאו" value={String(ss.lastImported ?? 0)} />
-            <StatBox label="טווח" value={`${ss.lastFromDate ?? ''} → ${ss.lastToDate ?? ''}`} />
+            <StatBox
+              label="טווח"
+              value={`${ss.lastFromDate ?? '—'} → ${ss.lastToDate ?? '—'}`}
+            />
             <StatBox
               label="ללא התאמת לקוח"
               value={String(ss.lastUnmatchedClients ?? 0)}
@@ -182,23 +198,35 @@ export function MorningSyncPanel() {
             />
           </div>
           {ss.lastClientsFetched !== undefined ? (
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatBox label="לקוחות סה״כ" value={String(ss.lastClientsFetched ?? 0)} />
-              <StatBox label="חדשים" value={String(ss.lastClientsCreated ?? 0)} />
-              <StatBox label="פעילים" value={String(ss.lastClientsActive ?? 0)} />
-              <StatBox label="לא פעילים" value={String(ss.lastClientsInactive ?? 0)} />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <StatBox
+                label="לקוחות סה״כ"
+                value={String(ss.lastClientsFetched ?? 0)}
+              />
+              <StatBox
+                label="חדשים"
+                value={String(ss.lastClientsCreated ?? 0)}
+              />
+              <StatBox
+                label="פעילים"
+                value={String(ss.lastClientsActive ?? 0)}
+              />
+              <StatBox
+                label="לא פעילים"
+                value={String(ss.lastClientsInactive ?? 0)}
+              />
             </div>
           ) : null}
-        </>
+        </div>
       ) : null}
 
       {connected ? (
-        <div className="mt-3 flex justify-end">
+        <div className="mt-4 flex justify-end border-t border-[var(--border)] pt-3">
           <button
             type="button"
             onClick={handleReset}
             disabled={busy}
-            className="text-[11px] font-semibold text-red-600 underline-offset-2 hover:underline disabled:opacity-50"
+            className="text-[11px] font-semibold text-[#DC2626] underline-offset-2 transition hover:underline disabled:opacity-50"
           >
             מחק את כל ההכנסות הקיימות (איפוס)
           </button>
@@ -207,11 +235,11 @@ export function MorningSyncPanel() {
 
       {showConnect ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
           onClick={() => !busy && setShowConnect(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-[var(--surface)] p-5 shadow-xl"
+            className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
             dir="rtl"
           >
@@ -219,7 +247,7 @@ export function MorningSyncPanel() {
               חיבור לחשבונית ירוקה
             </h3>
             <p className="mt-1 text-[12px] text-[var(--text-mid)]">
-              הזן את מזהה המפתח והסוד מתוך חשבונית ירוקה (הגדרות ← API).
+              הזינו מזהה מפתח וסוד מהגדרות ← API בחשבונית ירוקה.
             </p>
 
             <label className="mt-4 block text-[12px] font-semibold text-[var(--text-mid)]">
@@ -228,7 +256,7 @@ export function MorningSyncPanel() {
                 type="text"
                 value={keyId}
                 onChange={(e) => setKeyId(e.target.value)}
-                className="mt-1 w-full rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px]"
+                className="mt-1 w-full rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2.5 text-[13px]"
                 placeholder="••••••••-••••-••••"
                 autoComplete="off"
               />
@@ -240,7 +268,7 @@ export function MorningSyncPanel() {
                 type="password"
                 value={keySecret}
                 onChange={(e) => setKeySecret(e.target.value)}
-                className="mt-1 w-full rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px]"
+                className="mt-1 w-full rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2.5 text-[13px]"
                 placeholder="••••••••••••••••"
                 autoComplete="off"
               />
@@ -251,7 +279,7 @@ export function MorningSyncPanel() {
               <select
                 value={env}
                 onChange={(e) => setEnv(e.target.value as MorningEnv)}
-                className="mt-1 w-full rounded-[10px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px]"
+                className="mt-1 w-full rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2.5 text-[13px]"
               >
                 <option value="production">ייצור (Production)</option>
                 <option value="sandbox">בדיקות (Sandbox)</option>
@@ -263,7 +291,7 @@ export function MorningSyncPanel() {
                 type="button"
                 onClick={() => setShowConnect(false)}
                 disabled={busy}
-                className="rounded-[10px] border border-[var(--border)] px-4 py-2 text-[12px] font-semibold text-[var(--text-mid)] disabled:opacity-50"
+                className="rounded-[10px] border border-[var(--border)] px-4 py-2.5 text-[12px] font-semibold text-[var(--text-mid)] disabled:opacity-50"
               >
                 ביטול
               </button>
@@ -271,7 +299,7 @@ export function MorningSyncPanel() {
                 type="button"
                 onClick={handleConnect}
                 disabled={busy || !keyId.trim() || !keySecret.trim()}
-                className="rounded-[10px] bg-[var(--orange)] px-4 py-2 text-[12px] font-bold text-white disabled:opacity-50"
+                className="rounded-[10px] bg-[var(--orange)] px-4 py-2.5 text-[12px] font-bold text-white disabled:opacity-50"
               >
                 {busy ? 'מתחבר…' : 'התחבר ואמת'}
               </button>
@@ -293,11 +321,11 @@ function StatBox({
   warn?: boolean
 }) {
   return (
-    <div className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--surface)] px-3 py-2 text-right">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-right">
       <p className="text-[10px] font-semibold text-[var(--text-light)]">{label}</p>
       <p
-        className={`mt-0.5 text-[13px] font-bold ${
-          warn ? 'text-amber-600' : 'text-[var(--text-dark)]'
+        className={`mt-1 text-[13px] font-bold leading-snug ${
+          warn ? 'text-[#D97706]' : 'text-[var(--text-dark)]'
         }`}
       >
         {value}

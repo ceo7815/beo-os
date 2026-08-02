@@ -114,11 +114,8 @@ export function incomePaymentRecords(
   if (Array.isArray(inc.payments) && inc.payments.length > 0) {
     return inc.payments
   }
-  if (
-    (inc.status === 'paid' || inc.status === 'partial') &&
-    typeof inc.paidAmount === 'number' &&
-    inc.paidAmount > 0
-  ) {
+  // paidAmount נשמר גם כשסטטוס התצוגה הוא overdue (pending שעבר מועד)
+  if (typeof inc.paidAmount === 'number' && inc.paidAmount > 0) {
     return [
       {
         id: 'legacy',
@@ -138,7 +135,9 @@ export function incomeTotalPaid(inc: FinanceIncome): number {
     return round2(records.reduce((s, p) => s + p.amount, 0))
   }
   if (inc.status === 'paid') return inc.amount
-  if (inc.status === 'partial') return inc.paidAmount ?? 0
+  if (typeof inc.paidAmount === 'number' && inc.paidAmount > 0) {
+    return round2(inc.paidAmount)
+  }
   return 0
 }
 

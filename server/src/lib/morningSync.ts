@@ -1,4 +1,4 @@
-import type { Firestore } from 'firebase-admin/firestore'
+import { FieldValue, type Firestore } from 'firebase-admin/firestore'
 import { env } from '../config/env.js'
 import { getAdminDb } from './firebaseAdmin.js'
 import { MorningClient } from './morningClient.js'
@@ -8,7 +8,9 @@ import {
 } from './morningCredentials.js'
 import {
   INCOME_DOC_TYPES,
+  applyPartialPaidToMappedIncome,
   mapMorningDocument,
+  sumLinkedPaymentDocuments,
   type MappedIncome,
 } from './documentMapper.js'
 import { mapMorningClient, type MappedClient } from './clientMapper.js'
@@ -155,6 +157,9 @@ export async function fetchMorningSyncPayload(options?: {
     if (m) incomes.push(m)
   }
 
+  // תשלומים חלקיים בחשבונות עסקה פתוחים — ממסמכים מקושרים ב-GI
+  await enrichOpenTransactionPartials(api, incomes)
+
   return {
     ok: true,
     mode: 'client_write',
@@ -162,6 +167,30 @@ export async function fetchMorningSyncPayload(options?: {
     toDate,
     clients,
     incomes,
+  }
+}
+
+/**
+ * לחשבונות עסקה שעדיין פתוחים ב-GI: מושך מסמכים מקושרים (קבלה / מס+קבלה)
+ * ומעדכן paidAmount + status=partial. לא משנה הכנסות/סגירה.
+ */
+async function enrichOpenTransactionPartials(
+  api: MorningClient,
+  incomes: MappedIncome[],
+): Promise<void> {
+  for (let i = 0; i < incomes.length; i += 1) {
+    const m = incomes[i]!
+    if (m.cancelled) continue
+    if (m.documentKind !== 'transaction_account') continue
+    if (m.status === 'paid') continue
+    const giStatus = m.greenInvoiceStatus
+    if (giStatus === 1 || giStatus === 2 || giStatus === 3 || giStatus === 4) {
+      continue
+    }
+    const linked = await api.getLinkedDocuments(m.greenInvoiceId)
+    const linkedPaid = sumLinkedPaymentDocuments(linked)
+    if (linkedPaid <= 0) continue
+    incomes[i] = applyPartialPaidToMappedIncome(m, linkedPaid)
   }
 }
 
@@ -335,6 +364,7 @@ export async function runMorningSync(options?: {
     const m = mapMorningDocument(raw)
     if (m) mapped.push(m)
   }
+  await enrichOpenTransactionPartials(client, mapped)
 
   for (let i = 0; i < mapped.length; i += 400) {
     const slice = mapped.slice(i, i + 400)
@@ -374,6 +404,15 @@ export async function runMorningSync(options?: {
         row.paidAmount = m.amount
         row.paidDate = m.invoiceDate
         row.paymentMethod = 'bank_transfer'
+      } else if (
+        m.status === 'partial' &&
+        typeof m.paidAmount === 'number' &&
+        m.paidAmount > 0
+      ) {
+        row.paidAmount = m.paidAmount
+      } else {
+        // מונע יתרה שגויה מ-paidAmount ישן אחרי סנכרון מחדש
+        row.paidAmount = FieldValue.delete()
       }
       // merge: שומר createdAt מקורי אם כבר קיים
       batch.set(ref, row, { merge: true })

@@ -359,6 +359,29 @@ export class MorningClient {
     } while (page <= pages)
     return all
   }
+
+  /**
+   * מסמכים מקושרים (למשל קבלות ששולמו כנגד חשבון עסקה).
+   * נכשל בשקט → מערך ריק, כדי לא להפיל סנכרון שלם.
+   */
+  async getLinkedDocuments(documentId: string): Promise<MorningDocument[]> {
+    try {
+      const data = await this.authedRequest<unknown>(
+        `/documents/${encodeURIComponent(documentId)}/linked`,
+        { method: 'GET' },
+      )
+      if (Array.isArray(data)) return data as MorningDocument[]
+      if (data && typeof data === 'object') {
+        const obj = data as Record<string, unknown>
+        if (Array.isArray(obj.items)) return obj.items as MorningDocument[]
+        if (Array.isArray(obj.documents)) return obj.documents as MorningDocument[]
+        if (Array.isArray(obj.linked)) return obj.linked as MorningDocument[]
+      }
+      return []
+    } catch {
+      return []
+    }
+  }
 }
 
 export class MorningError extends Error {

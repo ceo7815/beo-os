@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   getDocs,
   writeBatch,
@@ -36,7 +37,9 @@ export type MappedGiIncome = {
   amountBeforeVat?: number
   invoiceNumber: string
   invoiceDate: string
-  status: 'paid' | 'pending'
+  status: 'paid' | 'pending' | 'partial'
+  /** תשלומים חלקיים בתוך חשבון עסקה פתוח */
+  paidAmount?: number
   greenInvoiceStatus?: number
   description?: string
   clientName: string
@@ -279,6 +282,15 @@ export async function applyMorningSyncPayload(
       row.paidAmount = m.amount
       row.paidDate = m.invoiceDate
       row.paymentMethod = 'bank_transfer'
+    } else if (
+      m.status === 'partial' &&
+      typeof m.paidAmount === 'number' &&
+      m.paidAmount > 0
+    ) {
+      row.paidAmount = m.paidAmount
+    } else {
+      // מונע יתרה שגויה מ-paidAmount ישן אחרי סנכרון מחדש
+      row.paidAmount = deleteField()
     }
     ops.push((batch) => {
       batch.set(ref, row, { merge: true })

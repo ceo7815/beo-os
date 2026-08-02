@@ -1,5 +1,4 @@
 import { HubDropdownSelect } from '../shared/HubDropdownSelect'
-import { hubSectionClass } from '../../lib/hubSectionBorder'
 import type { MonthPreset } from '../../hooks/useFinancePeriodFilter'
 import { FinanceFieldLabel, financeHubInputClass } from './FinanceKpi'
 
@@ -46,13 +45,18 @@ export function FinancePeriodFilter({
   projectFilter,
   clientFilter,
 }: Props) {
+  const chipActive =
+    'inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-[var(--orange)] bg-[var(--orange)] px-2.5 text-[11px] font-bold text-white'
+  const chipIdle =
+    'inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 text-[11px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]'
+
   return (
-    <section
-      className={`flex flex-col gap-3 rounded-2xl ${hubSectionClass(4)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:flex-wrap sm:items-end`}
-    >
-      <div className="min-w-0 flex-[2]">
-        <FinanceFieldLabel>תקופה</FinanceFieldLabel>
-        <div className="mb-2 flex flex-wrap gap-1.5">
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="ml-1 text-[12px] font-extrabold text-[var(--text-dark)]">
+            תקופה
+          </span>
           <button
             type="button"
             onClick={() => {
@@ -62,26 +66,21 @@ export function FinancePeriodFilter({
               }
               setMonthPreset('pick')
             }}
-            className={
-              periodMode === 'single'
-                ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-            }
+            className={periodMode === 'single' ? chipActive : chipIdle}
           >
             חודש בודד
           </button>
           <button
             type="button"
             onClick={() => setPeriodMode('range')}
-            className={
-              periodMode === 'range'
-                ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-            }
+            className={periodMode === 'range' ? chipActive : chipIdle}
           >
             טווח
           </button>
-          <span className="mx-1 hidden h-6 w-px self-center bg-[var(--border)] sm:inline" />
+          <span
+            className="mx-0.5 hidden h-5 w-px bg-[var(--border)] sm:block"
+            aria-hidden
+          />
           {(
             [
               ['month', 'חודש נוכחי'],
@@ -89,92 +88,103 @@ export function FinancePeriodFilter({
               ['q', '3 חודשים'],
               ['half', '6 חודשים'],
               ['year', '12 חודשים'],
-              ['all', 'מתחילת הפעילות'],
+              ['all', 'הכל'],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               type="button"
+              title={id === 'all' ? 'מתחילת הפעילות' : undefined}
               onClick={() => applyMonthPreset(id)}
-              className={
-                monthPreset === id
-                  ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                  : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-              }
+              className={monthPreset === id ? chipActive : chipIdle}
             >
               {label}
             </button>
           ))}
         </div>
-        {periodMode === 'single' ? (
-          <div>
-            <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-              בחר חודש
-            </span>
+        <span className="text-[11px] font-semibold text-[var(--text-mid)]">
+          {filterRangeLabel}
+        </span>
+      </div>
+
+      <div
+        className={`mt-4 grid gap-3 ${
+          projectFilter || clientFilter
+            ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+            : 'grid-cols-1 sm:grid-cols-2'
+        }`}
+      >
+        <div className="min-w-0">
+          {periodMode === 'single' ? (
+            <>
+              <FinanceFieldLabel>חודש</FinanceFieldLabel>
+              <HubDropdownSelect
+                value={filterYmFrom}
+                onChange={applySingleMonth}
+                options={monthOptions}
+              />
+            </>
+          ) : (
+            <>
+              <FinanceFieldLabel>טווח חודשים</FinanceFieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
+                    מ-
+                  </span>
+                  <input
+                    type="month"
+                    value={filterYmFrom}
+                    onChange={(e) => {
+                      setMonthPreset('custom')
+                      setFilterYmFrom(e.target.value)
+                    }}
+                    className={financeHubInputClass()}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
+                    עד
+                  </span>
+                  <input
+                    type="month"
+                    value={filterYmTo}
+                    onChange={(e) => {
+                      setMonthPreset('custom')
+                      setFilterYmTo(e.target.value)
+                    }}
+                    className={financeHubInputClass()}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {projectFilter ? (
+          <div className="min-w-0">
+            <FinanceFieldLabel>פרויקט</FinanceFieldLabel>
             <HubDropdownSelect
-              value={filterYmFrom}
-              onChange={applySingleMonth}
-              options={monthOptions}
+              value={projectFilter.value}
+              onChange={projectFilter.onChange}
+              options={projectFilter.options}
+              emptyOption={{ label: 'כל הפרויקטים' }}
             />
           </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-                מ-
-              </span>
-              <input
-                type="month"
-                value={filterYmFrom}
-                onChange={(e) => {
-                  setMonthPreset('custom')
-                  setFilterYmFrom(e.target.value)
-                }}
-                className={financeHubInputClass()}
-              />
-            </div>
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-                עד
-              </span>
-              <input
-                type="month"
-                value={filterYmTo}
-                onChange={(e) => {
-                  setMonthPreset('custom')
-                  setFilterYmTo(e.target.value)
-                }}
-                className={financeHubInputClass()}
-              />
-            </div>
+        ) : null}
+
+        {clientFilter ? (
+          <div className="min-w-0">
+            <FinanceFieldLabel>לקוח</FinanceFieldLabel>
+            <HubDropdownSelect
+              value={clientFilter.value}
+              onChange={clientFilter.onChange}
+              options={clientFilter.options}
+              emptyOption={{ label: 'כל הלקוחות' }}
+            />
           </div>
-        )}
-        <p className="mt-1.5 text-[11px] font-semibold text-[var(--text-mid)]">
-          {filterRangeLabel}
-        </p>
+        ) : null}
       </div>
-      {projectFilter ? (
-        <div className="min-w-[180px] flex-1">
-          <FinanceFieldLabel>פרויקט</FinanceFieldLabel>
-          <HubDropdownSelect
-            value={projectFilter.value}
-            onChange={projectFilter.onChange}
-            options={projectFilter.options}
-            emptyOption={{ label: 'כל הפרויקטים' }}
-          />
-        </div>
-      ) : null}
-      {clientFilter ? (
-        <div className="min-w-[180px] flex-1">
-          <FinanceFieldLabel>לקוח</FinanceFieldLabel>
-          <HubDropdownSelect
-            value={clientFilter.value}
-            onChange={clientFilter.onChange}
-            options={clientFilter.options}
-            emptyOption={{ label: 'כל הלקוחות' }}
-          />
-        </div>
-      ) : null}
     </section>
   )
 }

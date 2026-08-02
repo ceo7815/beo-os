@@ -23,8 +23,10 @@ type Tab = {
  * לטיפול, כך שאין צורך להיכנס לכל מסך רק כדי לגלות שאין בו כלום.
  */
 export function FinanceTabs({ badges = {} }: { badges?: FinanceTabBadges }) {
+  // סדר זהה לסרגל הצדדי תחת «פיננסים»
   const tabs: Tab[] = [
     { to: '/finance', label: 'סקירה', hint: 'רווח, מע״מ ואמינות הנתונים' },
+    { to: '/finance/income', label: 'הכנסות', hint: 'מסמכים מחשבונית ירוקה' },
     {
       to: '/finance/expenses',
       label: 'הוצאות',
@@ -42,7 +44,7 @@ export function FinanceTabs({ badges = {} }: { badges?: FinanceTabBadges }) {
       label: 'תיק חשבוניות',
       hint: 'ארכיון לפי חודשים ושליחה לרו״ח',
     },
-    { to: '/finance/income', label: 'הכנסות', hint: 'מסמכים מחשבונית ירוקה' },
+    { to: '/finance/projects', label: 'פרויקטים', hint: 'רווחיות לפי פרויקט' },
     {
       to: '/collections',
       label: 'גבייה',
@@ -50,7 +52,6 @@ export function FinanceTabs({ badges = {} }: { badges?: FinanceTabBadges }) {
       ...(badges.overdue ? { badge: badges.overdue } : {}),
       urgent: true,
     },
-    { to: '/finance/projects', label: 'פרויקטים', hint: 'רווחיות לפי פרויקט' },
   ]
 
   return (

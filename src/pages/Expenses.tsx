@@ -18,14 +18,13 @@ import { HubDropdownSelect } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
 import {
   currentYm,
-  addMonths,
   filterExpensesByClient,
   formatNis,
-  formatYmRangeLabel,
-  monthOptions,
   monthLabelHe,
   PLATFORM_OPTIONS,
 } from '../lib/financeCalc'
+import { FinancePeriodFilter } from '../components/finance/FinancePeriodFilter'
+import { useFinancePeriodFilter } from '../hooks/useFinancePeriodFilter'
 import {
   expenseTypeMap,
   expenseDisplayName,
@@ -209,12 +208,12 @@ export function Expenses() {
   )
 
   const attention = useFinanceAttention()
-  const [filterYmFrom, setFilterYmFrom] = useState(currentYm())
-  const [filterYmTo, setFilterYmTo] = useState(currentYm())
-  const [periodMode, setPeriodMode] = useState<'single' | 'range'>('single')
-  const [monthPreset, setMonthPreset] = useState<
-    'month' | 'prev' | 'q' | 'half' | 'year' | 'pick' | 'custom'
-  >('month')
+  const period = useFinancePeriodFilter()
+  const {
+    filterYmFrom,
+    filterYmTo,
+    filterRangeLabel,
+  } = period
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterClientId, setFilterClientId] = useState('')
   const [activeTab] = useState<'expenses'>('expenses')
@@ -292,55 +291,6 @@ export function Expenses() {
     }),
     [filterYmFrom, filterYmTo, filterProjectId, filterClientId],
   )
-
-  const filterRangeLabel = useMemo(
-    () => formatYmRangeLabel(filterYmFrom, filterYmTo),
-    [filterYmFrom, filterYmTo],
-  )
-
-  const applyMonthPreset = (
-    preset: 'month' | 'prev' | 'q' | 'half' | 'year',
-  ) => {
-    const now = currentYm()
-    setMonthPreset(preset)
-    switch (preset) {
-      case 'month':
-        setPeriodMode('single')
-        setFilterYmFrom(now)
-        setFilterYmTo(now)
-        break
-      case 'prev': {
-        const prev = addMonths(now, -1)
-        setPeriodMode('single')
-        setFilterYmFrom(prev)
-        setFilterYmTo(prev)
-        break
-      }
-      case 'q':
-        setPeriodMode('range')
-        setFilterYmFrom(addMonths(now, -2))
-        setFilterYmTo(now)
-        break
-      case 'half':
-        setPeriodMode('range')
-        setFilterYmFrom(addMonths(now, -5))
-        setFilterYmTo(now)
-        break
-      case 'year':
-        setPeriodMode('range')
-        setFilterYmFrom(addMonths(now, -11))
-        setFilterYmTo(now)
-        break
-    }
-  }
-
-  const applySingleMonth = (ym: string) => {
-    setPeriodMode('single')
-    setMonthPreset('pick')
-    setFilterYmFrom(ym)
-    setFilterYmTo(ym)
-  }
-
 
   useEffect(() => {
     const SYNC_KEY = 'hub-finance-data-sync-v4'
@@ -780,130 +730,19 @@ export function Expenses() {
 
       <FinanceTabs badges={attention} />
 
-      <section
-        className={`flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] sm:flex-row sm:flex-wrap sm:items-end`}
-      >
-        <div className="min-w-0 flex-[2]">
-          <FieldLabel>תקופה</FieldLabel>
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setPeriodMode('single')
-                if (filterYmFrom !== filterYmTo) {
-                  setFilterYmTo(filterYmFrom)
-                }
-                setMonthPreset('pick')
-              }}
-              className={
-                periodMode === 'single'
-                  ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                  : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-              }
-            >
-              חודש בודד
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriodMode('range')}
-              className={
-                periodMode === 'range'
-                  ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                  : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-              }
-            >
-              טווח
-            </button>
-            <span className="mx-1 hidden h-6 w-px self-center bg-[var(--border)] sm:inline" />
-            {(
-              [
-                ['month', 'חודש נוכחי'],
-                ['prev', 'חודש קודם'],
-                ['q', '3 חודשים'],
-                ['half', '6 חודשים'],
-                ['year', '12 חודשים'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => applyMonthPreset(id)}
-                className={
-                  monthPreset === id
-                    ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                    : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {periodMode === 'single' ? (
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-                בחר חודש
-              </span>
-              <HubDropdownSelect
-                value={filterYmFrom}
-                onChange={applySingleMonth}
-                options={monthOptions(36)}
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-                  מ-
-                </span>
-                <input
-                  type="month"
-                  value={filterYmFrom}
-                  onChange={(e) => {
-                    setMonthPreset('custom')
-                    setFilterYmFrom(e.target.value)
-                  }}
-                  className={hubInputClass()}
-                />
-              </div>
-              <div>
-                <span className="mb-1 block text-[10px] font-semibold text-[var(--text-light)]">
-                  עד
-                </span>
-                <input
-                  type="month"
-                  value={filterYmTo}
-                  onChange={(e) => {
-                    setMonthPreset('custom')
-                    setFilterYmTo(e.target.value)
-                  }}
-                  className={hubInputClass()}
-                />
-              </div>
-            </div>
-          )}
-          <p className="mt-1.5 text-[11px] font-semibold text-[var(--text-mid)]">
-            {filterRangeLabel}
-          </p>
-        </div>
-        <div className="min-w-[180px] flex-1">
-          <FieldLabel>פרויקט</FieldLabel>
-          <HubDropdownSelect
-            value={filterProjectId}
-            onChange={setFilterProjectId}
-            options={projectFilterOptions}
-            emptyOption={{ label: 'כל הפרויקטים' }}
-          />
-        </div>
-        <div className="min-w-[180px] flex-1">
-          <FieldLabel>לקוח</FieldLabel>
-          <HubDropdownSelect
-            value={filterClientId}
-            onChange={setFilterClientId}
-            options={clientFilterOptions}
-            emptyOption={{ label: 'כל הלקוחות' }}
-          />
-        </div>
-      </section>
+      <FinancePeriodFilter
+        {...period}
+        projectFilter={{
+          value: filterProjectId,
+          onChange: setFilterProjectId,
+          options: projectFilterOptions,
+        }}
+        clientFilter={{
+          value: filterClientId,
+          onChange: setFilterClientId,
+          options: clientFilterOptions,
+        }}
+      />
 
       {filterClientId &&
       (clients.find((c) => c.id === filterClientId)?.financeBalance ?? 0) > 0 ? (

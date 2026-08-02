@@ -78,17 +78,7 @@ export function withDisplayOverdueIncomes(
   list: FinanceIncome[],
   today = todayYmd(),
 ): FinanceIncome[] {
-  return list.map((row) => {
-    const due = row.invoiceDate.slice(0, 10)
-    if (
-      row.status === 'pending' &&
-      /^\d{4}-\d{2}-\d{2}$/.test(due) &&
-      due < today
-    ) {
-      return { ...row, status: 'overdue' as FinanceIncomeStatus }
-    }
-    return row
-  })
+  return list.map((row) => applyOverdueToIncome(row, today))
 }
 
 export type FinanceFilters = {
@@ -208,6 +198,13 @@ export function incomeAppliesToMonth(
 }
 
 function applyOverdueToIncome(row: FinanceIncome, today: string): FinanceIncome {
+  // תשלום חלקי נשאר «שולם חלקית» — לא הופכים ל־overdue שמסתיר את המצב
+  if (row.status === 'partial') return row
+  if (typeof row.paidAmount === 'number' && row.paidAmount > 0) {
+    if (row.status === 'pending' || row.status === 'overdue') {
+      return { ...row, status: 'partial' }
+    }
+  }
   const due = row.invoiceDate.slice(0, 10)
   if (
     row.status === 'pending' &&

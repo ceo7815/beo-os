@@ -5,7 +5,10 @@ import {
   FINANCE_INCOME_DOCUMENT_LABELS,
   incomeDocumentKind,
 } from '../../lib/financeIncomeDocument'
-import { incomePaymentDate } from '../../lib/financeIncomePayment'
+import {
+  incomeOutstandingAmount,
+  incomePaymentDate,
+} from '../../lib/financeIncomePayment'
 import {
   expenseDisplayName,
   resolveExpenseType,
@@ -30,6 +33,7 @@ export type FinanceMetricId =
   | 'vatPayable'
   | 'expenseNonVat'
   | 'grossProfit'
+  | 'collection'
 
 type FormulaRow = {
   label: string
@@ -137,6 +141,7 @@ const METRIC_TITLES: Record<FinanceMetricId, string> = {
   vatPayable: 'מע״מ לתשלום',
   expenseNonVat: 'הוצאות ללא מע״מ',
   grossProfit: 'רווח גולמי',
+  collection: 'יתרה לגבייה',
 }
 
 export function FinanceKpiDetailModal({
@@ -145,6 +150,7 @@ export function FinanceKpiDetailModal({
   summary,
   incomes,
   expenses,
+  collectionIncomes = [],
   expenseTypes,
   clientNameById,
   projectNameById,
@@ -157,6 +163,8 @@ export function FinanceKpiDetailModal({
   incomes: FinanceIncome[]
   /** הוצאות מסוננות לתקופה */
   expenses: FinanceExpense[]
+  /** חשבונות עסקה פתוחים — לא מסוננים לפי תאריך */
+  collectionIncomes?: FinanceIncome[]
   expenseTypes: FinanceExpenseTypeDef[]
   clientNameById: Map<string, string>
   projectNameById: Map<string, string>
@@ -382,7 +390,53 @@ export function FinanceKpiDetailModal({
         strong: true,
       },
     ]
+  } else if (metric === 'collection') {
+    const sorted = [...collectionIncomes].sort((a, b) =>
+      b.invoiceDate.localeCompare(a.invoiceDate),
+    )
+    explanation =
+      'סכום כל היתרות הפתוחות בחשבונות עסקה (מסמך 300) מחשבונית ירוקה. לא נספר כהכנסה עד שמתקבל תשלום ומופקת חשבונית מס קבלה. היתרה תמיד פעילה — לא מושפעת מפילטר התאריך.'
+    formula = [
+      {
+        label: `${sorted.length} חשבונות עסקה פתוחים`,
+        value: formatNis(summary.collectionBalance),
+        sign: '=',
+        valueClass: 'text-[#D97706]',
+        strong: true,
+      },
+    ]
+    sourceNode = (
+      <SourceTable
+        columns={['מספר', 'תאריך', 'לקוח', 'פרויקט', 'סכום מסמך', 'יתרה פתוחה']}
+        empty="אין חשבונות עסקה פתוחים"
+        rows={sorted.map((inc) => {
+          const vat = resolveIncomeVat(inc)
+          const outstanding = incomeOutstandingAmount(inc)
+          const client =
+            clientNameById.get(inc.clientId) ??
+            inc.greenInvoiceClientName ??
+            '—'
+          const project = inc.projectId
+            ? (projectNameById.get(inc.projectId) ?? '—')
+            : '—'
+          return [
+            `#${inc.invoiceNumber || inc.greenInvoiceNumber || '—'}`,
+            formatDateIL(inc.invoiceDate),
+            client,
+            project,
+            formatNis(vat.gross),
+            {
+              text: formatNis(outstanding),
+              className: 'text-[#D97706]',
+            },
+          ]
+        })}
+      />
+    )
   }
+
+  const shownPeriod =
+    metric === 'collection' ? 'כל התקופות · לא מסונן לפי תאריך' : periodLabel
 
   return (
     <Modal
@@ -392,7 +446,7 @@ export function FinanceKpiDetailModal({
       size="lg"
     >
       <div className="space-y-4">
-        <div className="text-[12px] text-[var(--text-mid)]">{periodLabel}</div>
+        <div className="text-[12px] text-[var(--text-mid)]">{shownPeriod}</div>
         <p className="text-[13px] leading-relaxed text-[var(--text-dark)]">
           {explanation}
         </p>

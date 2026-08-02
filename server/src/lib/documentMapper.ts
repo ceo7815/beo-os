@@ -63,7 +63,9 @@ export type MappedIncome = {
   amountBeforeVat?: number
   invoiceNumber: string
   invoiceDate: string
-  status: 'paid' | 'pending'
+  status: 'paid' | 'pending' | 'partial'
+  /** סכום ששולם בפועל על המסמך (תשלומים חלקיים בתוך חשבון עסקה) */
+  paidAmount?: number
   /** קוד סטטוס המסמך ב-GI — 0 פתוח · 1 סגור · 2 נסגר ידנית · 3/4 מבוטל */
   greenInvoiceStatus?: number
   description?: string
@@ -75,6 +77,70 @@ export type MappedIncome = {
   clientGreenInvoiceId: string
   /** האם המסמך מבוטל (יש להסיר מהמאגר) */
   cancelled: boolean
+}
+
+/** סוגי מסמך שמייצגים תקבול ומקטינים יתרה פתוחה בחשבון עסקה */
+const LINKED_PAYMENT_DOC_TYPES = new Set<number>([
+  MORNING_DOC_TYPE.TAX_INVOICE_RECEIPT,
+  MORNING_DOC_TYPE.RECEIPT,
+  MORNING_DOC_TYPE.DONATION_RECEIPT,
+])
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+/** סכום מערך payment של מסמך Morning (אם קיים בתוצאת search/get) */
+export function sumDocumentPaymentArray(doc: MorningDocument): number {
+  const payment = doc.payment
+  if (!Array.isArray(payment)) return 0
+  let sum = 0
+  for (const raw of payment) {
+    if (!raw || typeof raw !== 'object') continue
+    const p = raw as Record<string, unknown>
+    const price = firstNumber(p, ['price', 'amount', 'sum', 'total'])
+    if (typeof price === 'number' && Number.isFinite(price) && price > 0) {
+      sum += price
+    }
+  }
+  return round2(sum)
+}
+
+/** סכום תקבולים ממסמכים מקושרים (קבלה / חשבונית מס קבלה) */
+export function sumLinkedPaymentDocuments(linked: MorningDocument[]): number {
+  let sum = 0
+  for (const doc of linked) {
+    const type = firstNumber(doc, ['type', 'documentType'])
+    if (type === undefined || !LINKED_PAYMENT_DOC_TYPES.has(type)) continue
+    const status = firstNumber(doc, ['status'])
+    if (status === 3 || status === 4) continue // מבוטל
+    let amount =
+      firstNumber(doc, ['amount', 'amountWithVat', 'total', 'totalAmount']) ?? 0
+    if (amount <= 0) {
+      amount = sumDocumentPaymentArray(doc)
+    }
+    if (amount > 0) sum += amount
+  }
+  return round2(sum)
+}
+
+/**
+ * מעדכן חשבון עסקה פתוח עם סכום ששולם (תשלום חלקי).
+ * לא סוגר את המסמך — סטטוס GI נשאר מקור האמת לפתיחה/סגירה.
+ */
+export function applyPartialPaidToMappedIncome(
+  income: MappedIncome,
+  paidCandidate: number,
+): MappedIncome {
+  if (income.cancelled || income.status === 'paid') return income
+  if (income.documentKind !== 'transaction_account') return income
+  const paid = round2(Math.max(income.paidAmount ?? 0, paidCandidate))
+  if (paid <= 0) return income
+  return {
+    ...income,
+    paidAmount: Math.min(paid, Math.abs(income.amount)),
+    status: 'partial',
+  }
 }
 
 function firstString(obj: Record<string, unknown>, keys: string[]): string {
@@ -179,19 +245,34 @@ export function mapMorningDocument(doc: MorningDocument): MappedIncome | null {
     documentKind === 'credit_invoice'
   // חשבון עסקה / חשבונית מס — סטטוס לפי GI אחד-לאחד (סגור = שולם)
   const isPaid = isPaidKind || giClosed
+  const paymentPaid = sumDocumentPaymentArray(doc)
+  const roundedAmount = round2(amount)
+
+  let mappedStatus: MappedIncome['status'] = isPaid ? 'paid' : 'pending'
+  let paidAmount: number | undefined
+  if (isPaid) {
+    paidAmount = Math.abs(roundedAmount)
+  } else if (
+    documentKind === 'transaction_account' &&
+    paymentPaid > 0
+  ) {
+    // תשלומים חלקיים בתוך חשבון עסקה פתוח — לא סוגרים את המסמך
+    mappedStatus = 'partial'
+    paidAmount = Math.min(paymentPaid, Math.abs(roundedAmount))
+  }
 
   return {
     greenInvoiceId,
     greenInvoiceType: type,
     greenInvoiceNumber: number,
     documentKind,
-    amount: Math.round(amount * 100) / 100,
+    amount: roundedAmount,
     amountIncludesVat: true,
     ...(vatAmount !== undefined ? { vatAmount } : {}),
     invoiceNumber: number,
     invoiceDate,
-    // מס קבלה / קבלה / זיכוי = שולם; אחרת לפי סטטוס GI (סגור = שולם)
-    status: isPaid ? 'paid' : 'pending',
+    status: mappedStatus,
+    ...(paidAmount !== undefined ? { paidAmount } : {}),
     ...(typeof status === 'number' ? { greenInvoiceStatus: status } : {}),
     ...(description ? { description } : {}),
     clientName: client.name,
