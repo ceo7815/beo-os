@@ -22,6 +22,9 @@ services:
       MORNING_KEY_ID: ${MORNING_KEY_ID:-}
       MORNING_KEY_SECRET: ${MORNING_KEY_SECRET:-}
       BOT_API_KEY: ${BOT_API_KEY:-}
+      # Keeps admin routes reachable when the server-side Firestore users lookup
+      # fails; without it a credentials outage locks every admin endpoint out.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       FINANCE_DOCS_DIR: /data/finance-documents
     # Exposed on the host so the server's reverse proxy (nginx, outside Docker) can route
     # pos.hub.co.il/api/... to this container - previously only reachable from other containers
