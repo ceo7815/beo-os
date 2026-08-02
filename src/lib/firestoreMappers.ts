@@ -47,6 +47,7 @@ import type {
 } from '../types'
 import { normalizeDueTimeHm } from './dates'
 import { parseFirestoreSupplierTypes } from './supplierTypes'
+import { parseForeignNote } from './foreignCurrency'
 
 export function timestampToIso(value: unknown): string {
   if (value instanceof Timestamp) {
@@ -392,7 +393,8 @@ export function docToFinanceExpense(
     reconciliationStatusRaw === 'gi_unpaid' ||
     reconciliationStatusRaw === 'document_not_required' ||
     reconciliationStatusRaw === 'manual_ok' ||
-    reconciliationStatusRaw === 'manual_pending'
+    reconciliationStatusRaw === 'manual_pending' ||
+    reconciliationStatusRaw === 'refunded'
       ? (reconciliationStatusRaw as FinanceExpense['reconciliationStatus'])
       : undefined
   const syncedAt =
@@ -404,6 +406,28 @@ export function docToFinanceExpense(
     rawCid !== undefined && rawCid !== null && String(rawCid).trim()
       ? String(rawCid).trim()
       : undefined
+  const str = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim() ? v.trim() : undefined
+  const num = (v: unknown): number | undefined =>
+    typeof v === 'number' && Number.isFinite(v) ? v : undefined
+
+  /**
+   * רשומות שיובאו לפני שהמט״ח נשמר בשדות ייעודיים מחזיקות אותו רק בתוך
+   * התיאור. חילוץ בקריאה חוסך מיגרציה ומחזיר גם אותן להתאמה מול חשבונית.
+   */
+  const savedCurrency = str(x.currency)
+  const savedOriginal = num(x.originalAmount)
+  const legacyForeign =
+    savedCurrency && savedOriginal
+      ? undefined
+      : parseForeignNote(description ?? '')
+  const foreignFields = legacyForeign
+    ? { currency: legacyForeign.currency, originalAmount: legacyForeign.amount }
+    : {
+        ...(savedCurrency ? { currency: savedCurrency } : {}),
+        ...(savedOriginal ? { originalAmount: savedOriginal } : {}),
+      }
+
   return {
     id: d.id,
     ...(clientId ? { clientId } : {}),
@@ -444,6 +468,38 @@ export function docToFinanceExpense(
     ...(reconciliationStatus ? { reconciliationStatus } : {}),
     ...(syncedAt ? { syncedAt } : {}),
     ...(x.hostingExpense === true ? { hostingExpense: true } : {}),
+    // חשבונית ספק מוצמדת — בלעדיה מסך ההתאמות לא יודע שהתשלום מתועד
+    ...(str(x.invoiceNumber) ? { invoiceNumber: str(x.invoiceNumber)! } : {}),
+    ...(str(x.documentUrl) ? { documentUrl: str(x.documentUrl)! } : {}),
+    ...(str(x.documentFileName)
+      ? { documentFileName: str(x.documentFileName)! }
+      : {}),
+    ...(str(x.documentAttachedAt)
+      ? { documentAttachedAt: str(x.documentAttachedAt)! }
+      : {}),
+    // שיוך חודשי — קובע לאיזה חודש הרשומה נספרת ברווח והפסד
+    ...(str(x.documentDate)
+      ? { documentDate: str(x.documentDate)!.slice(0, 10) }
+      : {}),
+    ...(str(x.documentMonth)
+      ? { documentMonth: str(x.documentMonth)!.slice(0, 7) }
+      : {}),
+    ...(x.isLateDocument === true ? { isLateDocument: true } : {}),
+    ...(str(x.refundForExpenseId)
+      ? { refundForExpenseId: str(x.refundForExpenseId)! }
+      : {}),
+    // פריסת תשלום מראש על פני חודשים
+    ...(num(x.spreadMonths) ? { spreadMonths: num(x.spreadMonths)! } : {}),
+    ...(str(x.spreadStartMonth)
+      ? { spreadStartMonth: str(x.spreadStartMonth)!.slice(0, 7) }
+      : {}),
+    // בכרטיס אשראי מועד החיוב בבנק שונה מתאריך העסקה
+    ...(str(x.chargeDate)
+      ? { chargeDate: str(x.chargeDate)!.slice(0, 10) }
+      : {}),
+    // מסמך במטבע חוץ — הסכום בשקלים עשוי להיות הערכה
+    ...foreignFields,
+    ...(x.amountIsEstimate === true ? { amountIsEstimate: true } : {}),
     supplierInvoiceReceived: x.supplierInvoiceReceived === true,
     createdAt: timestampToIso(x.createdAt),
   }

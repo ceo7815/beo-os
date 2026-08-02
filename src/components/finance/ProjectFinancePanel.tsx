@@ -211,8 +211,8 @@ export function ProjectFinancePanel({
                   const badge = expenseTypeStyle(typeDef)
                   const recurring = isRecurringExpense(row, typeDef)
                   const payMonth = expensePaymentMonth(row)
-                  const reportMonth = deriveExpensePnlMonth(row, incomes)
-                  const pnlAttributed = expenseUsesPnlAttribution(row, incomes)
+                  const reportMonth = deriveExpensePnlMonth(row)
+                  const pnlAttributed = expenseUsesPnlAttribution(row)
                   return (
                     <li
                       key={row.id}

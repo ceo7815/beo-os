@@ -128,6 +128,8 @@ export type ExpenseReconciliationStatus =
   | 'document_not_required'
   | 'manual_ok'
   | 'manual_pending'
+  /** החיוב בוטל בזיכוי מלא — אין מה לגבות בחשבונית */
+  | 'refunded'
 
 /** הוצאה במודול פיננסים — אדמין בלבד */
 export interface FinanceExpense {
@@ -165,6 +167,11 @@ export interface FinanceExpense {
   paymentMethod?: FinancePaymentMethod
   /** YYYY-MM-DD — תאריך תשלום בפועל (מהבנק) */
   paidDate?: string
+  /**
+   * YYYY-MM-DD — מועד ירידת הכסף מהחשבון.
+   * בכרטיס אשראי זה מועד החיוב המרוכז, שאינו זהה לתאריך העסקה.
+   */
+  chargeDate?: string
   /** אסמכתא ייחודית מקובץ הבנק — למניעת ייבוא כפול */
   bankRef?: string
   /** true = הוצאת אחסון (שרתים/דומיינים) — משויכת ל"אחסון אתרים" הפיננסי */
@@ -192,12 +199,44 @@ export interface FinanceExpense {
   linkedGreenInvoiceId?: string
   reconciliationStatus?: ExpenseReconciliationStatus
   syncedAt?: string
+  /** מטבע המסמך המקורי כשאינו שקל */
+  currency?: string
+  originalAmount?: number
+  /** הסכום בשקלים הוא הערכה עד להתאמה מול שורת האשראי */
+  amountIsEstimate?: boolean
+  /** מספר חשבונית הספק */
+  invoiceNumber?: string
+  /** קישור לחשבונית הספק השמורה — ההוכחה שהתשלום מתועד */
+  documentUrl?: string
+  /** שם הקובץ המקורי, לתצוגה ולזיהוי */
+  documentFileName?: string
+  /** ISO — מתי הוצמדה החשבונית לתשלום */
+  documentAttachedAt?: string
+  /**
+   * מזהה החיוב שהזיכוי הזה מבטל.
+   * קיים רק על רשומות זיכוי (amount שלילי) — שתי התנועות נשמרות בנפרד
+   * כדי שהספרים יישארו זהים לדף הבנק, והקישור מראה שהצמד מתאפס.
+   */
+  refundForExpenseId?: string
+  /** YYYY-MM-DD — תאריך המסמך, קובע את חודש הרווח וההפסד */
+  documentDate?: string
+  /** YYYY-MM — החודש שאליו המסמך שייך כלכלית, גם כשהוא נעול */
+  documentMonth?: string
+  /** המסמך הגיע אחרי שחודשו כבר נדווח, ולכן נספר בחודש הפתוח */
+  isLateDocument?: boolean
+  /** מספר חודשים לפריסת תשלום מראש — שורה אחת, תצוגה חודשית */
+  spreadMonths?: number
+  /** YYYY-MM — תחילת הפריסה; ברירת מחדל היא חודש החיוב */
+  spreadStartMonth?: string
   createdAt: string
   /** הרחבה לתצוגה — הוצאה קבועה/חוזרת לחודש אחר */
   isAutoOccurrence?: boolean
   sourceBillingMonth?: string
   /** הרחבה לתצוגה — מוצגת בחודש רווח והפסד שונה מתשלום */
   isPnlAttribution?: boolean
+  /** הרחבה לתצוגה — מנה חודשית מתוך תשלום פרוס */
+  isSpreadOccurrence?: boolean
+  spreadIndex?: number
 }
 
 export interface Invoice {

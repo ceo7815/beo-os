@@ -3,14 +3,14 @@ import type {
   FinanceExpenseFieldMode,
   FinanceExpensePnlCategory,
   FinanceExpenseTypeDef,
-  FinanceIncome,
 } from '../types'
-import {
-  deriveExpensePnlMonth,
-  expensePaymentMonth,
-} from './financeExpensePnl'
 import { monthsInRange, normalizeYmRange } from './financeMonthRange'
-import { expenseAccrualMonth, isSalaryLikeExpense } from './financeSalaryMonth'
+import { expenseAccrualMonth, isAccrualExpense } from './financeSalaryMonth'
+import {
+  expenseRowForMonth,
+  isSpreadExpense,
+  spreadIndexOf,
+} from './financeExpenseSpread'
 
 export const BUILTIN_FINANCE_EXPENSE_TYPES: FinanceExpenseTypeDef[] = [
   {
@@ -54,6 +54,15 @@ export const BUILTIN_FINANCE_EXPENSE_TYPES: FinanceExpenseTypeDef[] = [
     label: 'משכורת',
     color: '#059669',
     fieldMode: 'salary',
+    autoRecurring: false,
+    pnlCategory: 'fixed',
+    builtIn: true,
+  },
+  {
+    id: 'tax',
+    label: 'מסים ותשלומי חובה',
+    color: '#B45309',
+    fieldMode: 'none',
     autoRecurring: false,
     pnlCategory: 'fixed',
     builtIn: true,
@@ -120,41 +129,27 @@ export function isRecurringExpense(
   return exp.recurring === true
 }
 
-function parseYm(ym: string): { y: number; m: number } | null {
-  const [ys, ms] = ym.split('-')
-  const y = Number(ys)
-  const m = Number(ms)
-  if (!y || !m || m < 1 || m > 12) return null
-  return { y, m }
-}
-
-/** האם ההוצאה חלה על חודש יעד (כולל הוצאות קבועות/חוזרות) */
+/** האם ההוצאה חלה על חודש יעד (כולל הוצאות קבועות/חוזרות ותשלומים פרוסים) */
 export function expenseAppliesToMonth(
   exp: FinanceExpense,
   targetYm: string,
   typeDef: FinanceExpenseTypeDef,
-  incomes: FinanceIncome[] = [],
 ): boolean {
-  if (isSalaryLikeExpense(exp, typeDef)) {
+  if (isAccrualExpense(exp, typeDef)) {
     return expenseAccrualMonth(exp) === targetYm
   }
+  if (isSpreadExpense(exp)) {
+    return spreadIndexOf(exp, targetYm) >= 0
+  }
   const explicitPnl = exp.pnlMonth?.trim().slice(0, 7)
-  if (explicitPnl && !exp.projectId?.trim()) {
+  if (explicitPnl) {
     return explicitPnl === targetYm
   }
-  if (exp.projectId?.trim()) {
-    return deriveExpensePnlMonth(exp, incomes) === targetYm
-  }
 
-  if (exp.billingMonth === targetYm) return true
-  if (!isRecurringExpense(exp, typeDef)) return false
-
-  const start = parseYm(exp.billingMonth)
-  const target = parseYm(targetYm)
-  if (!start || !target) return false
-  if (target.y !== start.y) return false
-  if (target.m < start.m) return false
-  return true
+  // הוצאה שייכת לחודש שלה בלבד. סימון "הוצאה קבועה" אינו יוצר חיוב בחודשים
+  // הבאים — דוח רווח והפסד מציג את מה שקרה בפועל, לא תחזית. הוצאה חוזרת
+  // תיכנס לחודש הבא כשהיא תגיע מהבנק או מהסוכן, כמו כל הוצאה אחרת.
+  return exp.billingMonth === targetYm
 }
 
 export {
@@ -169,7 +164,6 @@ export function expandExpensesForFilters(
   filters: { ymFrom: string; ymTo: string; projectId: string; clientId: string },
   projectIdsForClient: Set<string>,
   typeMap: Map<string, FinanceExpenseTypeDef>,
-  incomes: FinanceIncome[] = [],
 ): FinanceExpense[] {
   const { ymFrom, ymTo, projectId, clientId } = filters
   const { from, to } = normalizeYmRange(ymFrom, ymTo)
@@ -189,29 +183,23 @@ export function expandExpensesForFilters(
       if (!matchesClient(exp)) continue
 
       const def = resolveExpenseType(exp.type, typeMap)
-      if (!expenseAppliesToMonth(exp, ym, def, incomes)) continue
+      if (!expenseAppliesToMonth(exp, ym, def)) continue
 
-      const payMonth = expensePaymentMonth(exp)
-
-      if (exp.projectId?.trim()) {
-        const reportMonth = deriveExpensePnlMonth(exp, incomes)
-        monthOut.push({
-          ...exp,
-          billingMonth: payMonth,
-          pnlMonth: reportMonth,
-          ...(payMonth !== reportMonth ? { isPnlAttribution: true as const } : {}),
-        })
+      if (isSpreadExpense(exp)) {
+        const share = expenseRowForMonth(exp, ym)
+        if (share) monthOut.push(share)
         continue
       }
 
       if (exp.billingMonth === ym) {
         monthOut.push(exp)
       } else {
+        // שכר ומסמכים עם חודש דיווח מפורש מדווחים בחודש אחר מחודש התשלום;
+        // sourceBillingMonth שומר את המקור כדי שהעריכה תחזור לרשומה הנכונה
         monthOut.push({
           ...exp,
           billingMonth: ym,
           sourceBillingMonth: exp.billingMonth,
-          isAutoOccurrence: true,
         })
       }
     }

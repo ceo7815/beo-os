@@ -4,9 +4,8 @@ import type {
   FinanceExpenseTypeDef,
   GiExpenseDocKind,
 } from '../types'
-import { addMonths } from './financeMonthRange'
 import { resolveExpenseType } from './financeExpenseTypes'
-import { isSalaryLikeExpense, isPayrollGiExemptExpense } from './financeSalaryMonth'
+import { isSalaryLikeExpense } from './financeSalaryMonth'
 import { isStatutoryGiExemptExpense } from './financeExpenseVat'
 import {
   isBankExpense,
@@ -14,6 +13,13 @@ import {
   expensesForFinancialTotals,
 } from './expenseSource'
 import { merchantKey } from './bankImport/matching'
+import {
+  amountsIdentical,
+  computeCoverage,
+  withinMatchWindow,
+  type CoverageStats,
+} from './financeMatchRules'
+import { fullyRefundedChargeIds } from './expenseRefunds'
 
 export { isGiOnlyRecord, isBankExpense } from './expenseSource'
 
@@ -33,11 +39,12 @@ export const RECONCILIATION_STATUS_LABEL: Record<
   string
 > = {
   matched: 'התאמה מלאה',
-  bank_missing_document: 'חסר בחשבונית ירוקה',
-  gi_unpaid: 'מסמך GI ללא תשלום בבנק',
-  document_not_required: 'לא נדרש מסמך',
-  manual_ok: 'ידני — תקין',
-  manual_pending: 'ידני — חסר מסמך',
+  bank_missing_document: 'חסרה חשבונית',
+  gi_unpaid: 'מסמך ללא תשלום בבנק',
+  document_not_required: 'לא נדרשת חשבונית',
+  manual_ok: 'חשבונית מוצמדת',
+  manual_pending: 'חסרה חשבונית',
+  refunded: 'בוטל בזיכוי',
 }
 
 export const GI_DOC_KIND_LABEL: Record<GiExpenseDocKind, string> = {
@@ -50,8 +57,8 @@ export const GI_DOC_KIND_LABEL: Record<GiExpenseDocKind, string> = {
 /** סוגי הוצאה שבדרך כלל אין להם חשבונית מס ב-GI */
 const GI_EXEMPT_TYPE_IDS = new Set(['bank_fee', 'salary'])
 
-const AMOUNT_TOLERANCE = 0.05
-const AMOUNT_PERCENT_TOLERANCE = 0.04
+// אין סובלנות באחוזים. התאמה נקבעת רק על סכום זהה — ראו financeMatchRules.
+
 
 export type ExpensePair = {
   bank: FinanceExpense
@@ -95,10 +102,7 @@ function daysApart(a: string, b: string): number {
 }
 
 export function amountsMatch(a: number, b: number): boolean {
-  if (a <= 0 || b <= 0) return false
-  if (Math.abs(a - b) <= AMOUNT_TOLERANCE) return true
-  const base = Math.max(a, b)
-  return Math.abs(a - b) / base <= AMOUNT_PERCENT_TOLERANCE
+  return amountsIdentical(a, b)
 }
 
 function amountCandidates(exp: FinanceExpense): number[] {
@@ -122,76 +126,18 @@ export function amountsCompatible(
       if (amountsMatch(ba, ga)) return true
     }
   }
-  if (isSaasSupplierPair(bank, gi)) {
-    for (const ba of amountCandidates(bank)) {
-      for (const ga of amountCandidates(gi)) {
-        if (amountsMatchPercent(ba, ga, SAAS_AMOUNT_PERCENT_TOLERANCE)) {
-          return true
-        }
-      }
-    }
-  }
   return false
 }
 
-function monthsCompatible(a: string, b: string): boolean {
-  if (a === b) return true
-  return addMonths(a, -1) === b || addMonths(a, 1) === b
-}
-
-const SAAS_SUPPLIER_TOKENS = new Set([
-  'cursor',
-  'xcloud',
-  'openai',
-  'chatgpt',
-  'anthropic',
-  'claude',
-  'hetzner',
-  'hostinger',
-  'suno',
-])
-
-const SAAS_AMOUNT_PERCENT_TOLERANCE = 0.1
-
-function amountsMatchPercent(a: number, b: number, pct: number): boolean {
-  if (a <= 0 || b <= 0) return false
-  if (Math.abs(a - b) <= AMOUNT_TOLERANCE) return true
-  return Math.abs(a - b) / Math.max(a, b) <= pct
-}
-
-function isSaasSupplierPair(
-  bank: FinanceExpense,
-  gi: FinanceExpense,
-): boolean {
-  if (!suppliersCompatible(bank, gi)) return false
-  const tokens = new Set([
-    ...extractSignificantTokens(expenseLabel(bank)),
-    ...extractSignificantTokens(expenseLabel(gi)),
-  ])
-  for (const t of tokens) {
-    if (SAAS_SUPPLIER_TOKENS.has(t)) return true
-  }
-  return false
-}
-
-function saasMonthsCompatible(a: string, b: string): boolean {
-  if (a === b) return true
-  for (let d = -2; d <= 2; d++) {
-    if (d === 0) continue
-    if (addMonths(a, d) === b) return true
-  }
-  return false
-}
-
+/**
+ * חלון הזמן להתאמה — 45 יום בין התנועה למסמך.
+ * מחליף את ההשוואה הקודמת לפי חודשי חיוב, שהתירה הפרש של עד חודשיים.
+ */
 function monthsCompatibleForPair(
   bank: FinanceExpense,
   gi: FinanceExpense,
 ): boolean {
-  if (monthsCompatible(bank.billingMonth, gi.billingMonth)) return true
-  return (
-    isSaasSupplierPair(bank, gi) &&
-    saasMonthsCompatible(bank.billingMonth, gi.billingMonth)
-  )
+  return withinMatchWindow(expenseDate(bank), expenseDate(gi))
 }
 
 function ymInRange(ym: string, from: string, to: string): boolean {
@@ -324,22 +270,16 @@ export function canViewGiExpenseDocument(
 export function scoreExpensePair(
   bank: FinanceExpense,
   gi: FinanceExpense,
-  _allBank: FinanceExpense[],
-  _allGi: FinanceExpense[],
 ): number {
   if (!amountsCompatible(bank, gi)) return -1
   if (!suppliersCompatible(bank, gi)) return -1
 
-  const sameMonth = bank.billingMonth === gi.billingMonth
-  const nearMonth = monthsCompatibleForPair(bank, gi)
-  const dayDiff = daysApart(expenseDate(bank), expenseDate(gi))
-  const maxDayDiff = isSaasSupplierPair(bank, gi) ? 120 : 90
-  if (!nearMonth && dayDiff > maxDayDiff) return -1
+  // מחוץ לחלון 45 הימים אין התאמה — גם אם הסכום והספק זהים
+  if (!monthsCompatibleForPair(bank, gi)) return -1
 
+  const dayDiff = daysApart(expenseDate(bank), expenseDate(gi))
   let score = 100
-  if (sameMonth) score += 50
-  else if (nearMonth) score += 25
-  else score += 10
+  if (bank.billingMonth === gi.billingMonth) score += 50
   score += 40
   score -= Math.min(dayDiff, 35)
   return score
@@ -359,7 +299,6 @@ export function requiresGiDocument(
     ? resolveExpenseType(exp.type, typeById)
     : undefined
   if (isSalaryLikeExpense(exp, typeDef)) return false
-  if (isPayrollGiExemptExpense(exp)) return false
   if (isStatutoryGiExemptExpense(exp)) return false
   return true
 }
@@ -528,7 +467,7 @@ export function computeExpensePairs(expenses: FinanceExpense[]): ExpensePair[] {
     if (usedBank.has(bank.id)) continue
     for (const gi of giRows) {
       if (usedGi.has(gi.id)) continue
-      const score = scoreExpensePair(bank, gi, bankRows, giRows)
+      const score = scoreExpensePair(bank, gi)
       if (score < 95) continue
       candidates.push({ bank, gi, score })
     }
@@ -546,13 +485,27 @@ export function computeExpensePairs(expenses: FinanceExpense[]): ExpensePair[] {
   return pairs
 }
 
+/**
+ * תשלום נחשב מתועד כשיש לו חשבונית שמורה או מספר חשבונית שהוזן.
+ *
+ * זו האמת המעשית מאז שחשבונית ירוקה משמשת להכנסות בלבד: אין יותר מסמך
+ * הוצאה חיצוני להצליב מולו, והתיעוד הוא המסמך שהוצמד לשורה.
+ */
+export function hasAttachedDocument(exp: FinanceExpense): boolean {
+  return Boolean(exp.documentUrl?.trim() || exp.invoiceNumber?.trim())
+}
+
+function isDocumented(exp: FinanceExpense): boolean {
+  return hasAttachedDocument(exp) || Boolean(exp.supplierInvoiceReceived)
+}
+
 function statusForBankPayment(
   bank: FinanceExpense,
   pair: ExpensePair | undefined,
 ): ExpenseReconciliationStatus {
   if (!requiresGiDocument(bank)) return 'document_not_required'
   if (pair) return 'matched'
-  if (bank.supplierInvoiceReceived) return 'manual_ok'
+  if (isDocumented(bank)) return 'manual_ok'
   return 'bank_missing_document'
 }
 
@@ -569,10 +522,13 @@ export function buildReconciledExpenseRows(
     if (!prev || p.score > prev.score) bankPair.set(p.bank.id, p)
   }
   const matchedGiIds = new Set(pairs.map((p) => p.gi.id))
+  const fullyRefunded = fullyRefundedChargeIds(expenses)
   const rows: ReconciledExpenseRow[] = []
 
   for (const exp of expenses) {
     if (isGiOnlyRecord(exp)) continue
+    // זיכוי אינו תשלום שממתין לחשבונית — הוא מטופל בשיוך מול החיוב שביטל
+    if (exp.amount < 0) continue
 
     const inPeriod =
       !ymFrom ||
@@ -580,6 +536,11 @@ export function buildReconciledExpenseRows(
       ymInRange(exp.billingMonth, ymFrom, ymTo)
 
     if (!inPeriod) continue
+
+    if (fullyRefunded.has(exp.id)) {
+      rows.push({ expense: exp, status: 'refunded' })
+      continue
+    }
 
     const pair = bankPair.get(exp.id)
     if (isBankExpense(exp)) {
@@ -593,7 +554,7 @@ export function buildReconciledExpenseRows(
 
     rows.push({
       expense: exp,
-      status: exp.supplierInvoiceReceived ? 'manual_ok' : 'manual_pending',
+      status: isDocumented(exp) ? 'manual_ok' : 'manual_pending',
     })
   }
 
@@ -685,6 +646,36 @@ export function summarizeExpenseReconciliation(
   return summary
 }
 
+/** מצבים שבהם מצב הרשומה ידוע ומוסבר — בין אם יש מסמך ובין אם לא נדרש */
+const COVERED_STATUSES = new Set<ExpenseReconciliationStatus>([
+  'matched',
+  'document_not_required',
+  'manual_ok',
+  // חיוב שבוטל אינו חור בתיעוד — הזיכוי הוא הגיבוי שלו
+  'refunded',
+])
+
+/**
+ * אחוז ההוצאות שמצבן ידוע — המדד שמלווה את מספר הרווח.
+ * הוא עונה על השאלה "כמה מהכסף שיצא מגובה במסמך או בהסבר",
+ * ולכן הוא נמדד בשקלים ולא במספר שורות.
+ */
+export function computeExpenseCoverage(
+  expenses: FinanceExpense[],
+  ymFrom?: string,
+  ymTo?: string,
+): CoverageStats {
+  const rows = buildReconciledExpenseRows(expenses, ymFrom, ymTo).filter(
+    (r) => !isGiOnlyRecord(r.expense),
+  )
+  return computeCoverage(
+    rows.map((r) => ({
+      amount: r.expense.amount,
+      matched: COVERED_STATUSES.has(r.status),
+    })),
+  )
+}
+
 /** תשלומי בנק שחסר להם מסמך ב-GI — ממוינים לפי תאריך */
 export function listMissingGiBankExpenses(
   expenses: FinanceExpense[],
@@ -703,6 +694,52 @@ export function listMissingGiBankExpenses(
       const db = b.paidDate ?? `${b.billingMonth}-01`
       return db.localeCompare(da)
     })
+}
+
+/** מצבים שבהם התשלום עדיין מחכה לחשבונית */
+const OPEN_STATUSES = new Set<ExpenseReconciliationStatus>([
+  'bank_missing_document',
+  'manual_pending',
+])
+
+export function isOpenReconciliationRow(row: ReconciledExpenseRow): boolean {
+  return OPEN_STATUSES.has(row.status)
+}
+
+/** התאריך שלפיו השורה מוצגת וממוינת — מועד התשלום בפועל כשקיים */
+export function reconciliationRowDate(exp: FinanceExpense): string {
+  return exp.paidDate ?? exp.documentDate ?? `${exp.billingMonth}-01`
+}
+
+/**
+ * כל שורות ההתאמה בתקופה, פתוחות וסגורות, ממוינות מהחדש לישן.
+ *
+ * להבדיל מרשימת החוסרים, כאן מוצגת גם התמונה הסגורה — בלעדיה אי אפשר
+ * לדעת אם אחוז ההתאמה נובע מכיסוי אמיתי או מכך שאין כמעט שורות.
+ */
+export function listReconciliationRows(
+  expenses: FinanceExpense[],
+  ymFrom?: string,
+  ymTo?: string,
+): ReconciledExpenseRow[] {
+  return buildReconciledExpenseRows(expenses, ymFrom, ymTo)
+    .filter((r) => !isGiOnlyRecord(r.expense))
+    .sort((a, b) =>
+      reconciliationRowDate(b.expense).localeCompare(
+        reconciliationRowDate(a.expense),
+      ),
+    )
+}
+
+/** תשלומים שעדיין מחכים לחשבונית — כולל הוצאות שהוזנו ידנית */
+export function listOpenReconciliationRows(
+  expenses: FinanceExpense[],
+  ymFrom?: string,
+  ymTo?: string,
+): ReconciledExpenseRow[] {
+  return listReconciliationRows(expenses, ymFrom, ymTo).filter(
+    isOpenReconciliationRow,
+  )
 }
 
 /** מסמכי GI בתקופה ללא תשלום בנק מותאם — ממוינים לפי תאריך מסמך */
@@ -729,6 +766,7 @@ export function reconciliationBadgeClass(
   switch (status) {
     case 'matched':
     case 'document_not_required':
+    case 'refunded':
       return 'bg-[#DCFCE7] text-[#166534]'
     case 'bank_missing_document':
     case 'manual_pending':

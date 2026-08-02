@@ -117,7 +117,6 @@ export function FinancePnlMonthDetailModal({
     expenses,
     expenseTypes,
     detail.ym,
-    incomes,
   )
 
   const items = isIncome ? monthIncomes : monthExpenses

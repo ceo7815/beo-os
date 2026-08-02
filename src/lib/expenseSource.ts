@@ -14,7 +14,10 @@ export function isBankExpense(exp: FinanceExpense): boolean {
 
 /**
  * הוצאות שנספרות בטבלה, ב-KPI ובדוח רווח והפסד.
- * הבנק = מקור האמת לסכום; מסמכי GI לא נספרים פעמיים.
+ *
+ * כל רשומה שהוזנה במערכת נספרת מיד — אין מצב ביניים של "ממתין לאישור",
+ * מפני שההזנה עצמה היא האישור. היוצא היחיד הוא מסמך GI ללא תשלום בנק,
+ * שמשמש להתאמה בלבד ואינו נספר פעמיים.
  */
 export function expensesForFinancialTotals(
   expenses: FinanceExpense[],

@@ -46,10 +46,15 @@ export function resolveExpenseVat(
     typeof stored?.vatAmount === 'number' &&
     typeof stored?.amountBeforeVat === 'number'
   ) {
+    /**
+     * הפירוק השמור נרשם תמיד כסכום חיובי. בזיכוי הסכום שלילי, ולכן
+     * הסימן נגזר מהסכום עצמו — אחרת מע״מ התשומות היה מתווסף במקום להתקזז.
+     */
+    const sign = amount < 0 ? -1 : 1
     return {
       gross: round2(amount),
-      net: round2(stored.amountBeforeVat),
-      vat: round2(stored.vatAmount),
+      net: round2(sign * Math.abs(stored.amountBeforeVat)),
+      vat: round2(sign * Math.abs(stored.vatAmount)),
       rate: ISRAEL_VAT_RATE,
     }
   }

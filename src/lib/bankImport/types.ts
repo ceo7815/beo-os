@@ -15,6 +15,10 @@ export type ParsedTransaction = {
   amount: number
   /** מטבע מקור + סכום מקור אם עסקת מט״ח (לתצוגה) */
   foreignNote?: string
+  /** קוד מטבע המקור בעסקת מט״ח — USD / EUR וכדומה */
+  currency?: string
+  /** הסכום כפי שנקוב במטבע המקור, לפני ההמרה לשקלים */
+  originalAmount?: number
   /** כרטיס / חשבון מקור */
   account?: string
   /** סוג עסקה כפי שהופיע בקובץ (רכישה רגילה / הוראת קבע / זיכוי...) */
@@ -31,6 +35,7 @@ export type SkipReason =
   | 'header_meta'
   | 'card_settlement'
   | 'future'
+  | 'before_range'
 
 export const SKIP_REASON_LABEL: Record<SkipReason, string> = {
   summary: 'שורות סיכום / סה״כ',
@@ -39,6 +44,7 @@ export const SKIP_REASON_LABEL: Record<SkipReason, string> = {
   header_meta: 'כותרות ושורות מידע',
   card_settlement: 'חיוב מרוכז כרטיס אשראי',
   future: 'תנועות עתידיות',
+  before_range: 'לפני תאריך תחילת הייבוא',
 }
 
 export type ParseResult = {
@@ -56,6 +62,26 @@ export type ParseResult = {
   parsedNet?: number
   /** סה״כ כפי שמופיע בשורת הסיכום בקובץ הבנק (אם זוהתה) */
   fileTotal?: number
+  /** היתרה לפני התנועה הראשונה — לבקרת שלמות מול הבנק */
+  openingBalance?: number
+  /** היתרה אחרי התנועה האחרונה — לבקרת שלמות מול הבנק */
+  closingBalance?: number
+  /**
+   * כל שינויי היתרה בתקופה, כולל שורות שלא יובאו כהוצאה (חיוב מרוכז לכרטיס).
+   * זכות חיובי, חובה שלילי. נדרש כדי שבקרת היתרה תסתדר.
+   */
+  balanceMovements?: number[]
+  /** חיובי כרטיס מרוכזים שזוהו בעו״ש — הצד השני של בקרת מחזור האשראי */
+  cardSettlements?: CardSettlement[]
+}
+
+/** חיוב מרוכז של כרטיס אשראי כפי שהוא מופיע בחשבון העו״ש */
+export type CardSettlement = {
+  /** YYYY-MM-DD — מועד ירידת החיוב בבנק */
+  date: string
+  /** סכום החיוב בשקלים, חיובי */
+  amount: number
+  description: string
 }
 
 /** מנשק parser — מאפשר להוסיף PDF/CSV בעתיד בלי לשנות את האשף */

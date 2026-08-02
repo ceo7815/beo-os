@@ -17,19 +17,6 @@ import type {
 import { MissingGiExpenseReportModal } from './MissingGiExpenseReportModal'
 import { UnpaidGiExpenseReportModal } from './UnpaidGiExpenseReportModal'
 
-function formatDateTime(iso?: string): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString('he-IL', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 export function ExpenseReconciliationPanel({
   expenses,
   ymFrom,
@@ -45,8 +32,7 @@ export function ExpenseReconciliationPanel({
 }) {
   const [reportOpen, setReportOpen] = useState(false)
   const [unpaidReportOpen, setUnpaidReportOpen] = useState(false)
-  const { status, busy, error, syncExpenses, reconcileExpenses } =
-    useMorningIntegration()
+  const { status, busy, error, reconcileExpenses } = useMorningIntegration()
 
   const summary = useMemo(
     () => summarizeExpenseReconciliation(expenses, ymFrom, ymTo),
@@ -68,19 +54,6 @@ export function ExpenseReconciliationPanel({
     [expenses, ymFrom, ymTo],
   )
 
-  const ss = status?.syncState as Record<string, unknown> | null | undefined
-  const lastExpenseSyncAt =
-    typeof ss?.lastExpenseSyncAt === 'string' ? ss.lastExpenseSyncAt : undefined
-
-  const handleSync = async () => {
-    const result = await syncExpenses()
-    if (result) {
-      toastFsSuccess(
-        `סנכרון הושלם — ${result.fetched} מ-GI · ${result.matched} התאמות מלאות · ${result.bankMissingDocument} חסר ב-GI`,
-      )
-    }
-  }
-
   const handleReconcile = async () => {
     const result = await reconcileExpenses()
     if (result) {
@@ -100,14 +73,9 @@ export function ExpenseReconciliationPanel({
             התאמת הוצאות — בנק מול חשבונית ירוקה
           </h2>
           <p className="mt-1 text-[12px] text-[var(--text-mid)]">
-            הבנק = מקור האמת לתשלומים. חשבונית ירוקה = מקור האמת למסמכים.
-            הטבלה מציגה רק תשלומי בנק; מסמכי GI משמשים להתאמה מאחורי הקלעים.
+            הבנק = מקור האמת לתשלומים. ההוצאות נכנסות דרך הסוכן אחרי אישורך.
+            הטבלה מסמנת כל תשלום שעדיין אין לו מסמך תואם.
           </p>
-          {lastExpenseSyncAt ? (
-            <p className="mt-1 text-[11px] text-[var(--text-light)]">
-              סנכרון אחרון: {formatDateTime(lastExpenseSyncAt)}
-            </p>
-          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -133,14 +101,6 @@ export function ExpenseReconciliationPanel({
             className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-sm font-semibold text-[var(--orange)] transition hover:bg-[var(--orange-light)] disabled:opacity-50"
           >
             {busy ? 'מריץ…' : 'התאם מחדש'}
-          </button>
-          <button
-            type="button"
-            disabled={!connected || busy}
-            onClick={() => void handleSync()}
-            className="hub-btn-orange text-sm disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy ? 'מסנכרן…' : 'סנכרן הוצאות מ-GI'}
           </button>
         </div>
       </div>

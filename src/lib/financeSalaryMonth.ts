@@ -7,7 +7,11 @@ export function defaultSalaryMonthFromPayment(paidDateYmd: string): string {
   return addMonths(ym, -1)
 }
 
-/** מזהה העברות / הו"ק שכנראה משכורת */
+/**
+ * רמז לאשף הייבוא בלבד — מציע סיווג משכורת למשתמש.
+ * לא משמש לשיוך חודשי: התבנית רחבה מדי (כל "העברה") ושיוך אוטומטי לפיה
+ * היה מזיז הוצאות ספק חודש אחורה.
+ */
 export function looksLikeSalaryTransfer(description: string): boolean {
   const t = description.trim()
   return (
@@ -15,21 +19,6 @@ export function looksLikeSalaryTransfer(description: string): boolean {
     /^העברה\s/i.test(t) ||
     /משכורת/i.test(t)
   )
-}
-
-/** הו"ק ידועות / עובדים — לא נדרש מסמך GI */
-export function isPayrollGiExemptExpense(exp: {
-  name?: string
-  description?: string
-  employeeName?: string
-  supplierName?: string
-}): boolean {
-  const text = [exp.name, exp.description, exp.employeeName, exp.supplierName]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-  if (/יובל\s*שכטר|yuval\s*shechter/i.test(text)) return true
-  return false
 }
 
 /** שולף שם מהעברה: "העברה לאמה חן בנק..." → "אמה חן" */
@@ -86,13 +75,64 @@ export function isSalaryLikeExpense(
   if (exp.employeeName?.trim()) return true
   const text = `${exp.description ?? ''} ${exp.name ?? ''}`
   if (/משכורת/i.test(text)) return true
-  if (looksLikeSalaryTransfer(text)) return true
   return false
 }
 
 /**
+ * תשלומי חובה לרשויות. כמו משכורת, הם משולמים בחודש שאחרי התקופה
+ * שעבורה הם נגבים: מע״מ, ניכויים וביטוח לאומי של יוני יורדים ביולי.
+ */
+const TAX_TERMS = [
+  'ביטוח לאומי',
+  'מס הכנסה',
+  'ניכויים',
+  'נציבות מס',
+  'מקדמות מס',
+  'מע״מ',
+  'מע"מ',
+  'מעמ',
+  'שע״מ',
+  'שע"מ',
+]
+
+export function isTaxExpense(
+  exp: {
+    type?: string
+    name?: string
+    description?: string
+    vatClass?: string
+  },
+  typeDef?: { id?: string },
+): boolean {
+  if (exp.type === 'tax' || typeDef?.id === 'tax') return true
+  /**
+   * רשומות שנוצרו לפני שהיה סוג "מסים" נשמרו כהוצאה כללית או כספק.
+   * הן מזוהות לפי שם הרשות, ורק כשהן מסומנות כתשלום חוקי ללא מע״מ —
+   * כדי שספק בעל שם דומה לא ייכנס בטעות לכלל הצבירה.
+   */
+  if (exp.vatClass !== 'statutory') return false
+  const text = `${exp.name ?? ''} ${exp.description ?? ''}`
+  return TAX_TERMS.some((term) => text.includes(term))
+}
+
+/** הוצאות שנספרות בחודש שעבורו שולמו, ולא בחודש התשלום */
+export function isAccrualExpense(
+  exp: {
+    type?: string
+    name?: string
+    description?: string
+    employeeName?: string
+    vatClass?: string
+    paidDate?: string
+  },
+  typeDef?: { id?: string; fieldMode?: string },
+): boolean {
+  return isSalaryLikeExpense(exp, typeDef) || isTaxExpense(exp, typeDef)
+}
+
+/**
  * חודש שבו ההוצאה נספרת ברווח והפסד.
- * משכורת ששולמה ביוני = מאי (מהערה, billingMonth, או חודש לפני התשלום).
+ * משכורת או מס ששולמו ביולי שייכים ליוני — גם אם התשלום בפועל היה ביולי.
  */
 export function expenseAccrualMonth(exp: {
   type?: string
@@ -101,6 +141,9 @@ export function expenseAccrualMonth(exp: {
   employeeName?: string
   billingMonth?: string
   pnlMonth?: string
+  documentMonth?: string
+  isLateDocument?: boolean
+  vatClass?: string
   paidDate?: string
 }): string {
   const text = `${exp.description ?? ''} ${exp.name ?? ''} ${exp.employeeName ?? ''}`
@@ -110,7 +153,15 @@ export function expenseAccrualMonth(exp: {
     return fromText
   }
 
-  if (isSalaryLikeExpense(exp)) {
+  if (isAccrualExpense(exp)) {
+    /**
+     * נעילת החודש נועדה להגן על דוח המע״מ, ומשכורות ומסים אינם נושאים
+     * מע״מ תשומות. כשהנעילה הזיזה רשומה לחודש הפתוח, documentMonth שמר
+     * את החודש הנכון — ולכן הוא גובר על pnlMonth שנדרס.
+     */
+    if (exp.isLateDocument && exp.documentMonth?.trim()) {
+      return exp.documentMonth.trim().slice(0, 7)
+    }
     if (exp.pnlMonth?.trim()) return exp.pnlMonth.trim().slice(0, 7)
     const bm = (exp.billingMonth ?? '').slice(0, 7)
     const pay = exp.paidDate?.trim().slice(0, 7)

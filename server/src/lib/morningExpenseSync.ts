@@ -1,14 +1,6 @@
 import type { Firestore, QueryDocumentSnapshot } from 'firebase-admin/firestore'
 import { FieldValue } from 'firebase-admin/firestore'
-import { env } from '../config/env.js'
 import { getAdminDb } from './firebaseAdmin.js'
-import { MorningClient } from './morningClient.js'
-import {
-  loadMorningCredentials,
-  readSyncState,
-  writeSyncState,
-} from './morningCredentials.js'
-import { mapMorningExpense, type MappedExpense } from './expenseMapper.js'
 import {
   computeExpensePairs,
   isBankExpense,
@@ -17,16 +9,6 @@ import {
 } from './expenseReconcileCore.js'
 
 const EXPENSES_COLLECTION = 'financeExpenses'
-const GI_DOC_PREFIX = 'gi_'
-const GI_EXPENSE_TYPE = 'supplier'
-
-function todayYmd(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function ymFromDate(ymd: string): string {
-  return ymd.slice(0, 7)
-}
 
 /** Firestore Admin SDK rejects `undefined` field values */
 function stripUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -130,7 +112,7 @@ async function loadStoredExpenses(db: Firestore): Promise<StoredExpense[]> {
 function asFinanceExpense(row: StoredExpense) {
   return {
     ...row,
-    type: row.type ?? GI_EXPENSE_TYPE,
+    type: row.type ?? 'supplier',
     recurring: false,
     createdAt: '',
   }
@@ -247,130 +229,10 @@ export async function runExpenseReconcile(): Promise<ReconcileResult> {
   return { ok: true, ...result, durationMs: Date.now() - startedAt }
 }
 
-export type ExpenseSyncResult = {
-  ok: true
-  fromDate: string
-  toDate: string
-  fetched: number
-  imported: number
-  matched: number
-  bankMissingDocument: number
-  durationMs: number
-}
-
-/**
- * משיכת הוצאות מ-Morning והעלאתן ל-Firestore.
- * idempotent — מזהה gi_<greenInvoiceId>.
- * לאחר הסנכרון — התאמה אוטומטית מול ייבוא בנק.
+/*
+ * משיכת ההוצאות מחשבונית ירוקה הוסרה במכוון.
+ *
+ * חשבונית ירוקה היא מקור האמת להכנסות בלבד. הוצאות נכנסות דרך הסוכן,
+ * שמתייק את המסמך ושואל את השאלות החסרות, ורק אחרי אישור המשתמש הן
+ * נספרות ברווח. שני מקורות מקבילים לאותה הוצאה יצרו כפילויות וסתירות.
  */
-export async function runMorningExpenseSync(options?: {
-  fromDate?: string
-}): Promise<ExpenseSyncResult> {
-  const startedAt = Date.now()
-  const db = getAdminDb()
-  if (!db) throw new Error('Firebase Admin not configured')
-
-  const creds = await loadMorningCredentials()
-  if (!creds) throw new Error('Morning credentials not configured')
-
-  const fromDate = (options?.fromDate ?? env.sync.fromDate).slice(0, 10)
-  const toDate = todayYmd()
-
-  const client = new MorningClient(creds)
-  const docs = await client.searchAllExpenses({
-    fromDate,
-    toDate,
-    pageSize: 100,
-  })
-
-  const mapped: MappedExpense[] = []
-  for (const raw of docs) {
-    const m = mapMorningExpense(raw)
-    if (m) mapped.push(m)
-  }
-
-  let imported = 0
-  for (let i = 0; i < mapped.length; i += 400) {
-    const slice = mapped.slice(i, i + 400)
-    const batch = db.batch()
-    for (const m of slice) {
-      const ref = db
-        .collection(EXPENSES_COLLECTION)
-        .doc(GI_DOC_PREFIX + m.greenInvoiceId)
-      const billingMonth = ymFromDate(
-        m.reportingDate ?? m.paidDate ?? m.documentDate,
-      )
-      const row = stripUndefined({
-        type: GI_EXPENSE_TYPE,
-        amount: m.amount,
-        amountIncludesVat: m.amountIncludesVat,
-        billingMonth,
-        recurring: false,
-        ...(m.supplierName ? { supplierName: m.supplierName } : {}),
-        name:
-          m.supplierName ||
-          m.description ||
-          `הוצאה ${m.greenInvoiceNumber || m.greenInvoiceId}`,
-        ...(m.description ? { description: m.description } : {}),
-        paidDate: m.paidDate ?? m.documentDate,
-        paymentMethod: m.paymentMethod ?? 'bank_transfer',
-        supplierInvoiceReceived: true,
-        source: m.source,
-        greenInvoiceId: m.greenInvoiceId,
-        greenInvoiceDocType: m.greenInvoiceDocType,
-        greenInvoiceDocKind: m.greenInvoiceDocKind,
-        ...(m.greenInvoiceNumber ? { greenInvoiceNumber: m.greenInvoiceNumber } : {}),
-        ...(m.supplierName ? { greenInvoiceSupplierName: m.supplierName } : {}),
-        ...(m.supplierTaxId ? { greenInvoiceSupplierTaxId: m.supplierTaxId } : {}),
-        ...(m.vatAmount !== undefined ? { vatAmount: m.vatAmount } : {}),
-        ...(m.amountBeforeVat !== undefined
-          ? { amountBeforeVat: m.amountBeforeVat }
-          : {}),
-        ...(m.greenInvoiceStatus !== undefined
-          ? { greenInvoiceStatus: m.greenInvoiceStatus }
-          : {}),
-        reconciliationStatus: 'gi_unpaid',
-        syncedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-      })
-      batch.set(ref, row, { merge: true })
-      imported += 1
-    }
-    await batch.commit()
-  }
-
-  let matched = 0
-  let bankMissingDocument = 0
-  try {
-    const allRows = await loadStoredExpenses(db)
-    const result = await persistExpenseReconciliation(db, allRows)
-    matched = result.matched
-    bankMissingDocument = result.bankMissingDocument
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    console.warn(`[expense-sync] reconcile skipped: ${msg}`)
-  }
-
-  const prevState = (await readSyncState()) ?? {}
-  await writeSyncState({
-    ...prevState,
-    lastExpenseSyncAt: new Date().toISOString(),
-    lastExpenseFromDate: fromDate,
-    lastExpenseToDate: toDate,
-    lastExpenseFetched: docs.length,
-    lastExpenseImported: imported,
-    lastExpenseMatched: matched,
-    lastExpenseBankMissingDocument: bankMissingDocument,
-  })
-
-  return {
-    ok: true,
-    fromDate,
-    toDate,
-    fetched: docs.length,
-    imported,
-    matched,
-    bankMissingDocument,
-    durationMs: Date.now() - startedAt,
-  }
-}

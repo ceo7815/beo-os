@@ -1,8 +1,8 @@
 import type { FinanceExpense, FinanceIncome } from '../types'
 import {
   expenseAccrualMonth,
+  isAccrualExpense,
   isSalaryExpense,
-  isSalaryLikeExpense,
 } from './financeSalaryMonth'
 import { isTaxReceiptIncome } from './financeIncomeDocument'
 import { incomePaymentDate } from './financeIncomePayment'
@@ -68,43 +68,34 @@ export function resolveLinkedIncome(
   )
 }
 
-/** חודש שבו ההוצאה נספרת ברווח והפסד */
-export function deriveExpensePnlMonth(
-  exp: FinanceExpense,
-  incomes: FinanceIncome[],
-): string {
-  if (isSalaryLikeExpense(exp)) return expenseAccrualMonth(exp)
+/**
+ * חודש שבו ההוצאה נספרת ברווח והפסד.
+ * הוצאה נשארת בחודש שלה — אין הזזה אוטומטית לחודש של הכנסת הפרויקט.
+ * רווחיות פרויקט נמדדת על כל חיי הפרויקט, ולכן ההזזה רק עיוותה את הדוח החודשי.
+ */
+export function deriveExpensePnlMonth(exp: FinanceExpense): string {
+  if (isAccrualExpense(exp)) return expenseAccrualMonth(exp)
   if (exp.pnlMonth?.trim()) return exp.pnlMonth.slice(0, 7)
-  if (!exp.projectId?.trim()) return exp.billingMonth.slice(0, 7)
-
-  const linked = resolveLinkedIncome(exp, incomes)
-  return linked ? pnlMonthFromIncome(linked) : exp.billingMonth.slice(0, 7)
+  return exp.billingMonth.slice(0, 7)
 }
 
-export function expenseReportMonth(
-  exp: FinanceExpense,
-  incomes: FinanceIncome[] = [],
-): string {
-  return deriveExpensePnlMonth(exp, incomes)
+export function expenseReportMonth(exp: FinanceExpense): string {
+  return deriveExpensePnlMonth(exp)
 }
 
 export function expensePaymentMonth(exp: FinanceExpense): string {
-  if (isSalaryExpense(exp) && exp.paidDate?.trim()) {
+  if ((isSalaryExpense(exp) || isAccrualExpense(exp)) && exp.paidDate?.trim()) {
     return exp.paidDate.trim().slice(0, 7)
   }
   return (exp.sourceBillingMonth ?? exp.billingMonth).slice(0, 7)
 }
 
-export function expenseUsesPnlAttribution(
-  exp: FinanceExpense,
-  incomes: FinanceIncome[] = [],
-): boolean {
-  if (isSalaryLikeExpense(exp)) {
+export function expenseUsesPnlAttribution(exp: FinanceExpense): boolean {
+  if (isAccrualExpense(exp)) {
     const pay = exp.paidDate?.trim().slice(0, 7)
     return !!pay && pay !== expenseAccrualMonth(exp)
   }
-  if (!exp.projectId?.trim()) return false
-  return deriveExpensePnlMonth(exp, incomes) !== expensePaymentMonth(exp)
+  return deriveExpensePnlMonth(exp) !== expensePaymentMonth(exp)
 }
 
 export function incomeLinkLabel(inc: FinanceIncome): string {
@@ -114,29 +105,19 @@ export function incomeLinkLabel(inc: FinanceIncome): string {
   return parts.join(' · ')
 }
 
+/**
+ * קישור ההוצאה לעסקה — לצורכי רווחיות פרויקט בלבד.
+ * הקישור אינו קובע את חודש הרווח וההפסד: ההוצאה נספרת בחודש שלה.
+ */
 export function resolveExpensePnlFields(
   projectId: string | undefined,
   linkedIncomeId: string | undefined,
-  billingMonth: string,
   incomes: FinanceIncome[],
-): { linkedIncomeId?: string; pnlMonth?: string } {
+): { linkedIncomeId?: string } {
   if (!projectId?.trim()) return {}
+  if (!linkedIncomeId?.trim()) return {}
 
-  const pid = projectId.trim()
-  if (linkedIncomeId?.trim()) {
-    const linked = incomes.find((i) => i.id === linkedIncomeId.trim())
-    if (linked?.projectId === pid) {
-      return {
-        linkedIncomeId: linked.id,
-        pnlMonth: pnlMonthFromIncome(linked),
-      }
-    }
-  }
-
-  const suggested = suggestLinkedIncome(incomes, pid, billingMonth.slice(0, 7))
-  if (!suggested) return {}
-  return {
-    linkedIncomeId: suggested.id,
-    pnlMonth: pnlMonthFromIncome(suggested),
-  }
+  const linked = incomes.find((i) => i.id === linkedIncomeId.trim())
+  if (linked?.projectId !== projectId.trim()) return {}
+  return { linkedIncomeId: linked.id }
 }

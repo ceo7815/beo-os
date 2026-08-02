@@ -1,5 +1,6 @@
 import type {
   BankParser,
+  CardSettlement,
   ParseResult,
   ParsedTransaction,
   SkipReason,
@@ -28,6 +29,35 @@ const CARD_SETTLEMENT_RE =
 
 function rowText(row: unknown[]): string {
   return row.map(cellToString).join(' ')
+}
+
+/**
+ * מחלץ יתרת פתיחה וסגירה מעמודת היתרה הרצה.
+ * הייצוא עשוי להיות מהחדש לישן, ולכן הסדר נקבע לפי התאריכים ולא לפי מיקום.
+ * היתרה בשורה היא היתרה שאחרי התנועה, ולכן הפתיחה היא היתרה הראשונה
+ * בניכוי התנועה שהובילה אליה.
+ */
+function deriveBalances(
+  balanceRows: { date: string; balance: number; amount: number }[],
+): {
+  openingBalance?: number
+  closingBalance?: number
+  balanceMovements?: number[]
+} {
+  if (balanceRows.length === 0) return {}
+
+  const first = balanceRows[0]!
+  const last = balanceRows[balanceRows.length - 1]!
+  const descending = first.date > last.date
+  const chronoFirst = descending ? last : first
+  const chronoLast = descending ? first : last
+  const round2 = (n: number) => Math.round(n * 100) / 100
+
+  return {
+    openingBalance: round2(chronoFirst.balance - chronoFirst.amount),
+    closingBalance: round2(chronoLast.balance),
+    balanceMovements: balanceRows.map((r) => r.amount),
+  }
 }
 
 function isOshHeaderRow(row: unknown[]): boolean {
@@ -104,6 +134,10 @@ export const discountOshParser: BankParser = {
     let inFuture = false
     let headerSeen = false
 
+    // כל שינויי היתרה בסדר הופעתם בקובץ, כולל שורות שאינן מיובאות כהוצאה
+    const balanceRows: { date: string; balance: number; amount: number }[] = []
+    const cardSettlements: CardSettlement[] = []
+
     for (const row of rows) {
       const joined = rowText(row)
 
@@ -141,7 +175,17 @@ export const discountOshParser: BankParser = {
         continue
       }
 
+      const rowBalance = cellToNumber(row[COL.balance])
+      if (Number.isFinite(rowBalance) && rowBalance !== 0) {
+        balanceRows.push({ date, balance: rowBalance, amount: rawAmount })
+      }
+
       if (isCardSettlement(description)) {
+        cardSettlements.push({
+          date,
+          amount: Math.abs(rawAmount),
+          description,
+        })
         skip('card_settlement')
         continue
       }
@@ -180,6 +224,7 @@ export const discountOshParser: BankParser = {
       .filter((t) => t.isCredit)
       .reduce((s, t) => s + Math.abs(t.amount), 0)
     const parsedNet = Math.round((chargeSum - creditSum) * 100) / 100
+    const balances = deriveBalances(balanceRows)
 
     return {
       source,
@@ -189,6 +234,8 @@ export const discountOshParser: BankParser = {
       skippedReasons,
       warnings,
       parsedNet,
+      ...balances,
+      ...(cardSettlements.length > 0 ? { cardSettlements } : {}),
     }
   },
 }

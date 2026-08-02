@@ -30,6 +30,9 @@ import {
   resolveSalaryBillingMonth,
 } from '../../lib/financeSalaryMonth'
 import { matchMonthlyRecurringExpense } from '../../lib/financeRecurringCatalog'
+import { openMonth, resolveAttributionMonth } from '../../lib/financePeriodLock'
+import { bankBalanceControl } from '../../lib/financeControls'
+import { formatForeignAmount } from '../../lib/foreignCurrency'
 import { useFinanceExpenses } from '../../hooks/useFinanceExpenses'
 import { useFinanceImportRules } from '../../hooks/useFinanceImportRules'
 import { useProjects } from '../../hooks/useProjects'
@@ -48,7 +51,7 @@ const CATEGORY_META: Record<
   salary: { label: 'משכורת', type: 'salary', vatClass: 'statutory' },
   tax_vat: {
     label: 'תשלומי מס ומע״מ',
-    type: 'one_time',
+    type: 'tax',
     vatClass: 'statutory',
   },
   bank_fee: {
@@ -64,6 +67,19 @@ const CATEGORY_ORDER: ExpenseCategory[] = [
   'tax_vat',
   'bank_fee',
 ]
+
+/**
+ * קטגוריות שנספרות בחודש שעבורו שולמו ולא בחודש התשלום:
+ * משכורת יוני יורדת ביולי, וכך גם המע״מ, הניכויים והביטוח הלאומי של יוני.
+ */
+function isAccrualCategory(category: ExpenseCategory): boolean {
+  return category === 'salary' || category === 'tax_vat'
+}
+
+const ACCRUAL_MONTH_LABEL: Record<string, string> = {
+  salary: 'חודש משכורת (תקופת עבודה)',
+  tax_vat: 'החודש שעבורו שולם המס',
+}
 
 /** מילות מפתח לזיהוי עמלות בנק/אשראי */
 const BANK_FEE_TERMS = [
@@ -152,42 +168,74 @@ type RowState = {
   suggestion: 'rule' | 'history' | 'none' | 'auto'
 }
 
+/**
+ * זיכוי נרשם כהוצאה שלילית ולא כרשומה נפרדת.
+ * כך הוא מקזז אוטומטית גם את ההוצאה וגם את מע״מ התשומות באותו חודש,
+ * בדיוק כמו החזר על עסקה שבוטלה.
+ */
+function signedAmount(tx: ParsedTransaction): number {
+  const abs = Math.abs(tx.amount)
+  return tx.isCredit ? -abs : abs
+}
+
 function rowToExpenseInput(
   r: RowState,
   source: BankImportSource,
 ): NewFinanceExpenseInput {
   const paymentMethod =
     source === 'credit_card' ? 'credit_card' : 'bank_transfer'
-  // חודש ההוצאה = תאריך העסקה; למשכורת — חודש משכורת (לא תאריך התשלום)
-  const billingMonth =
-    r.category === 'salary'
-      ? resolveSalaryBillingMonth(r.tx.date, r.note, r.salaryMonth)
-      : r.tx.date.slice(0, 7)
+  const isSalary = r.category === 'salary'
+  const isAccrual = isAccrualCategory(r.category)
+  // חודש ההוצאה = תאריך העסקה; למשכורת ולמסים — החודש שעבורו שולמו
+  const naturalMonth = isAccrual
+    ? resolveSalaryBillingMonth(r.tx.date, r.note, r.salaryMonth)
+    : r.tx.date.slice(0, 7)
+  /**
+   * קובץ שמיובא אחרי שהחודש כבר דווח אינו יכול לשנות אותו למפרע —
+   * אבל רק כשמדובר במע״מ. משכורות ומסים אינם נושאים מע״מ תשומות ולכן
+   * אינם מושפעים מהנעילה: הם נספרים תמיד בחודש שעבורו שולמו.
+   */
+  const attribution = isAccrual
+    ? { month: naturalMonth, late: false, documentMonth: naturalMonth }
+    : resolveAttributionMonth(`${naturalMonth}-15`)
+  const billingMonth = attribution.month
   const chargeNote =
     r.tx.chargeDate && r.tx.chargeDate.slice(0, 7) !== billingMonth
       ? `חיוב ${formatDmy(r.tx.chargeDate)}`
       : undefined
+  const lateNote = attribution.late
+    ? `מאחר — שייך ל${attribution.documentMonth}`
+    : undefined
+  // סכום המט״ח נשמר בשדות ייעודיים, ולכן אינו חוזר גם בתיאור החופשי
   const description =
-    [r.note.trim(), chargeNote, r.tx.foreignNote].filter(Boolean).join(' · ') ||
+    [r.note.trim(), chargeNote, lateNote].filter(Boolean).join(' · ') ||
     undefined
-  const isSalary = r.category === 'salary'
   const employeeName = isSalary
     ? extractEmployeeFromTransfer(r.tx.description)
     : undefined
   return {
     type: CATEGORY_META[r.category].type,
-    amount: Math.abs(r.tx.amount),
+    amount: signedAmount(r.tx),
     amountIncludesVat: true,
     vatClass: r.vatClass,
-    recurring: r.recurring,
+    recurring: r.tx.isCredit ? false : r.recurring,
     name: isSalary
       ? `משכורת — ${employeeName}`
-      : r.name.trim() || r.tx.description,
+      : r.tx.isCredit
+        ? `זיכוי — ${r.name.trim() || r.tx.description}`
+        : r.name.trim() || r.tx.description,
     ...(isSalary && employeeName ? { employeeName } : {}),
     description,
     billingMonth,
+    documentDate: r.tx.date,
+    documentMonth: attribution.documentMonth,
+    ...(attribution.late ? { isLateDocument: true } : {}),
     paidDate: r.tx.date,
-    ...(isSalary ? { pnlMonth: billingMonth } : {}),
+    ...(r.tx.chargeDate ? { chargeDate: r.tx.chargeDate } : {}),
+    ...(isAccrual ? { pnlMonth: billingMonth } : {}),
+    ...(r.tx.currency && r.tx.originalAmount
+      ? { currency: r.tx.currency, originalAmount: r.tx.originalAmount }
+      : {}),
     paymentMethod,
     bankRef: r.tx.ref,
     projectId: r.projectId || undefined,
@@ -234,6 +282,12 @@ export function ExpenseImportWizard({
 
   const [step, setStep] = useState<'upload' | 'review'>('upload')
   const [source, setSource] = useState<BankImportSource>('credit_card')
+  /**
+   * חודשים שכבר דווחו למע״מ סגורים לרישום, ולכן ברירת המחדל היא לייבא
+   * רק מתחילת החודש הפתוח. כך קובץ שמכסה כמה חודשים אינו מכפיל רשומות
+   * מול תקופות שכבר נסגרו.
+   */
+  const [fromDate, setFromDate] = useState(() => `${openMonth()}-01`)
   const [fileName, setFileName] = useState('')
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -244,9 +298,25 @@ export function ExpenseImportWizard({
     Partial<Record<SkipReason, number>>
   >({})
   const [fileTotal, setFileTotal] = useState<number | null>(null)
+  const [balanceCheck, setBalanceCheck] = useState<{
+    openingBalance?: number
+    closingBalance?: number
+    movements: number[]
+  } | null>(null)
   const [parseWarnings, setParseWarnings] = useState<string[]>([])
   const [savingRef, setSavingRef] = useState<string | null>(null)
   const [pendingDraft, setPendingDraft] = useState<ImportDraft | null>(null)
+  const [listFilter, setListFilter] = useState<'todo' | 'done' | 'excluded'>(
+    'todo',
+  )
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  /**
+   * בכרטיס אשראי זיכוי הוא החזר על עסקה שבוטלה, ולכן הוא חלק מההוצאות
+   * ונרשם כהוצאה שלילית. בעו״ש זיכוי הוא לרוב תקבול מלקוח — רישום שלו
+   * כהוצאה שלילית היה מנפח את הרווח, ולכן שם הוא אינו מיובא.
+   */
+  const creditsAreRefunds = source === 'credit_card'
 
   const projectOptions = useMemo(
     () =>
@@ -399,7 +469,12 @@ export function ExpenseImportWizard({
     try {
       const result = await parseBankFile(file, source)
       const refs = existingBankRefs(expenses)
-      const next: RowState[] = result.transactions.map((tx) => {
+      const cutoff = fromDate.trim()
+      const inRange = cutoff
+        ? result.transactions.filter((tx) => tx.date >= cutoff)
+        : result.transactions
+      const outOfRange = result.transactions.length - inRange.length
+      const next: RowState[] = inRange.map((tx) => {
         const sug = suggestForTransaction(tx, rulesByKey, expenses)
         const isDuplicate = refs.has(tx.ref)
 
@@ -434,7 +509,7 @@ export function ExpenseImportWizard({
 
         return {
           tx,
-          include: !isDuplicate && !tx.isCredit,
+          include: !isDuplicate && (!tx.isCredit || creditsAreRefunds),
           isDuplicate,
           saved: false,
           category,
@@ -448,18 +523,33 @@ export function ExpenseImportWizard({
               ? extractEmployeeFromTransfer(tx.description)
               : (sug.name ?? tx.description),
           note: '',
-          salaryMonth:
-            category === 'salary'
-              ? defaultSalaryMonthFromPayment(tx.date)
-              : '',
+          salaryMonth: isAccrualCategory(category)
+            ? defaultSalaryMonthFromPayment(tx.date)
+            : '',
           suggestion: source,
         }
       })
       setRows(next)
       setFileName(result.fileName)
-      setSkippedCount(result.skipped)
-      setSkippedReasons(result.skippedReasons ?? {})
+      setSkippedCount(result.skipped + outOfRange)
+      setSkippedReasons({
+        ...(result.skippedReasons ?? {}),
+        ...(outOfRange > 0 ? { before_range: outOfRange } : {}),
+      })
       setFileTotal(result.fileTotal ?? null)
+      setBalanceCheck(
+        result.balanceMovements
+          ? {
+              ...(result.openingBalance != null
+                ? { openingBalance: result.openingBalance }
+                : {}),
+              ...(result.closingBalance != null
+                ? { closingBalance: result.closingBalance }
+                : {}),
+              movements: result.balanceMovements,
+            }
+          : null,
+      )
       setParseWarnings(result.warnings ?? [])
       clearImportDraft()
       if (next.length === 0) {
@@ -483,7 +573,6 @@ export function ExpenseImportWizard({
   }
 
   const includedRows = pendingRows
-  const duplicateCount = rows.filter((r) => r.isDuplicate && !r.saved).length
   const canSave = includedRows.length > 0
 
   async function saveRowsAndRules(toSave: RowState[]) {
@@ -597,24 +686,72 @@ export function ExpenseImportWizard({
   const chargeStats = useMemo(() => {
     const chargeRows = rows.filter((r) => !r.tx.isCredit)
     const total = chargeRows.reduce((s, r) => s + Math.abs(r.tx.amount), 0)
-    const included = chargeRows
-      .filter((r) => r.include)
-      .reduce((s, r) => s + Math.abs(r.tx.amount), 0)
-    return { count: chargeRows.length, total, included }
+    return { count: chargeRows.length, total }
   }, [rows])
+
+  /** מה שייכתב בפועל — זיכויים שנבחרו מקזזים את הסכום */
+  const importTotal = useMemo(
+    () =>
+      rows
+        .filter((r) => r.include && !r.saved)
+        .reduce((s, r) => s + signedAmount(r.tx), 0),
+    [rows],
+  )
+
+  const includedCredits = useMemo(
+    () => rows.filter((r) => r.include && !r.saved && r.tx.isCredit).length,
+    [rows],
+  )
 
   /** נטו לפי הקובץ = חיובים − זיכויים (כמו בשורת הסה״כ של הבנק) */
   const netFromRows = chargeStats.total - creditStats.total
+  /**
+   * כשחתכנו תנועות מוקדמות, הסה״כ של הקובץ מתייחס לטווח רחב יותר ממה
+   * שיובא — והשוואה אליו הייתה מדווחת על פער שאינו קיים.
+   */
+  const trimmedByRange = skippedReasons.before_range ?? 0
   const totalMismatch =
-    fileTotal != null && Math.abs(netFromRows - fileTotal) > 1
+    trimmedByRange === 0 && fileTotal != null && Math.abs(netFromRows - fileTotal) > 1
   const gapAmount =
     fileTotal != null ? Math.abs(netFromRows - fileTotal) : 0
+
+  /** בקרת שלמות מול היתרה בבנק — ההוכחה שאף תנועה לא נשמטה מהקובץ */
+  const balanceControl = useMemo(
+    () => (balanceCheck ? bankBalanceControl(balanceCheck) : null),
+    [balanceCheck],
+  )
 
   const dateRange = useMemo(() => {
     const dates = rows.map((r) => r.tx.date).filter(Boolean).sort()
     if (dates.length === 0) return null
     return { from: dates[0], to: dates[dates.length - 1] }
   }, [rows])
+
+  /**
+   * הרשימה מחולקת לשלוש קבוצות ולא מוצגת כערימה אחת.
+   * זיכויים וכפילויות אינם ניתנים לייבוא, וכשהם מעורבים בין השורות
+   * שדורשות סיווג הם מסתירים את מה שבאמת צריך טיפול.
+   */
+  const groups = useMemo(() => {
+    const todo: number[] = []
+    const done: number[] = []
+    const excluded: number[] = []
+    rows.forEach((r, idx) => {
+      if (r.saved) done.push(idx)
+      else if (r.isDuplicate) excluded.push(idx)
+      else if (r.tx.isCredit && !creditsAreRefunds) excluded.push(idx)
+      else todo.push(idx)
+    })
+    return { todo, done, excluded }
+  }, [rows, creditsAreRefunds])
+
+  const visibleIndexes = groups[listFilter]
+
+  /** מספר התנועות שנחסמו כי הן חיוב מרוכז של הכרטיס */
+  const cardSettlementSkips = skippedReasons.card_settlement ?? 0
+
+  const controlOk =
+    !totalMismatch && balanceControl?.status !== 'mismatch'
 
   return (
     <Modal
@@ -653,6 +790,22 @@ export function ExpenseImportWizard({
                 עובר ושב (עו״ש)
               </button>
             </div>
+          </div>
+
+          <div>
+            <div className="mb-2 text-[12px] font-bold text-[var(--text-mid)]">
+              ייבוא מתאריך
+            </div>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2.5 text-sm font-semibold text-[var(--text-dark)]"
+            />
+            <p className="mt-1.5 text-[11px] text-[var(--text-mid)]">
+              תנועות מוקדמות יותר לא ייובאו. ברירת המחדל היא תחילת החודש הפתוח,
+              כדי לא לרשום לחודשים שכבר דווחו למע״מ.
+            </p>
           </div>
 
           <label
@@ -733,100 +886,158 @@ export function ExpenseImportWizard({
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-4 py-3 text-[12px]">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="font-bold text-[var(--text-dark)]">{fileName}</span>
-              <span className="text-[var(--text-mid)]">
-                {includedRows.length} נותרו · {savedCount} נשמרו · {duplicateCount}{' '}
-                כבר קיימות · {skippedCount} דולגו
-              </span>
-              {dateRange ? (
-                <span className="rounded-full bg-[var(--dash-panel-bg)] px-2.5 py-0.5 font-semibold text-[var(--text-dark)]">
-                  טווח: {formatDmy(dateRange.from)} – {formatDmy(dateRange.to)}
-                </span>
-              ) : null}
-              <span className="ms-auto font-extrabold text-[#EF4444]">
-                לייבוא: {formatNis(chargeStats.included)}
-              </span>
-              {fileTotal != null ? (
-                <span
-                  className={`text-[11px] font-semibold ${
-                    totalMismatch ? 'text-[#DC2626]' : 'text-[#10B981]'
-                  }`}
-                >
-                  בקובץ: {formatNis(fileTotal)}
-                  {totalMismatch ? ' · לא תואם' : ' · תואם'}
-                </span>
-              ) : null}
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-4 py-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-bold text-[var(--text-dark)]">
+                  {fileName}
+                </div>
+                {dateRange ? (
+                  <div className="mt-0.5 text-[11px] text-[var(--text-mid)]">
+                    {formatDmy(dateRange.from)} – {formatDmy(dateRange.to)}
+                  </div>
+                ) : null}
+              </div>
+              <div className="text-end">
+                <div className="text-[11px] font-semibold text-[var(--text-mid)]">
+                  סכום לייבוא
+                </div>
+                <div className="text-[20px] font-extrabold tabular-nums text-[var(--text-dark)]">
+                  {formatNis(importTotal)}
+                </div>
+                {includedCredits > 0 ? (
+                  <div className="text-[11px] font-semibold text-[#059669]">
+                    אחרי קיזוז {includedCredits} זיכויים
+                  </div>
+                ) : null}
+              </div>
             </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-mid)]">
-              <span>
-                <span className="font-semibold text-[var(--text-dark)]">
-                  {chargeStats.count} חיובים
+            <p
+              className={`mt-3 rounded-lg px-3 py-2 text-[12px] font-semibold ${
+                controlOk
+                  ? 'border border-[#BBF7D0] bg-[#F0FDF4] text-[#065F46]'
+                  : 'border border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]'
+              }`}
+            >
+              {controlOk
+                ? `הקובץ נקרא במלואו — ${chargeStats.count} חיובים${
+                    creditStats.count > 0
+                      ? ` ו-${creditStats.count} זיכויים`
+                      : ''
+                  } זוהו, והסכומים תואמים לשורת הסה״כ.`
+                : balanceControl?.status === 'mismatch'
+                  ? `יתרת הבנק אינה מסתדרת עם התנועות — פער ${formatNis(Math.abs(balanceControl.difference))}. ייתכן שהקובץ יוצא לטווח חלקי.`
+                  : `הסכומים אינם תואמים לשורת הסה״כ — פער ${formatNis(gapAmount)}. בדקו את הפירוט לפני הייבוא.`}
+            </p>
+
+            {cardSettlementSkips > 0 ? (
+              <p className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-[12px] text-[var(--text-mid)]">
+                <span className="font-bold text-[var(--text-dark)]">
+                  חיוב מרוכז של כרטיס האשראי לא יובא
                 </span>{' '}
-                · {formatNis(chargeStats.total)}
-              </span>
-              {creditStats.count > 0 ? (
-                <span className="rounded-full bg-[#D1FAE5] px-2 py-0.5 font-semibold text-[#065F46]">
-                  {creditStats.count} זיכויים · {formatNis(creditStats.total)}{' '}
-                  (לא ייובאו)
-                </span>
-              ) : (
-                <span className="text-[var(--text-light)]">אין זיכויים בקובץ</span>
-              )}
-              <span className="font-semibold text-[var(--text-dark)]">
-                נטו בקובץ: {formatNis(netFromRows)}
-                {fileTotal != null && !totalMismatch ? ' ✓' : ''}
-              </span>
-            </div>
+                ({cardSettlementSkips} תנועות) — ההוצאות האלו נכנסות מקובץ פירוט
+                הכרטיס, כדי שלא יירשמו פעמיים.
+              </p>
+            ) : null}
 
-            {totalMismatch ? (
-              <div className="mt-2 space-y-1.5 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[11px]">
-                <p className="font-semibold text-[#DC2626]">
-                  אין התאמה מדויקת — פער {formatNis(gapAmount)}
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((v) => !v)}
+              className="mt-2 text-[11px] font-semibold text-[var(--text-mid)] underline"
+            >
+              {detailsOpen ? 'הסתר פירוט' : 'פירוט מלא של קריאת הקובץ'}
+            </button>
+
+            {detailsOpen ? (
+              <div className="mt-2 space-y-1.5 border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-mid)]">
+                <p className="tabular-nums">
+                  {chargeStats.count} חיובים {formatNis(chargeStats.total)} −{' '}
+                  {creditStats.count} זיכויים {formatNis(creditStats.total)} ={' '}
+                  <span className="font-bold text-[var(--text-dark)]">
+                    {formatNis(netFromRows)}
+                  </span>
+                  {fileTotal != null && trimmedByRange === 0
+                    ? ` · בשורת הסה״כ של הבנק ${formatNis(fileTotal)}`
+                    : ''}
                 </p>
-                <p className="tabular-nums leading-snug text-[#92400E]">
-                  {formatNis(chargeStats.total)} חיובים − {formatNis(creditStats.total)}{' '}
-                  זיכויים = {formatNis(netFromRows)} · בקובץ {formatNis(fileTotal!)}
-                </p>
-                <p className="leading-snug text-[#92400E]">
-                  ייתכן שזיכוי/החזר מופיע בקובץ כסכום חיובי (ללא סימון זיכוי).
-                  גלול ברשימה ובדוק שורות חשודות, או שלח את הקובץ לתיקון הפענוח.
-                </p>
+                {trimmedByRange > 0 ? (
+                  <p>
+                    {trimmedByRange} תנועות לפני {formatDmy(fromDate)} לא יובאו,
+                    ולכן אין השוואה לשורת הסה״כ של הקובץ המלא.
+                  </p>
+                ) : null}
+                {balanceControl?.status === 'ok' ? (
+                  <p className="tabular-nums">
+                    בקרת יתרה: פתיחה{' '}
+                    {formatNis(balanceCheck?.openingBalance ?? 0)} + תנועות ={' '}
+                    סגירה {formatNis(balanceCheck?.closingBalance ?? 0)} ✓
+                  </p>
+                ) : balanceControl?.status === 'mismatch' ? (
+                  <p className="tabular-nums text-[#B45309]">
+                    בקרת יתרה: פתיחה{' '}
+                    {formatNis(balanceCheck?.openingBalance ?? 0)} + תנועות{' '}
+                    {formatNis(balanceControl.actual)} אמור להגיע לסגירה{' '}
+                    {formatNis(balanceCheck?.closingBalance ?? 0)} —{' '}
+                    {balanceControl.detail}
+                  </p>
+                ) : null}
+                {skippedCount > 0 ? (
+                  <p>
+                    <span className="font-semibold">שורות שדולגו:</span>{' '}
+                    {(Object.keys(skippedReasons) as SkipReason[])
+                      .map(
+                        (reason) =>
+                          `${SKIP_REASON_LABEL[reason]} (${skippedReasons[reason]})`,
+                      )
+                      .join(' · ')}
+                  </p>
+                ) : null}
                 {parseWarnings.map((w) => (
-                  <p key={w} className="text-[10px] text-[#B45309]">
+                  <p key={w} className="text-[#B45309]">
                     {w}
                   </p>
                 ))}
               </div>
-            ) : (
-              <p className="mt-2 rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-[11px] font-semibold text-[#065F46]">
-                התאמה מדויקת לקובץ ✓ — {formatNis(chargeStats.total)} חיובים −{' '}
-                {formatNis(creditStats.total)} זיכויים = {formatNis(netFromRows)}{' '}
-                (כמו בשורת הסה״כ)
-              </p>
-            )}
-            {skippedCount > 0 ? (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-[var(--border)] pt-2 text-[11px] text-[var(--text-mid)]">
-                <span className="font-semibold">למה דולגו:</span>
-                {(Object.keys(skippedReasons) as SkipReason[]).map((reason) => (
-                  <span
-                    key={reason}
-                    className="rounded-full bg-[var(--dash-panel-bg)] px-2 py-0.5"
-                  >
-                    {SKIP_REASON_LABEL[reason]}: {skippedReasons[reason]}
-                  </span>
-                ))}
-                <span className="text-[var(--text-light)]">
-                  · שורות אלו אינן הוצאות (סיכומים, כותרות ועסקאות שטרם נסלקו)
-                </span>
-              </div>
             ) : null}
           </div>
 
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ['todo', 'לסיווג', groups.todo.length],
+                ['done', 'נשמרו', groups.done.length],
+                ['excluded', 'לא לייבוא', groups.excluded.length],
+              ] as const
+            ).map(([id, label, count]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setListFilter(id)}
+                className={
+                  listFilter === id
+                    ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[12px] font-bold text-white'
+                    : 'rounded-[10px] border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[12px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+                }
+              >
+                {label} ({count})
+              </button>
+            ))}
+          </div>
+
           <div className="max-h-[52vh] space-y-2 overflow-y-auto pe-1">
-            {rows.map((r, idx) => (
+            {visibleIndexes.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-[12px] text-[var(--text-mid)]">
+                {listFilter === 'todo'
+                  ? 'אין הוצאות שממתינות לסיווג בקובץ הזה.'
+                  : listFilter === 'done'
+                    ? 'עדיין לא נשמרו הוצאות מהקובץ הזה.'
+                    : 'כל שורות הקובץ ניתנות לייבוא.'}
+              </p>
+            ) : null}
+            {visibleIndexes.map((idx) => {
+              const r = rows[idx]!
+              return (
               <div
                 key={r.tx.ref}
                 className={`rounded-xl border p-3 transition ${
@@ -850,12 +1061,26 @@ export function ExpenseImportWizard({
                       <span className="font-bold text-[var(--text-dark)]">
                         {r.tx.description}
                       </span>
-                      <span className="tabular-nums font-extrabold text-[#EF4444]">
+                      <span
+                        className={`tabular-nums font-extrabold ${
+                          r.tx.isCredit ? 'text-[#059669]' : 'text-[#EF4444]'
+                        }`}
+                      >
                         {formatNis(Math.abs(r.tx.amount))}
                       </span>
+                      {r.tx.currency && r.tx.originalAmount ? (
+                        <span className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-bold tabular-nums text-[#3730A3]">
+                          {formatForeignAmount(
+                            r.tx.originalAmount,
+                            r.tx.currency,
+                          )}
+                        </span>
+                      ) : null}
                       {r.tx.isCredit ? (
                         <span className="rounded-full bg-[#D1FAE5] px-2 py-0.5 text-[10px] font-bold text-[#065F46]">
-                          זיכוי
+                          {creditsAreRefunds
+                            ? 'זיכוי — יקוזז מההוצאות'
+                            : 'זיכוי — כסף שנכנס, לא הוצאה'}
                         </span>
                       ) : null}
                       {r.isDuplicate && !r.saved ? (
@@ -900,7 +1125,9 @@ export function ExpenseImportWizard({
                       ) : r.tx.account ? (
                         <span> · אסמכתה {r.tx.account}</span>
                       ) : null}
-                      {r.tx.foreignNote ? ` · ${r.tx.foreignNote}` : ''}
+                      {r.tx.currency && r.tx.originalAmount
+                        ? ` · שולם ${formatForeignAmount(r.tx.originalAmount, r.tx.currency)} והומר לשקלים`
+                        : ''}
                     </div>
 
                     {r.include && !r.saved ? (
@@ -919,10 +1146,12 @@ export function ExpenseImportWizard({
                                     category: cat,
                                     vatClass: CATEGORY_META[cat].vatClass,
                                   }
-                                  if (cat === 'salary') {
+                                  if (isAccrualCategory(cat)) {
                                     patch.salaryMonth = defaultSalaryMonthFromPayment(
                                       r.tx.date,
                                     )
+                                  }
+                                  if (cat === 'salary') {
                                     patch.name = extractEmployeeFromTransfer(
                                       r.tx.description,
                                     )
@@ -940,10 +1169,10 @@ export function ExpenseImportWizard({
                             ))}
                           </div>
                         </div>
-                        {r.category === 'salary' ? (
+                        {isAccrualCategory(r.category) ? (
                           <div>
                             <span className="mb-1 block text-[10px] font-bold text-[var(--text-mid)]">
-                              חודש משכורת (תקופת עבודה)
+                              {ACCRUAL_MONTH_LABEL[r.category]}
                             </span>
                             <input
                               type="month"
@@ -953,9 +1182,9 @@ export function ExpenseImportWizard({
                               }
                               className="w-full rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-right text-[12px] text-[var(--text-dark)] outline-none focus:border-[var(--border-dark)]"
                             />
-                            <p className="mt-1 text-[10px] text-[var(--text-mid)]">
-                              תשלום בפועל: {formatDmy(r.tx.date)} — לא חייב להיות
-                              באותו חודש
+                            <p className="mt-1 text-[10px] font-semibold text-[#B45309]">
+                              שולם {formatDmy(r.tx.date)} · משויך לחודש{' '}
+                              {r.salaryMonth || '—'}
                             </p>
                           </div>
                         ) : null}
@@ -1008,17 +1237,19 @@ export function ExpenseImportWizard({
                           />
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
-                          <label className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-dark)]">
-                            <input
-                              type="checkbox"
-                              checked={r.recurring}
-                              onChange={(e) =>
-                                updateRow(idx, { recurring: e.target.checked })
-                              }
-                              className="h-4 w-4 accent-[var(--orange)]"
-                            />
-                            הוצאה קבועה (חוזרת כל חודש)
-                          </label>
+                          {!r.tx.isCredit ? (
+                            <label className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-dark)]">
+                              <input
+                                type="checkbox"
+                                checked={r.recurring}
+                                onChange={(e) =>
+                                  updateRow(idx, { recurring: e.target.checked })
+                                }
+                                className="h-4 w-4 accent-[var(--orange)]"
+                              />
+                              הוצאה קבועה (חוזרת כל חודש)
+                            </label>
+                          ) : null}
                           <label className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-dark)]">
                             <input
                               type="checkbox"
@@ -1060,14 +1291,19 @@ export function ExpenseImportWizard({
                               : 'border-[var(--orange)] bg-[var(--orange-light)] text-[var(--text-dark)] hover:brightness-95'
                           }`}
                         >
-                          {savingRef === r.tx.ref ? 'שומר…' : 'שמור הוצאה זו'}
+                          {savingRef === r.tx.ref
+                            ? 'שומר…'
+                            : r.tx.isCredit
+                              ? 'שמור זיכוי זה'
+                              : 'שמור הוצאה זו'}
                         </button>
                       </div>
                     ) : null}
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-3">

@@ -4,6 +4,8 @@ import { Modal } from '../components/shared/Modal'
 import { Badge } from '../components/shared/Badge'
 import { FinanceHeroCard } from '../components/finance/FinanceKpi'
 import { GreenInvoiceBadge } from '../components/finance/GreenInvoiceBadge'
+import { FinanceTabs } from '../components/finance/FinanceTabs'
+import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import { ProjectFinanceSection } from '../components/finance/ProjectFinanceSection'
 import { HostingFinanceSection } from '../components/finance/HostingFinanceSection'
 import { useClients } from '../hooks/useClients'
@@ -45,6 +47,7 @@ export function FinanceProjects() {
   const { clients } = useClients()
   const { incomes } = useFinanceIncomes()
   const { expenses } = useFinanceExpenses()
+  const attention = useFinanceAttention()
   const { types: expenseTypes } = useFinanceExpenseTypes()
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -154,6 +157,8 @@ export function FinanceProjects() {
         </div>
         <GreenInvoiceBadge />
       </header>
+
+      <FinanceTabs badges={attention} />
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <FinanceHeroCard

@@ -13,7 +13,9 @@ type Props = {
   setFilterYmFrom: (v: string) => void
   setFilterYmTo: (v: string) => void
   filterRangeLabel: string
-  applyMonthPreset: (preset: 'month' | 'prev' | 'q' | 'half' | 'year') => void
+  applyMonthPreset: (
+    preset: 'month' | 'prev' | 'q' | 'half' | 'year' | 'all',
+  ) => void
   applySingleMonth: (ym: string) => void
   monthOptions: { value: string; label: string }[]
   projectFilter?: {
@@ -87,6 +89,7 @@ export function FinancePeriodFilter({
               ['q', '3 חודשים'],
               ['half', '6 חודשים'],
               ['year', '12 חודשים'],
+              ['all', 'מתחילת הפעילות'],
             ] as const
           ).map(([id, label]) => (
             <button

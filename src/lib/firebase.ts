@@ -33,8 +33,13 @@ export const db = initializeFirestore(app, {
   localCache: memoryLocalCache(),
 })
 
-/** באקט ברירת המחדל של הפרויקט — מתאים לחוקי Storage שפורסמו ל־gs://…appspot.com */
-export const storage = getStorage(app, `gs://${firebaseConfig.projectId}.appspot.com`)
+/**
+ * הבאקט נלקח מההגדרות ואינו נבנה משם הפרויקט.
+ *
+ * פרויקטים חדשים מקבלים באקט בדומיין firebasestorage.app; הנחת appspot.com
+ * הפנתה לבאקט שאינו קיים, וההעלאה נתקעה על 0% בלי שגיאה במקום להיכשל מיד.
+ */
+export const storage = getStorage(app)
 
 /** מקום לריצה אסינכרונית אחרי התחברות — ללא enableNetwork (מסוכן במקביל). */
 export async function ensureFirestoreReady(): Promise<void> {

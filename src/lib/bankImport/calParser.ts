@@ -9,6 +9,7 @@ import {
   cellToString,
   excelSerialToYmd,
 } from './readWorkbook'
+import { parseForeignNote } from '../foreignCurrency'
 
 /** עמודות בייצוא כאל/דיינרס (מרכנתיל דיסקונט): תאריך · בית עסק · סכום · כרטיס · מועד חיוב · סוג · ארנק · הערות */
 const COL = {
@@ -155,6 +156,7 @@ export const calParser: BankParser = {
       const amount = Math.abs(rawAmount)
       const account = cellToString(row[COL.card]) || undefined
       const foreignNote = notes.includes('סכום העסקה') ? notes : undefined
+      const foreign = parseForeignNote(foreignNote)
 
       seq += 1
       const ref = `cal:${date}:${Math.round(amount * 100)}:${merchant}:${seq}`
@@ -166,6 +168,12 @@ export const calParser: BankParser = {
         description: merchant,
         amount: isCredit ? -amount : amount,
         ...(foreignNote ? { foreignNote } : {}),
+        ...(foreign
+          ? {
+              currency: foreign.currency,
+              originalAmount: isCredit ? -foreign.amount : foreign.amount,
+            }
+          : {}),
         ...(account ? { account } : {}),
         ...(rawType ? { rawType } : {}),
         isCredit,

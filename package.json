@@ -5,18 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev:server": "npm run dev --prefix server",
     "dev:all": "concurrently -n server,web -c blue,green \"npm run dev:server\" \"npm run dev\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "storage:cors": "gsutil cors set storage-cors.json gs://hub-pos-f399c.appspot.com",
+    "storage:cors": "gsutil cors set storage-cors.json gs://hub-pos-f399c.firebasestorage.app",
     "firebase:login": "firebase login --reauth",
     "firebase:deploy:rules": "firebase deploy --only firestore:rules --project hub-pos-f399c",
     "grant-admin": "node functions/scripts/grant-admin.mjs"
   },
   "dependencies": {
     "firebase": "^12.12.0",
+    "jszip": "^3.10.1",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.14.0",
@@ -39,6 +43,7 @@
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
-    "vite": "^8.0.4"
+    "vite": "^8.0.4",
+    "vitest": "^4.1.10"
   }
 }

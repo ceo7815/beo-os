@@ -47,6 +47,11 @@ export const env = {
     .filter(Boolean),
   /** מפתח API ל-/api/bot-data (בוטים/סוכנים חיצוניים - למשל ceo-digital-ai) */
   botApiKey: readString('BOT_API_KEY'),
+  /**
+   * תיקיית חשבוניות הספק. בפרודקשן זהו נפח קבוע של Docker — הקבצים חייבים
+   * לשרוד בנייה מחדש של הקונטיינר.
+   */
+  financeDocsDir: readString('FINANCE_DOCS_DIR', './data/finance-documents'),
 } as const
 
 export const MORNING_BASE_URLS = {

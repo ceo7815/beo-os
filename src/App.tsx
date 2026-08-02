@@ -18,6 +18,8 @@ import { Dashboard } from './pages/Dashboard'
 import { Expenses } from './pages/Expenses'
 import { Finance } from './pages/Finance'
 import { FinanceProjects } from './pages/FinanceProjects'
+import { FinanceReconciliation } from './pages/FinanceReconciliation'
+import { FinanceDocuments } from './pages/FinanceDocuments'
 import { Income } from './pages/Income'
 import { Hosting } from './pages/Hosting'
 import { Campaigns } from './pages/Campaigns'
@@ -91,6 +93,22 @@ export default function App() {
                     element={
                       <RequireAdmin>
                         <Expenses />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/reconciliation"
+                    element={
+                      <RequireAdmin>
+                        <FinanceReconciliation />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/documents"
+                    element={
+                      <RequireAdmin>
+                        <FinanceDocuments />
                       </RequireAdmin>
                     }
                   />

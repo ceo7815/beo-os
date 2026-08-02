@@ -6,7 +6,22 @@ import {
   monthOptions,
 } from '../lib/financeCalc'
 
-export type MonthPreset = 'month' | 'prev' | 'q' | 'half' | 'year' | 'pick' | 'custom'
+export type MonthPreset =
+  | 'month'
+  | 'prev'
+  | 'q'
+  | 'half'
+  | 'year'
+  | 'all'
+  | 'pick'
+  | 'custom'
+
+/**
+ * החודש הראשון שממנו קיימת פעילות בספרים.
+ * משמש כגבול התחתון של "מתחילת הפעילות", כדי שהטווח לא ייפרס אחורה
+ * על חודשים ריקים שרק מטשטשים את התמונה.
+ */
+export const ACTIVITY_START_YM = '2026-03'
 
 export function useFinancePeriodFilter(initialYm = currentYm()) {
   const [filterYmFrom, setFilterYmFrom] = useState(initialYm)
@@ -20,7 +35,7 @@ export function useFinancePeriodFilter(initialYm = currentYm()) {
   )
 
   const applyMonthPreset = (
-    preset: 'month' | 'prev' | 'q' | 'half' | 'year',
+    preset: 'month' | 'prev' | 'q' | 'half' | 'year' | 'all',
   ) => {
     const now = currentYm()
     setMonthPreset(preset)
@@ -50,6 +65,11 @@ export function useFinancePeriodFilter(initialYm = currentYm()) {
       case 'year':
         setPeriodMode('range')
         setFilterYmFrom(addMonths(now, -11))
+        setFilterYmTo(now)
+        break
+      case 'all':
+        setPeriodMode('range')
+        setFilterYmFrom(ACTIVITY_START_YM)
         setFilterYmTo(now)
         break
     }

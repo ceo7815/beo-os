@@ -9,7 +9,7 @@ import {
   saveMorningCredentials,
   type MorningEnv,
 } from '../lib/morningCredentials.js'
-import { runMorningExpenseSync, runExpenseReconcile } from '../lib/morningExpenseSync.js'
+import { runExpenseReconcile } from '../lib/morningExpenseSync.js'
 import { fetchExpenseDocumentBuffer } from '../lib/expenseDocument.js'
 import { runMorningSync, resetAllIncomes, syncClients } from '../lib/morningSync.js'
 import { env } from '../config/env.js'
@@ -146,30 +146,10 @@ export async function registerMorningRoutes(app: FastifyInstance): Promise<void>
     },
   )
 
-  /** סנכרון הוצאות מחשבונית ירוקה + התאמה מול ייבוא בנק */
-  app.post(
-    '/api/integrations/morning/sync-expenses',
-    { preHandler: requireAdmin },
-    async (req, reply) => {
-      const body = (req.body ?? {}) as Record<string, unknown>
-      const fromDate =
-        typeof body.fromDate === 'string' && body.fromDate.trim()
-          ? body.fromDate.trim()
-          : undefined
-      try {
-        return await runMorningExpenseSync({ fromDate })
-      } catch (e) {
-        const status = e instanceof MorningError ? e.status : 500
-        reply.code(status >= 400 && status < 500 ? status : 502).send({
-          ok: false,
-          error: 'expense_sync_failed',
-          message: e instanceof Error ? e.message : 'סנכרון ההוצאות נכשל',
-        })
-      }
-    },
-  )
+  // משיכת הוצאות מחשבונית ירוקה הוסרה במכוון: חשבונית ירוקה היא מקור האמת
+  // להכנסות בלבד. הוצאות נכנסות דרך הסוכן, אחרי אישור המשתמש.
 
-  /** התאמה מחדש — בנק מול חשבונית ירוקה (ללא משיכה מ-GI) */
+  /** התאמה מחדש של הוצאות קיימות מול תנועות הבנק */
   app.post(
     '/api/integrations/morning/reconcile-expenses',
     { preHandler: requireAdmin },

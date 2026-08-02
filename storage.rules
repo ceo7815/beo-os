@@ -17,5 +17,17 @@ service firebase.storage {
         && fileName.matches('.*\\.pdf$')
         && request.resource.size < 15 * 1024 * 1024;
     }
+
+    /**
+     * חשבוניות ספק המוצמדות לתשלום בהתאמות הבנקים.
+     * מותרים גם צילומים, מפני שחלק מהחשבוניות מתקבלות כתמונה בלבד.
+     */
+    match /financeExpenses/{expenseId}/documents/{fileName} {
+      allow read: if request.auth != null;
+
+      allow write: if request.auth != null
+        && fileName.matches('.*\\.(pdf|jpg|jpeg|png|webp|heic|PDF|JPG|JPEG|PNG|WEBP|HEIC)$')
+        && request.resource.size < 15 * 1024 * 1024;
+    }
   }
 }

@@ -26,12 +26,15 @@ import {
 } from '../lib/financeIncomeDocument'
 import { resolveIncomeVat } from '../lib/israeliVat'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { FinanceTabs } from '../components/finance/FinanceTabs'
+import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import type { FinanceHostingType } from '../types'
 
 export function Income() {
   const { clients } = useClients()
   const { projects } = useProjects()
   const { incomes, loading, updateIncome } = useFinanceIncomes()
+  const attention = useFinanceAttention()
   const period = useFinancePeriodFilter()
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterClientId, setFilterClientId] = useState('')
@@ -123,6 +126,8 @@ export function Income() {
           מסמכי הכנסה מחשבונית ירוקה — קריאה בלבד
         </p>
       </header>
+
+      <FinanceTabs badges={attention} />
 
       <FinancePeriodFilter
         {...period}

@@ -27,6 +27,9 @@ import {
   filterExpensesByClient,
   formatNis,
 } from '../lib/financeCalc'
+import { computeExpenseCoverage } from '../lib/expenseReconciliation'
+import { FinanceTabs } from '../components/finance/FinanceTabs'
+import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 
 export function Finance() {
@@ -92,9 +95,16 @@ export function Finance() {
         filters,
         projectIdsForClient,
         expenseTypes,
-        incomes,
       ),
-    [expenses, filters, projectIdsForClient, expenseTypes, incomes],
+    [expenses, filters, projectIdsForClient, expenseTypes],
+  )
+
+  const attention = useFinanceAttention(filters.ymFrom, filters.ymTo)
+
+  // אחוז ההוצאות שמצבן ידוע — מלווה את מספר הרווח כדי שיהיה ברור כמה לסמוך עליו
+  const coverage = useMemo(
+    () => computeExpenseCoverage(expenses, filters.ymFrom, filters.ymTo),
+    [expenses, filters.ymFrom, filters.ymTo],
   )
 
   const clientNameById = useMemo(() => {
@@ -139,6 +149,8 @@ export function Finance() {
           </p>
         </div>
       </header>
+
+      <FinanceTabs badges={attention} />
 
       <MorningSyncPanel />
 
@@ -221,25 +233,50 @@ export function Finance() {
             tone={summary.trueNetProfit >= 0 ? 'profit' : 'expense'}
             label="רווח נקי אמיתי"
             value={formatNis(summary.trueNetProfit)}
-            hint="רווח גולמי פחות מע״מ לתשלום"
+            hint="הכנסות נטו פחות הוצאות נטו"
             onClick={() => setDetailMetric('profit')}
             footer={
-              <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-lg bg-black/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[var(--text-mid)]">
-                <span>נקודת איזון:</span>
-                <span className="font-extrabold tabular-nums text-[var(--text-dark)]">
-                  {formatNis(breakEven.breakEvenGross)}
+              <div className="flex flex-col gap-1">
+                <span
+                  className={`inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-lg px-2 py-1 text-[10.5px] font-semibold ${
+                    coverage.percent >= 100
+                      ? 'bg-[#10B981]/15 text-[#047857]'
+                      : coverage.percent >= 90
+                        ? 'bg-[#F59E0B]/15 text-[#92400E]'
+                        : 'bg-[#EF4444]/15 text-[#B91C1C]'
+                  }`}
+                  title="החלק מכסף ההוצאות שמצבו ידוע — מגובה במסמך או מסומן כלא דורש מסמך"
+                >
+                  <span>אמינות:</span>
+                  <span className="font-extrabold tabular-nums">
+                    {coverage.percent}% מההוצאות מותאמות
+                  </span>
+                  {coverage.unmatchedAmount > 0 ? (
+                    <>
+                      <span className="opacity-60">·</span>
+                      <span className="font-bold tabular-nums">
+                        {formatNis(coverage.unmatchedAmount)} ללא התאמה
+                      </span>
+                    </>
+                  ) : null}
                 </span>
-                <span className="text-[var(--text-light)]">·</span>
-                {breakEven.reached ? (
-                  <span className="font-bold text-[#10B981]">
-                    עברת את האיזון ✓
+                <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-lg bg-black/[0.04] px-2 py-1 text-[10.5px] font-semibold text-[var(--text-mid)]">
+                  <span>נקודת איזון:</span>
+                  <span className="font-extrabold tabular-nums text-[var(--text-dark)]">
+                    {formatNis(breakEven.breakEvenGross)}
                   </span>
-                ) : (
-                  <span className="font-bold text-[#F59E0B]">
-                    חסר {formatNis(breakEven.remainingGross)}
-                  </span>
-                )}
-              </span>
+                  <span className="text-[var(--text-light)]">·</span>
+                  {breakEven.reached ? (
+                    <span className="font-bold text-[#10B981]">
+                      עברת את האיזון ✓
+                    </span>
+                  ) : (
+                    <span className="font-bold text-[#F59E0B]">
+                      חסר {formatNis(breakEven.remainingGross)}
+                    </span>
+                  )}
+                </span>
+              </div>
             }
           />
         </div>

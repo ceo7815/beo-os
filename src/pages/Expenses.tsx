@@ -5,10 +5,7 @@ import { SupplierQuickSelect } from '../components/SupplierQuickSelect'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { EmptyState } from '../components/shared/EmptyState'
 import { ExpenseImportWizard } from '../components/finance/ExpenseImportWizard'
-import {
-  ExpenseReconciliationBadge,
-  ExpenseReconciliationPanel,
-} from '../components/finance/ExpenseReconciliationPanel'
+import { ExpenseReconciliationBadge } from '../components/finance/ExpenseReconciliationPanel'
 import {
   canViewGiExpenseDocument,
 } from '../lib/expenseReconciliation'
@@ -39,7 +36,6 @@ import {
   resolveExpenseType,
 } from '../lib/financeExpenseTypes'
 import {
-  deriveExpensePnlMonth,
   incomeLinkLabel,
   projectIncomesForExpense,
   resolveExpensePnlFields,
@@ -47,14 +43,27 @@ import {
   suggestLinkedIncome,
 } from '../lib/financeExpensePnl'
 import { toastFsSuccess } from '../lib/fsToast'
-import { parseSalaryMonthFromText } from '../lib/financeSalaryMonth'
+import {
+  isAccrualExpense,
+  parseSalaryMonthFromText,
+} from '../lib/financeSalaryMonth'
+import { deriveExpensePnlMonth } from '../lib/financeExpensePnl'
 import {
   isGiOnlyRecord,
+  reconciliationRowDate,
   reconciliationRowMap,
 } from '../lib/expenseReconciliation'
-import { formatDateIL } from '../lib/dates'
+import { refundLinkMap } from '../lib/expenseRefunds'
+import { RefundLinkNote } from '../components/finance/RefundLinkNote'
 import { matchMonthlyRecurringExpense } from '../lib/financeRecurringCatalog'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { formatDateIL } from '../lib/dates'
+import {
+  formatForeignAmount,
+  isForeignCurrencyCode,
+} from '../lib/foreignCurrency'
+import { FinanceTabs } from '../components/finance/FinanceTabs'
+import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import {
   defaultVatClassForExpenseType,
   EXPENSE_VAT_CLASS_LABEL,
@@ -135,6 +144,12 @@ const emptyExpenseForm = (): ExpenseFormState => ({
 })
 
 
+/** YYYY-MM → MM/YYYY — קצר מספיק כדי להציג שני חודשים באותה שורה */
+function ymShort(ym: string): string {
+  const [y, m] = ym.slice(0, 7).split('-')
+  return y && m ? `${m}/${y}` : ym
+}
+
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
     <span className="mb-1 block text-[11px] font-bold text-[var(--text-mid)]">
@@ -185,6 +200,7 @@ export function Expenses() {
     [expenseTypes],
   )
 
+  const attention = useFinanceAttention()
   const [filterYmFrom, setFilterYmFrom] = useState(currentYm())
   const [filterYmTo, setFilterYmTo] = useState(currentYm())
   const [periodMode, setPeriodMode] = useState<'single' | 'range'>('single')
@@ -352,6 +368,8 @@ export function Expenses() {
     }
   }, [expensesLoading, expenses, updateExpense])
 
+  const refundLinks = useMemo(() => refundLinkMap(expenses), [expenses])
+
   const reconciliationById = useMemo(
     () => reconciliationRowMap(expenses, filterYmFrom, filterYmTo),
     [expenses, filterYmFrom, filterYmTo],
@@ -364,7 +382,6 @@ export function Expenses() {
         filters,
         projectIdsForClient,
         expenseTypes,
-        incomes,
       ),
     ]
     rows = rows.filter((e) => !isGiOnlyRecord(e))
@@ -373,13 +390,23 @@ export function Expenses() {
     } else if (recurringFilter === 'variable') {
       rows = rows.filter((e) => e.recurring !== true)
     }
-    return rows.sort((a, b) => b.billingMonth.localeCompare(a.billingMonth))
+    /**
+     * מיון לפי התאריך שבו הכסף באמת יצא, מהחדש לישן — כך ה-1 בחודש נמצא
+     * בתחתית והרשימה נקראת כמו דף בנק. מיון לפי חודש בלבד השאיר את
+     * הסדר בתוך החודש אקראי.
+     */
+    return rows.sort((a, b) => {
+      const byDate = reconciliationRowDate(b).localeCompare(
+        reconciliationRowDate(a),
+      )
+      if (byDate !== 0) return byDate
+      return (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
+    })
   }, [
     expenses,
     filters,
     projectIdsForClient,
     expenseTypes,
-    incomes,
     recurringFilter,
   ])
 
@@ -407,7 +434,6 @@ export function Expenses() {
       filters,
       projectIdsForClient,
       expenseTypes,
-      incomes,
     )
     const r2 = (n: number) => Math.round(n * 100) / 100
     let allGross = 0
@@ -437,7 +463,7 @@ export function Expenses() {
       fixedCount,
       variableCount,
     }
-  }, [expenses, filters, projectIdsForClient, expenseTypes, incomes])
+  }, [expenses, filters, projectIdsForClient, expenseTypes])
 
   const expenseTypeOptions = useMemo(
     () => expenseTypes.map((t) => ({ value: t.id, label: t.label })),
@@ -456,32 +482,6 @@ export function Expenses() {
         : [],
     [incomes, expenseForm.projectId],
   )
-
-  const expensePnlMonthPreview = useMemo(() => {
-    if (!expenseForm.projectId.trim() || selectedExpenseType.fieldMode === 'salary') {
-      return ''
-    }
-    return deriveExpensePnlMonth(
-      {
-        id: '',
-        type: expenseForm.type,
-        amount: 0,
-        billingMonth: expenseForm.billingMonth,
-        recurring: false,
-        createdAt: '',
-        projectId: expenseForm.projectId.trim(),
-        linkedIncomeId: expenseForm.linkedIncomeId || undefined,
-      },
-      incomes,
-    )
-  }, [
-    incomes,
-    expenseForm.type,
-    expenseForm.projectId,
-    expenseForm.linkedIncomeId,
-    expenseForm.billingMonth,
-    selectedExpenseType.fieldMode,
-  ])
 
   const expenseVatPreview = useMemo(() => {
     const n = Number.parseFloat(expenseForm.amount.replace(/,/g, ''))
@@ -604,7 +604,6 @@ export function Expenses() {
     const pnlFields = resolveExpensePnlFields(
       projectIdTrimmed || undefined,
       expenseForm.linkedIncomeId,
-      expenseForm.billingMonth,
       incomes,
     )
     const payload: NewFinanceExpenseInput = {
@@ -669,11 +668,7 @@ export function Expenses() {
             ? null
             : expenseForm.clientId.trim() || null,
         linkedIncomeId: isSalary ? null : projectIdTrimmed ? (pnlFields.linkedIncomeId ?? null) : null,
-        pnlMonth: isSalary
-          ? expenseForm.billingMonth
-          : projectIdTrimmed
-            ? (pnlFields.pnlMonth ?? null)
-            : null,
+        pnlMonth: isSalary ? expenseForm.billingMonth : null,
         employeeName:
           typeDef.fieldMode === 'salary' ? employeeNameTrimmed : null,
         paidDate: expenseForm.paidDate.trim() || null,
@@ -707,10 +702,12 @@ export function Expenses() {
             הוצאות
           </h1>
           <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-            ניהול הוצאות קבועות ומשתנות — אדמין בלבד
+            הזנה ידנית וייבוא מהבנק — כל רשומה נספרת מרגע שמירתה
           </p>
         </div>
       </header>
+
+      <FinanceTabs badges={attention} />
 
       <section
         className={`flex flex-col gap-3 rounded-2xl ${hubSectionClass(4)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:flex-wrap sm:items-end`}
@@ -915,14 +912,6 @@ export function Expenses() {
       </section>
       ) : null}
 
-      <ExpenseReconciliationPanel
-        expenses={expenses}
-        ymFrom={filterYmFrom}
-        ymTo={filterYmTo}
-        typeById={expenseTypeById}
-        projectNameById={projectNameById}
-      />
-
       {activeTab === 'expenses' ? (
       <section className={`rounded-2xl ${hubSectionClass(7)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1002,29 +991,51 @@ export function Expenses() {
               <tbody>
                 {filteredExpenses.map((row) => {
                   const typeDef = resolveExpenseType(row.type, expenseTypeById)
-                  const isSalaryRow = typeDef.fieldMode === 'salary'
+                  /** משכורת ומסים נספרים בחודש שעבורו שולמו, לא בחודש התשלום */
+                  const accrualRow = isAccrualExpense(row, typeDef)
+                  const reportMonth = deriveExpensePnlMonth(row)
                   const vatClass = resolveExpenseVatClass(row)
                   const breakdown = resolveExpenseRowVat(row)
                   const payMonth = expensePaymentMonth(row)
                   const pnlAttributed =
-                    !isSalaryRow &&
-                    (expenseUsesPnlAttribution(row, incomes) ||
+                    !accrualRow &&
+                    (expenseUsesPnlAttribution(row) ||
                       row.isPnlAttribution === true)
-                  const displayMonth = isSalaryRow
-                    ? row.billingMonth
+                  const displayMonth = accrualRow
+                    ? reportMonth
                     : pnlAttributed
                       ? payMonth
                       : row.billingMonth
+                  /** צמד זיכוי־חיוב שהתאזן — מוצג מעומעם כדי שלא יתחרה על תשומת הלב */
+                  const refundLink = refundLinks.get(row.id)
+                  const settled = refundLink?.fully === true
                   return (
                     <tr
                       key={`${row.id}-${row.pnlMonth ?? row.billingMonth}-${payMonth}`}
-                      className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
+                      className={`border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)] ${
+                        settled ? 'bg-[var(--surface-muted)]/40 opacity-70' : ''
+                      }`}
                     >
                       <td className="px-3 py-3 align-top tabular-nums">
                         <div>{monthLabelHe(displayMonth)}</div>
-                        {isSalaryRow && row.paidDate ? (
-                          <div className="mt-0.5 text-[10px] font-normal text-[var(--text-mid)]">
-                            שולם {formatDateIL(row.paidDate)}
+                        {row.paidDate ? (
+                          <div className="mt-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
+                            {row.paymentMethod === 'credit_card'
+                              ? 'עסקה'
+                              : 'ירד'}{' '}
+                            {formatDateIL(row.paidDate)}
+                            {row.chargeDate &&
+                            row.chargeDate !== row.paidDate ? (
+                              <span className="block">
+                                חיוב בבנק {formatDateIL(row.chargeDate)}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {accrualRow && row.paidDate ? (
+                          <div className="mt-1 inline-block rounded-md bg-[#FEF3C7] px-1.5 py-0.5 text-[10px] font-semibold text-[#92400E]">
+                            שולם {ymShort(row.paidDate.slice(0, 7))} · משויך{' '}
+                            {ymShort(reportMonth)}
                           </div>
                         ) : null}
                       </td>
@@ -1043,6 +1054,16 @@ export function Expenses() {
                       </td>
                       <td className="px-3 py-3 align-top tabular-nums font-bold">
                         {formatNis(breakdown.gross)}
+                        {/* בעסקת מט״ח הסכום בשקלים תלוי בשער — הנקוב בחשבונית הוא סכום המקור */}
+                        {isForeignCurrencyCode(row.currency) &&
+                        row.originalAmount ? (
+                          <span className="mt-0.5 block text-[10px] font-bold text-[#3730A3]">
+                            {formatForeignAmount(
+                              row.originalAmount,
+                              row.currency,
+                            )}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-3 py-3 align-top tabular-nums text-[#8B5CF6]">
                         {vatClass === 'vat_liable' ? formatNis(breakdown.vat) : '—'}
@@ -1056,10 +1077,14 @@ export function Expenses() {
                           : '—'}
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <ExpenseReconciliationBadge
-                          status={reconciliationById.get(row.id)?.status}
-                          linkedGi={reconciliationById.get(row.id)?.linkedGi}
-                        />
+                        {refundLink ? (
+                          <RefundLinkNote link={refundLink} />
+                        ) : (
+                          <ExpenseReconciliationBadge
+                            status={reconciliationById.get(row.id)?.status}
+                            linkedGi={reconciliationById.get(row.id)?.linkedGi}
+                          />
+                        )}
                         {(() => {
                           const linkedGi = reconciliationById.get(row.id)?.linkedGi
                           if (!canViewGiExpenseDocument(row, linkedGi)) return null
@@ -1341,22 +1366,11 @@ export function Expenses() {
                           }))}
                           emptyOption={{ label: 'בחר עסקה…' }}
                         />
-                        {expensePnlMonthPreview &&
-                        expensePnlMonthPreview !== expenseForm.billingMonth ? (
-                          <p className="mt-2 text-[11px] leading-relaxed text-[#1D4ED8]">
-                            ההוצאה תיספר ב
-                            <span className="font-bold">
-                              {monthLabelHe(expensePnlMonthPreview)}
-                            </span>
-                            {' '}ברווח והפסד — גם אם התשלום ב
-                            {monthLabelHe(expenseForm.billingMonth)}.
-                          </p>
-                        ) : expensePnlMonthPreview ? (
-                          <p className="mt-2 text-[11px] text-[var(--text-mid)]">
-                            רווח והפסד: {monthLabelHe(expensePnlMonthPreview)} (זהה
-                            לחודש התשלום)
-                          </p>
-                        ) : null}
+                        <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-mid)]">
+                          הקישור לעסקה משמש לרווחיות הפרויקט בלבד. ברווח והפסד
+                          ההוצאה נספרת ב
+                          {monthLabelHe(expenseForm.billingMonth)}.
+                        </p>
                       </>
                     ) : (
                       <p className="rounded-lg border border-[#F59E0B] bg-[#FFFBEB] px-3 py-2 text-[11px] text-[#92400E]">

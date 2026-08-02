@@ -53,8 +53,20 @@ export type NewFinanceExpenseInput = {
   supplierInvoiceReceived?: boolean
   paymentMethod?: FinancePaymentMethod
   paidDate?: string
+  /** YYYY-MM-DD — מועד ירידת הכסף מהחשבון (חיוב מרוכז בכרטיס) */
+  chargeDate?: string
   bankRef?: string
   hostingExpense?: boolean
+  /** YYYY-MM-DD — תאריך המסמך, קובע את חודש הרווח וההפסד */
+  documentDate?: string
+  /** YYYY-MM — החודש שאליו המסמך שייך כלכלית, גם כשהוא נעול */
+  documentMonth?: string
+  isLateDocument?: boolean
+  spreadMonths?: number
+  spreadStartMonth?: string
+  /** עסקת מט״ח — קוד המטבע והסכום הנקוב לפני ההמרה לשקלים */
+  currency?: string
+  originalAmount?: number
 }
 
 export type FinanceExpensePatchInput = {
@@ -80,6 +92,16 @@ export type FinanceExpensePatchInput = {
   supplierInvoiceReceived?: boolean
   hostingExpense?: boolean
   paidDate?: string | null
+  /** הצמדת חשבונית ספק לתשלום — null מנתק את המסמך הקיים */
+  invoiceNumber?: string | null
+  documentUrl?: string | null
+  documentFileName?: string | null
+  /** שיוך זיכוי לחיוב שהוא מבטל — null מנתק את השיוך */
+  refundForExpenseId?: string | null
+  /** תאריך החשבונית — קובע את חודש הרווח וההפסד */
+  documentDate?: string | null
+  documentMonth?: string | null
+  isLateDocument?: boolean
 }
 
 type FinanceExpensesContextValue = {
@@ -127,6 +149,7 @@ function buildExpenseRow(data: NewFinanceExpenseInput): Record<string, unknown> 
   if (data.description?.trim()) row.description = data.description.trim()
   if (data.paymentMethod) row.paymentMethod = data.paymentMethod
   if (data.paidDate?.trim()) row.paidDate = data.paidDate.trim().slice(0, 10)
+  if (data.chargeDate?.trim()) row.chargeDate = data.chargeDate.trim().slice(0, 10)
   if (data.bankRef?.trim()) {
     row.bankRef = data.bankRef.trim()
     row.source = 'bank_import'
@@ -134,6 +157,31 @@ function buildExpenseRow(data: NewFinanceExpenseInput): Record<string, unknown> 
   if (data.pnlMonth?.trim()) row.pnlMonth = data.pnlMonth.trim().slice(0, 7)
   if (data.linkedIncomeId?.trim()) row.linkedIncomeId = data.linkedIncomeId.trim()
   if (data.hostingExpense === true) row.hostingExpense = true
+  if (data.documentDate?.trim()) {
+    row.documentDate = data.documentDate.trim().slice(0, 10)
+  }
+  if (data.documentMonth?.trim()) {
+    row.documentMonth = data.documentMonth.trim().slice(0, 7)
+  }
+  if (data.isLateDocument === true) row.isLateDocument = true
+  if (typeof data.spreadMonths === 'number' && data.spreadMonths > 1) {
+    row.spreadMonths = Math.floor(data.spreadMonths)
+    if (data.spreadStartMonth?.trim()) {
+      row.spreadStartMonth = data.spreadStartMonth.trim().slice(0, 7)
+    }
+  }
+  // סכום המקור נשמר רק כשיש מטבע לצדו — בלעדיו הוא חסר משמעות
+  const currency = data.currency?.trim().toUpperCase()
+  if (
+    currency &&
+    currency !== 'ILS' &&
+    typeof data.originalAmount === 'number' &&
+    Number.isFinite(data.originalAmount) &&
+    data.originalAmount !== 0
+  ) {
+    row.currency = currency
+    row.originalAmount = Math.round(data.originalAmount * 100) / 100
+  }
   return row
 }
 
@@ -331,6 +379,54 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
           next.paidDate = deleteField()
         } else if (typeof patch.paidDate === 'string' && patch.paidDate.trim()) {
           next.paidDate = patch.paidDate.trim().slice(0, 10)
+        }
+        // הצמדת מסמך היא הצהרה שהתשלום מתועד, ולכן היא נרשמת יחד עם מועד
+        // ההצמדה. ניתוק המסמך מסיר גם את החותמת, כדי שלא תישאר עדות למסמך
+        // שכבר אינו קיים.
+        if (patch.documentUrl === null) {
+          next.documentUrl = deleteField()
+          next.documentFileName = deleteField()
+          next.documentAttachedAt = deleteField()
+        } else if (typeof patch.documentUrl === 'string' && patch.documentUrl.trim()) {
+          next.documentUrl = patch.documentUrl.trim()
+          next.documentAttachedAt = new Date().toISOString()
+          if (typeof patch.documentFileName === 'string' && patch.documentFileName.trim()) {
+            next.documentFileName = patch.documentFileName.trim()
+          }
+        }
+        if (patch.invoiceNumber === null) {
+          next.invoiceNumber = deleteField()
+        } else if (typeof patch.invoiceNumber === 'string' && patch.invoiceNumber.trim()) {
+          next.invoiceNumber = patch.invoiceNumber.trim()
+        }
+        if (patch.refundForExpenseId === null) {
+          next.refundForExpenseId = deleteField()
+        } else if (
+          typeof patch.refundForExpenseId === 'string' &&
+          patch.refundForExpenseId.trim()
+        ) {
+          next.refundForExpenseId = patch.refundForExpenseId.trim()
+        }
+        if (patch.documentDate === null) {
+          next.documentDate = deleteField()
+        } else if (
+          typeof patch.documentDate === 'string' &&
+          patch.documentDate.trim()
+        ) {
+          next.documentDate = patch.documentDate.trim().slice(0, 10)
+        }
+        if (patch.documentMonth === null) {
+          next.documentMonth = deleteField()
+        } else if (
+          typeof patch.documentMonth === 'string' &&
+          patch.documentMonth.trim()
+        ) {
+          next.documentMonth = patch.documentMonth.trim().slice(0, 7)
+        }
+        if (typeof patch.isLateDocument === 'boolean') {
+          next.isLateDocument = patch.isLateDocument
+            ? true
+            : (deleteField() as unknown as boolean)
         }
         if (Object.keys(next).length === 0) return
         await updateDoc(doc(db, 'financeExpenses', id), stripUndefined(next))

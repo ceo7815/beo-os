@@ -177,7 +177,8 @@ export function computeHostingFinance(
   expenseInputVat = round2(expenseInputVat)
   expenseNet = round2(expenseNet)
 
-  const vatPayable = round2(Math.max(0, incomeVat - expenseInputVat))
+  // מע״מ שלילי הוא החזר שמגיע מהמדינה ולא אפס — זהה לחישוב בדוח הראשי
+  const vatPayable = round2(incomeVat - expenseInputVat)
   const grossProfit = round2(incomeGross - expenseGross)
   const trueNetProfit = round2(grossProfit - vatPayable)
 

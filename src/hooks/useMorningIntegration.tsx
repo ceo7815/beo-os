@@ -167,29 +167,7 @@ export function useMorningIntegration() {
     }
   }, [refresh])
 
-  const syncExpenses = useCallback(
-    async (fromDate?: string): Promise<MorningExpenseSyncResult | null> => {
-      setBusy(true)
-      setError(null)
-      try {
-        const result = await apiFetch<MorningExpenseSyncResult>(
-          '/api/integrations/morning/sync-expenses',
-          {
-            method: 'POST',
-            body: JSON.stringify(fromDate ? { fromDate } : {}),
-          },
-        )
-        await refresh()
-        return result
-      } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'סנכרון ההוצאות נכשל')
-        return null
-      } finally {
-        setBusy(false)
-      }
-    },
-    [refresh],
-  )
+  // אין משיכת הוצאות מחשבונית ירוקה — משם מגיעות הכנסות בלבד.
 
   const reconcileExpenses = useCallback(
     async (): Promise<MorningReconcileResult | null> => {
@@ -238,7 +216,6 @@ export function useMorningIntegration() {
     connect,
     sync,
     syncClients,
-    syncExpenses,
     reconcileExpenses,
     resetIncomes,
   }

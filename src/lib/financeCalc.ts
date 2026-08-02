@@ -22,6 +22,7 @@ import {
   resolveExpenseType,
 } from './financeExpenseTypes'
 import { expensesForFinancialTotals } from './expenseSource'
+import { expenseRowForMonth, isSpreadExpense } from './financeExpenseSpread'
 import type {
   FinanceExpense,
   FinanceExpenseTypeDef,
@@ -174,14 +175,6 @@ export function filterIncomePageDocs(
   )
 }
 
-function parseYm(ym: string): { y: number; m: number } | null {
-  const [ys, ms] = ym.split('-')
-  const y = Number(ys)
-  const m = Number(ms)
-  if (!y || !m || m < 1 || m > 12) return null
-  return { y, m }
-}
-
 export { addMonths, compareYm, monthsInRange, normalizeYmRange } from './financeMonthRange'
 
 export function formatYmRangeLabel(from: string, to: string): string {
@@ -202,30 +195,16 @@ export function incomeVatOnPaid(inc: FinanceIncome): number {
   return incomeVatForDocument(inc)
 }
 
+/**
+ * הכנסה נספרת בחודש המסמך שלה בלבד.
+ * חשבונית ירוקה היא מקור האמת — לכל חודש יש מסמך משלו, ולכן אין ייצור
+ * מופעים חודשיים נוספים מהכנסה אחת.
+ */
 export function incomeAppliesToMonth(
   inc: FinanceIncome,
   targetYm: string,
 ): boolean {
-  const anchor = incomeFilterAnchorDate(inc)
-  if (ymFromDate(anchor) === targetYm) return true
-  if (!inc.monthlyRetainer) return false
-
-  const start = parseYm(ymFromDate(anchor))
-  const target = parseYm(targetYm)
-  if (!start || !target) return false
-  if (target.y !== start.y) return false
-  if (target.m < start.m) return false
-  return true
-}
-
-function incomeDateForMonth(inc: FinanceIncome, targetYm: string): string {
-  const anchor = incomeFilterAnchorDate(inc)
-  const day = anchor.slice(8, 10)
-  const safeDay =
-    /^\d{2}$/.test(day) && Number(day) >= 1 && Number(day) <= 28
-      ? day
-      : '01'
-  return `${targetYm}-${safeDay}`
+  return ymFromDate(incomeFilterAnchorDate(inc)) === targetYm
 }
 
 function applyOverdueToIncome(row: FinanceIncome, today: string): FinanceIncome {
@@ -253,23 +232,7 @@ function expandIncomesForMonth(
     if (filters.clientId && inc.clientId !== filters.clientId) continue
     if (!incomeAppliesToMonth(inc, ym)) continue
 
-    const anchor = incomeFilterAnchorDate(inc)
-    if (ymFromDate(anchor) === ym) {
-      out.push(applyOverdueToIncome(inc, today))
-      continue
-    }
-
-    out.push(
-      applyOverdueToIncome(
-        {
-          ...inc,
-          invoiceDate: incomeDateForMonth(inc, ym),
-          sourceInvoiceDate: anchor,
-          isAutoOccurrence: true,
-        },
-        today,
-      ),
-    )
+    out.push(applyOverdueToIncome(inc, today))
   }
 
   return out
@@ -306,7 +269,6 @@ export function filterExpensesByClient(
   filters: FinanceFilters,
   projectIdsForClient: Set<string>,
   expenseTypes: FinanceExpenseTypeDef[],
-  incomes: FinanceIncome[] = [],
 ): FinanceExpense[] {
   return expensesForFinancialTotals(
     expandExpensesForFilters(
@@ -314,7 +276,6 @@ export function filterExpensesByClient(
       filters,
       projectIdsForClient,
       expenseTypeMap(expenseTypes),
-      incomes,
     ),
   )
 }
@@ -427,7 +388,6 @@ export function computeSummary(
     filters,
     projectIdsForClient,
     expenseTypes,
-    incomes,
   )
 
   let incomeGross = 0
@@ -480,11 +440,12 @@ export function computeSummary(
 
   const expenseNetTotal = roundMoney(expenseVatLiableNet + expenseNonVatTotal)
   const expenseGrossTotal = roundMoney(expenseVatLiableGross + expenseNonVatTotal)
-  const vatPayable = roundMoney(Math.max(0, incomeVat - expenseInputVat))
+  // מע״מ לתשלום = עסקאות − תשומות. ערך שלילי = החזר שמגיע מהמדינה, ולא אפס.
+  const vatPayable = roundMoney(incomeVat - expenseInputVat)
   // רווח גולמי = הכנסות (כולל מע״מ) − הוצאות (כולל מע״מ), לפני קיזוז מע״מ מול המדינה
   const grossProfit = roundMoney(incomeGross - expenseGrossTotal)
-  // רווח נקי אמיתי = גולמי − מע״מ לתשלום (≡ הכנסות נטו − הוצאות נטו)
-  const trueNetProfit = roundMoney(grossProfit - vatPayable)
+  // רווח נקי אמיתי = הכנסות נטו − הוצאות נטו. המע״מ אינו חלק מהרווח.
+  const trueNetProfit = roundMoney(incomeNet - expenseNetTotal)
 
   return {
     incomeGross,
@@ -573,9 +534,12 @@ export function computeProfitLossRows(
     let fixedExpenses = 0
     let supplierExpenses = 0
     let platformExpenses = 0
-    for (const exp of countableExpenses) {
-      const def = resolveExpenseType(exp.type, typeMap)
-      if (!expenseAppliesToMonth(exp, ym, def, incomes)) continue
+    for (const raw of countableExpenses) {
+      const def = resolveExpenseType(raw.type, typeMap)
+      if (!expenseAppliesToMonth(raw, ym, def)) continue
+      // תשלום פרוס נספר לפי המנה החודשית שלו, לא במלוא הסכום
+      const exp = isSpreadExpense(raw) ? expenseRowForMonth(raw, ym) : raw
+      if (!exp) continue
       const breakdown = resolveExpenseRowVat(exp)
       expenseGross += breakdown.gross
       expenseNet += breakdown.net
@@ -593,10 +557,11 @@ export function computeProfitLossRows(
     expenseGross = roundMoney(expenseGross)
     expenseNet = roundMoney(expenseNet)
     expenseInputVat = roundMoney(expenseInputVat)
-    const vatPayable = roundMoney(Math.max(0, incomeVat - expenseInputVat))
-    // רווח גולמי = ברוטו − ברוטו; רווח נקי = גולמי − מע״מ לתשלום
+    // ערך שלילי = החזר מע״מ שמגיע מהמדינה
+    const vatPayable = roundMoney(incomeVat - expenseInputVat)
     const grossProfit = roundMoney(incomeGross - expenseGross)
-    const trueNetProfit = roundMoney(grossProfit - vatPayable)
+    // רווח נקי = הכנסות נטו − הוצאות נטו. המע״מ אינו חלק מהרווח.
+    const trueNetProfit = roundMoney(incomeNet - expenseNet)
     const totalExpenses = expenseNet
     const profitMargin =
       incomeNet > 0 ? roundMoney((trueNetProfit / incomeNet) * 1000) / 10 : 0
@@ -645,12 +610,11 @@ export function profitLossExpensesForMonth(
   expenses: FinanceExpense[],
   expenseTypes: FinanceExpenseTypeDef[],
   ym: string,
-  incomes: FinanceIncome[] = [],
 ): FinanceExpense[] {
   const typeMap = expenseTypeMap(expenseTypes)
   return expensesForFinancialTotals(expenses).filter((exp) => {
     const def = resolveExpenseType(exp.type, typeMap)
-    return expenseAppliesToMonth(exp, ym, def, incomes)
+    return expenseAppliesToMonth(exp, ym, def)
   })
 }
 
