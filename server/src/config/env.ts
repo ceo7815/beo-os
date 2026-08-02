@@ -52,6 +52,11 @@ export const env = {
    * לשרוד בנייה מחדש של הקונטיינר.
    */
   financeDocsDir: readString('FINANCE_DOCS_DIR', './data/finance-documents'),
+  /**
+   * מפתחות + מצב סנכרון של חשבונית ירוקה על דיסק השרת.
+   * כך סטטוס/חיבור לא תלויים במכסת Firestore Admin.
+   */
+  morningDataDir: readString('MORNING_DATA_DIR', './data/morning'),
 } as const
 
 export const MORNING_BASE_URLS = {

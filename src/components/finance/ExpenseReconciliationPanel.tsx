@@ -3,6 +3,7 @@ import { useMorningIntegration } from '../../hooks/useMorningIntegration'
 import { toastFsSuccess } from '../../lib/fsToast'
 import {
   auditExpenseDuplicates,
+  isAccountantSelfFiledExpense,
   listMissingGiBankExpenses,
   listUnpaidGiExpenses,
   RECONCILIATION_STATUS_LABEL,
@@ -123,7 +124,7 @@ export function ExpenseReconciliationPanel({
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {(
           [
-            ['matched', 'התאמה מלאה', summary.matched, 'text-[#166534]'],
+            ['matched', 'חשבונית בהתאמה מלאה', summary.matched, 'text-[#166534]'],
             [
               'bank_missing_document',
               'חסר בחשבונית ירוקה',
@@ -214,21 +215,34 @@ export function ExpenseReconciliationPanel({
 export function ExpenseReconciliationBadge({
   status,
   linkedGi,
+  expense,
 }: {
   status?: ExpenseReconciliationStatus
   linkedGi?: FinanceExpense
+  expense?: FinanceExpense
 }) {
-  if (!status || status === 'manual_ok') return null
+  if (!status) return null
   const giNum = linkedGi?.greenInvoiceNumber
   const giSupplier =
     linkedGi?.greenInvoiceSupplierName ?? linkedGi?.supplierName
+  const accountantSelfFiled =
+    expense != null && isAccountantSelfFiledExpense(expense)
+  const label = accountantSelfFiled
+    ? 'חשבונית אצל רואה החשבון · סגור'
+    : RECONCILIATION_STATUS_LABEL[status]
   return (
     <span
-      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${reconciliationBadgeClass(status)}`}
+      className={`inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[10px] font-extrabold leading-tight ${reconciliationBadgeClass(status)}`}
     >
-      {RECONCILIATION_STATUS_LABEL[status]}
-      {status === 'matched' && giNum ? ` · #${giNum}` : ''}
-      {status === 'matched' && giSupplier ? ` · ${giSupplier}` : ''}
+      <span className="truncate">
+        {label}
+        {!accountantSelfFiled && status === 'matched' && giNum
+          ? ` · #${giNum}`
+          : ''}
+        {!accountantSelfFiled && status === 'matched' && giSupplier
+          ? ` · ${giSupplier}`
+          : ''}
+      </span>
     </span>
   )
 }

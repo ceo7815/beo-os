@@ -38,13 +38,13 @@ export const RECONCILIATION_STATUS_LABEL: Record<
   ExpenseReconciliationStatus,
   string
 > = {
-  matched: 'התאמה מלאה',
-  bank_missing_document: 'חסרה חשבונית',
+  matched: 'חשבונית בהתאמה מלאה',
+  bank_missing_document: 'ממתין לחשבונית',
   gi_unpaid: 'מסמך ללא תשלום בבנק',
-  document_not_required: 'לא נדרשת חשבונית',
-  manual_ok: 'חשבונית מוצמדת',
-  manual_pending: 'חסרה חשבונית',
-  refunded: 'בוטל בזיכוי',
+  document_not_required: 'לא נדרשת חשבונית · סגור',
+  manual_ok: 'חשבונית בהתאמה מלאה',
+  manual_pending: 'ממתין לחשבונית',
+  refunded: 'סגור בזיכוי',
 }
 
 export const GI_DOC_KIND_LABEL: Record<GiExpenseDocKind, string> = {
@@ -289,11 +289,29 @@ export function isGiExpense(exp: FinanceExpense): boolean {
   return exp.source === 'green_invoice' || Boolean(exp.greenInvoiceId)
 }
 
+/**
+ * יובל שכטר (רואה החשבון) מזין את החשבונית ישירות אצלו —
+ * המסמך לא עובר דרך המערכת ולכן השורה נחשבת סגורה תמיד.
+ */
+export function isAccountantSelfFiledExpense(exp: FinanceExpense): boolean {
+  const text = [exp.name, exp.supplierName, exp.description]
+    .filter((s): s is string => Boolean(s?.trim()))
+    .join(' ')
+    .toLowerCase()
+  const normalized = text.replace(/["״'`]/g, '')
+  if (normalized.includes('שכטר')) return true
+  if (/\bschechter\b|\bschachter\b|\bshechter\b|\bschecter\b/.test(normalized)) {
+    return true
+  }
+  return false
+}
+
 export function requiresGiDocument(
   exp: FinanceExpense,
   typeById?: Map<string, FinanceExpenseTypeDef>,
 ): boolean {
   if (!isBankExpense(exp)) return false
+  if (isAccountantSelfFiledExpense(exp)) return false
   if (GI_EXEMPT_TYPE_IDS.has(exp.type)) return false
   const typeDef = typeById
     ? resolveExpenseType(exp.type, typeById)
@@ -552,6 +570,11 @@ export function buildReconciledExpenseRows(
       continue
     }
 
+    if (isAccountantSelfFiledExpense(exp)) {
+      rows.push({ expense: exp, status: 'document_not_required' })
+      continue
+    }
+
     rows.push({
       expense: exp,
       status: isDocumented(exp) ? 'manual_ok' : 'manual_pending',
@@ -765,6 +788,7 @@ export function reconciliationBadgeClass(
 ): string {
   switch (status) {
     case 'matched':
+    case 'manual_ok':
     case 'document_not_required':
     case 'refunded':
       return 'bg-[#DCFCE7] text-[#166534]'
@@ -776,6 +800,18 @@ export function reconciliationBadgeClass(
     default:
       return 'bg-[var(--surface-muted)] text-[var(--text-mid)]'
   }
+}
+
+/** תצוגה בלבד — שורה שלא דורשת פעולת התאמה נוספת */
+export function isSettledReconciliationStatus(
+  status: ExpenseReconciliationStatus | undefined,
+): boolean {
+  return (
+    status === 'matched' ||
+    status === 'manual_ok' ||
+    status === 'document_not_required' ||
+    status === 'refunded'
+  )
 }
 
 export type ExpenseDuplicateAudit = {

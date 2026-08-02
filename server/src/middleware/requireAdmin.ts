@@ -75,16 +75,6 @@ export async function requireAdmin(
     return
   }
 
-  const db = getAdminDb()
-  if (!db) {
-    reply.code(503).send({
-      ok: false,
-      error: 'firebase_not_configured',
-      message: 'Firebase Admin לא מוגדר',
-    })
-    return
-  }
-
   const cached = readCachedAdmin(uid)
   if (cached === false) {
     reply.code(403).send({
@@ -96,8 +86,20 @@ export async function requireAdmin(
   }
   if (cached === true) return
 
+  // מייל מורשה — בלי לגעת ב-Firestore (קריטי כשיש מכסת Admin)
   if (adminByEmail(req.authUser?.email)) {
     writeCachedAdmin(uid, true)
+    return
+  }
+
+  const db = getAdminDb()
+  if (!db) {
+    reply.code(503).send({
+      ok: false,
+      error: 'firebase_not_configured',
+      message:
+        'Firebase Admin לא מוגדר — או הוסף את המייל ל-ADMIN_EMAILS',
+    })
     return
   }
 

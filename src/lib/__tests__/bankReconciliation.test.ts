@@ -68,6 +68,27 @@ describe('תשלום נחשב מתועד רק כשיש לו חשבונית', () 
     expect(isOpenReconciliationRow(rows[0]!)).toBe(false)
   })
 
+  it('יובל שכטר נסגר תמיד — החשבונית אצל רואה החשבון', () => {
+    const bank = listReconciliationRows(
+      [expense({ name: 'יובל שכטר', supplierName: 'יובל שכטר רואה חשבון' })],
+      ...JULY,
+    )
+    expect(bank[0]!.status).toBe('document_not_required')
+    expect(isOpenReconciliationRow(bank[0]!)).toBe(false)
+
+    const manual = listOpenReconciliationRows(
+      [
+        expense({
+          name: 'שכטר',
+          source: 'manual',
+          bankRef: undefined as unknown as string,
+        }),
+      ],
+      ...JULY,
+    )
+    expect(manual).toHaveLength(0)
+  })
+
   it('הוצאה שהוזנה ידנית ללא חשבונית נספרת כפתוחה', () => {
     const rows = listOpenReconciliationRows(
       [expense({ source: 'manual', bankRef: undefined as unknown as string })],

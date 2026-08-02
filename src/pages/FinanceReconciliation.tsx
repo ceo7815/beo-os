@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { FinanceTabs } from '../components/finance/FinanceTabs'
 import { FinancePeriodFilter } from '../components/finance/FinancePeriodFilter'
 import { AttachInvoiceModal } from '../components/finance/AttachInvoiceModal'
+import { ExpenseReconciliationBadge } from '../components/finance/ExpenseReconciliationPanel'
+import { ExpenseVatClassChip } from '../components/finance/ExpenseVatClassChip'
 import { RefundMatchPanel } from '../components/finance/RefundMatchPanel'
 import { EmptyState } from '../components/shared/EmptyState'
 import { useFinancePeriodFilter } from '../hooks/useFinancePeriodFilter'
@@ -10,28 +12,27 @@ import { useFinanceExpenses } from '../hooks/useFinanceExpenses'
 import { useFinanceExpenseTypes } from '../hooks/useFinanceExpenseTypes'
 import { expenseTypeMap, resolveExpenseType } from '../lib/financeExpenseTypes'
 import {
+  resolveExpenseVatClass,
+  vatClassToLiable,
+} from '../lib/financeExpenseVat'
+import {
   isOpenReconciliationRow,
   listReconciliationRows,
-  RECONCILIATION_STATUS_LABEL,
-  reconciliationBadgeClass,
   reconciliationRowDate,
 } from '../lib/expenseReconciliation'
 import {
   buildBankReconciliationReport,
   printBankReconciliationReport,
 } from '../lib/bankReconciliationReport'
-import { formatNis } from '../lib/financeCalc'
+import {
+  formatForeignAmount,
+  isForeignCurrencyCode,
+} from '../lib/foreignCurrency'
+import { formatNis, monthLabelHe } from '../lib/financeCalc'
 import { formatDateIL } from '../lib/dates'
-import { hubSectionClass } from '../lib/hubSectionBorder'
 import type { FinanceExpense } from '../types'
 
 type StatusFilter = 'open' | 'closed' | 'all'
-
-const STATUS_TABS: { id: StatusFilter; label: string }[] = [
-  { id: 'open', label: 'ממתין לחשבונית' },
-  { id: 'closed', label: 'מגובה בחשבונית' },
-  { id: 'all', label: 'הכל' },
-]
 
 function merchantLabel(exp: FinanceExpense): string {
   return (
@@ -44,7 +45,7 @@ function merchantLabel(exp: FinanceExpense): string {
 }
 
 export function FinanceReconciliation() {
-  const { expenses, loading } = useFinanceExpenses()
+  const { expenses, loading, updateExpense } = useFinanceExpenses()
   const { types: expenseTypes } = useFinanceExpenseTypes()
   const period = useFinancePeriodFilter()
   const attention = useFinanceAttention(period.filterYmFrom, period.filterYmTo)
@@ -102,26 +103,24 @@ export function FinanceReconciliation() {
   }
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
-      <header className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center md:justify-between">
-        <div className="min-w-0 text-right md:order-2 md:flex-1">
+    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-5 px-4 py-6 sm:px-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 text-right">
           <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
             התאמות בנקים
           </h1>
-          <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-            כל תשלום שירד מהחשבון, ומולו החשבונית שמגבה אותו
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
+            תשלום מהבנק מול חשבונית — שורה ירוקה = סגורה · צהובה = ממתינה
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2 md:order-1">
-          <button
-            type="button"
-            onClick={handlePrint}
-            disabled={rows.length === 0}
-            className="rounded-xl border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-sm font-bold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            דוח PDF
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handlePrint}
+          disabled={rows.length === 0}
+          className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-sm font-semibold text-[var(--orange)] transition hover:bg-[var(--orange-light)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          דוח PDF
+        </button>
       </header>
 
       <FinanceTabs badges={attention} />
@@ -146,20 +145,23 @@ export function FinanceReconciliation() {
         ymTo={period.filterYmTo}
       />
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section
+        aria-label="סיכום התאמות"
+        className="grid grid-cols-2 gap-2.5 lg:grid-cols-4"
+      >
         <StatCard
           label="סה״כ תשלומים"
           value={formatNis(totals.total)}
           sub={`${rows.length} שורות`}
         />
         <StatCard
-          label="מגובה בחשבונית"
+          label="סגורות"
           value={formatNis(totals.closedAmount)}
           sub={`${totals.closedCount} שורות`}
           tone="good"
         />
         <StatCard
-          label="ממתין לחשבונית"
+          label="ממתינות לחשבונית"
           value={formatNis(totals.openAmount)}
           sub={`${totals.openCount} שורות`}
           tone={totals.openCount > 0 ? 'alert' : 'neutral'}
@@ -168,36 +170,55 @@ export function FinanceReconciliation() {
           label="אחוז כיסוי"
           value={`${totals.percent}%`}
           sub="מתוך סכום התשלומים"
-          tone={totals.percent >= 95 ? 'good' : totals.percent >= 80 ? 'warn' : 'alert'}
+          tone={
+            totals.percent >= 95
+              ? 'good'
+              : totals.percent >= 80
+                ? 'warn'
+                : 'alert'
+          }
         />
       </section>
 
-      <section
-        className={`min-w-0 rounded-2xl ${hubSectionClass(4)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)]`}
-      >
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {STATUS_TABS.map((tab) => {
-            const count =
-              tab.id === 'open'
-                ? totals.openCount
-                : tab.id === 'closed'
-                  ? totals.closedCount
-                  : rows.length
-            return (
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] sm:p-5">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-base font-extrabold text-[var(--text-dark)]">
+              רשימת התאמות
+            </h2>
+            <p className="mt-0.5 text-[11px] text-[var(--text-mid)]">
+              {period.filterRangeLabel}
+              {totals.openCount > 0
+                ? ` · ${totals.openCount} ממתינות לחשבונית`
+                : ' · הכל סגור'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1">
+            {(
+              [
+                ['open', `ממתינות (${totals.openCount})`],
+                ['closed', `סגורות (${totals.closedCount})`],
+                ['all', `הכל (${rows.length})`],
+              ] as const
+            ).map(([id, label]) => (
               <button
-                key={tab.id}
+                key={id}
                 type="button"
-                onClick={() => setStatusFilter(tab.id)}
+                onClick={() => setStatusFilter(id)}
                 className={
-                  statusFilter === tab.id
-                    ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                    : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+                  statusFilter === id
+                    ? id === 'closed'
+                      ? 'rounded-[8px] bg-[#DCFCE7] px-2.5 py-1.5 text-[11px] font-bold text-[#166534]'
+                      : id === 'open'
+                        ? 'rounded-[8px] bg-[#FEF3C7] px-2.5 py-1.5 text-[11px] font-bold text-[#92400E]'
+                        : 'rounded-[8px] bg-[var(--orange)] px-2.5 py-1.5 text-[11px] font-bold text-white'
+                    : 'rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-black/[0.03]'
                 }
               >
-                {tab.label} ({count})
+                {label}
               </button>
-            )
-          })}
+            ))}
+          </div>
         </div>
 
         {loading ? (
@@ -209,7 +230,9 @@ export function FinanceReconciliation() {
             title={
               statusFilter === 'open'
                 ? 'אין תשלומים שממתינים לחשבונית'
-                : 'אין שורות להצגה'
+                : statusFilter === 'closed'
+                  ? 'אין שורות סגורות בסינון'
+                  : 'אין שורות להצגה'
             }
             description={
               statusFilter === 'open'
@@ -218,18 +241,16 @@ export function FinanceReconciliation() {
             }
           />
         ) : (
-          <div className="min-w-0 overflow-x-auto">
-            <table className="w-full min-w-[900px] text-[12px]">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
-                  <th className="px-3 py-2 text-right">תאריך</th>
-                  <th className="px-3 py-2 text-right">ספק / תיאור</th>
-                  <th className="px-3 py-2 text-right">סוג</th>
-                  <th className="px-3 py-2 text-right">סכום</th>
-                  <th className="px-3 py-2 text-right">אמצעי</th>
-                  <th className="px-3 py-2 text-right">מצב</th>
-                  <th className="px-3 py-2 text-right">חשבונית</th>
-                  <th className="px-3 py-2 text-right">פעולה</th>
+          <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+            <table className="w-full border-collapse text-sm">
+              <thead className="sticky top-0 z-[1]">
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
+                  <th className="px-2.5 py-2.5 text-right">תאריך</th>
+                  <th className="px-2.5 py-2.5 text-right">ספק / תיאור</th>
+                  <th className="px-2.5 py-2.5 text-right">סכום</th>
+                  <th className="px-2.5 py-2.5 text-right">אמצעי</th>
+                  <th className="px-2.5 py-2.5 text-right">סטטוס · חשבונית</th>
+                  <th className="px-2.5 py-2.5 text-right" />
                 </tr>
               </thead>
               <tbody>
@@ -237,66 +258,123 @@ export function FinanceReconciliation() {
                   const exp = row.expense
                   const open = isOpenReconciliationRow(row)
                   const typeDef = resolveExpenseType(exp.type, typeById)
+                  const vatClass = resolveExpenseVatClass(exp)
+                  const rowDate = reconciliationRowDate(exp)
+                  const billingYm = rowDate.slice(0, 7)
                   return (
                     <tr
                       key={exp.id}
-                      className="border-b border-[var(--border)] last:border-0"
+                      className={`border-b border-[var(--border)]/80 transition ${
+                        open
+                          ? 'bg-[#FFFBEB]/55 hover:bg-[#FEF3C7]/50'
+                          : 'bg-[#DCFCE7] hover:bg-[#BBF7D0]'
+                      }`}
                     >
-                      <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-[var(--text-mid)]">
-                        {formatDateIL(reconciliationRowDate(exp))}
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums">
+                        <div className="font-semibold text-[var(--text-dark)]">
+                          {monthLabelHe(billingYm)}
+                        </div>
+                        <div className="mt-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
+                          {exp.paymentMethod === 'credit_card' ? 'עסקה' : 'ירד'}{' '}
+                          {formatDateIL(rowDate)}
+                          {exp.chargeDate &&
+                          exp.chargeDate !== exp.paidDate ? (
+                            <span className="block">
+                              חיוב {formatDateIL(exp.chargeDate)}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
-                      <td className="px-3 py-2.5 font-semibold text-[var(--text-dark)]">
-                        {merchantLabel(exp)}
+                      <td className="px-2.5 py-3 align-top">
+                        <div className="font-semibold text-[var(--text-dark)]">
+                          {merchantLabel(exp)}
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-mid)]">
+                          <span>{typeDef?.label ?? exp.type}</span>
+                          <span aria-hidden>·</span>
+                          <ExpenseVatClassChip
+                            value={vatClass}
+                            onChange={(next) => {
+                              void updateExpense(exp.id, {
+                                vatClass: next,
+                                vatLiable: vatClassToLiable(next),
+                              })
+                            }}
+                          />
+                        </div>
                       </td>
-                      <td className="px-3 py-2.5 text-[var(--text-mid)]">
-                        {typeDef?.label ?? exp.type}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 font-bold tabular-nums text-[var(--text-dark)]">
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums font-bold text-[var(--text-dark)]">
                         {formatNis(exp.amount)}
+                        {isForeignCurrencyCode(exp.currency) &&
+                        exp.originalAmount ? (
+                          <span className="mt-0.5 block text-[10px] font-bold text-[#3730A3]">
+                            {formatForeignAmount(
+                              exp.originalAmount,
+                              exp.currency,
+                            )}
+                          </span>
+                        ) : null}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-[var(--text-mid)]">
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top text-[11px] font-semibold text-[var(--text-mid)]">
                         {exp.paymentMethod === 'credit_card'
                           ? 'כרטיס אשראי'
                           : 'עובר ושב'}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${reconciliationBadgeClass(row.status)}`}
-                        >
-                          {RECONCILIATION_STATUS_LABEL[row.status]}
-                        </span>
+                      <td className="px-2.5 py-3 align-top">
+                        <div className="flex min-w-[140px] flex-col items-start gap-1.5">
+                          <ExpenseReconciliationBadge
+                            status={row.status}
+                            linkedGi={row.linkedGi}
+                            expense={exp}
+                          />
+                          {exp.documentUrl ? (
+                            <a
+                              href={exp.documentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[10px] font-bold text-[var(--orange)] underline decoration-[var(--orange)]/40 underline-offset-2"
+                            >
+                              {exp.invoiceNumber?.trim()
+                                ? `#${exp.invoiceNumber.trim()}`
+                                : 'צפייה במסמך'}
+                            </a>
+                          ) : exp.invoiceNumber?.trim() ? (
+                            <span className="text-[10px] font-semibold text-[var(--text-mid)]">
+                              #{exp.invoiceNumber.trim()}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
-                      <td className="px-3 py-2.5 text-[var(--text-mid)]">
-                        {exp.documentUrl ? (
-                          <a
-                            href={exp.documentUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-semibold text-[var(--orange)] underline"
-                          >
-                            {exp.invoiceNumber?.trim() || 'צפייה'}
-                          </a>
-                        ) : (
-                          exp.invoiceNumber?.trim() || '—'
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5">
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top">
                         <button
                           type="button"
                           onClick={() => setAttaching(exp)}
                           className={
                             open
-                              ? 'rounded-lg bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white transition hover:brightness-95'
-                              : 'rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]'
+                              ? 'inline-flex h-8 items-center justify-center rounded-[10px] bg-[var(--orange)] px-3 text-[11px] font-bold text-white transition hover:brightness-95'
+                              : 'inline-flex h-8 items-center justify-center rounded-[10px] border border-[var(--border)] px-3 text-[11px] font-semibold text-[var(--text-mid)] transition hover:bg-[var(--surface-muted)]'
                           }
                         >
-                          {open ? 'הצמד חשבונית' : 'החלף'}
+                          {open ? 'צרף חשבונית' : 'החלף'}
                         </button>
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/70 text-[13px] font-extrabold text-[var(--text-dark)]">
+                  <td className="px-2.5 py-3" colSpan={2}>
+                    סה״כ ({visibleRows.length})
+                  </td>
+                  <td className="px-2.5 py-3 tabular-nums">
+                    {formatNis(
+                      visibleRows.reduce((s, r) => s + r.expense.amount, 0),
+                    )}
+                  </td>
+                  <td className="px-2.5 py-3" colSpan={3} />
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
@@ -328,12 +406,12 @@ function StatCard({
           : 'border-[var(--border)] bg-[var(--dash-panel-bg)]'
 
   return (
-    <div className={`rounded-2xl border p-4 ${toneClass}`}>
+    <div className={`rounded-xl border p-3.5 ${toneClass}`}>
       <div className="text-[11px] font-bold text-[var(--text-mid)]">{label}</div>
-      <div className="mt-1 text-[20px] font-extrabold tabular-nums text-[var(--text-dark)]">
+      <div className="mt-2 text-[22px] font-extrabold tabular-nums leading-none text-[var(--text-dark)]">
         {value}
       </div>
-      <div className="mt-0.5 text-[11px] text-[var(--text-mid)]">{sub}</div>
+      <div className="mt-1.5 text-[10px] text-[var(--text-mid)]">{sub}</div>
     </div>
   )
 }

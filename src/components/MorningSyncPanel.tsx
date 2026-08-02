@@ -156,14 +156,14 @@ export function MorningSyncPanel() {
       ) : null}
 
       {!loading && !status && error ? (
-        <div className="mt-3 rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-          לא ניתן לטעון את מצב החיבור מהשרת. ודא שהשרת רץ (
-          <code className="rounded bg-amber-100 px-1">npm run dev:all</code>
-          ) ורענן את הדף.
+        <div className="mt-3 rounded-[10px] border border-[var(--border)] bg-[var(--surface-muted)]/50 px-3 py-2 text-[12px] text-[var(--text-mid)]">
+          סטטוס חשבונית ירוקה לא זמין זמנית (לרוב עומס/מכסת שרת). שאר
+          המערכת ממשיכה כרגיל — אפשר לעבוד בהוצאות ובהתאמות, ולסנכרן הכנסות
+          מאוחר יותר מ־pos.hub.co.il.
         </div>
       ) : null}
 
-      {error ? (
+      {error && status ? (
         <div className="mt-3 rounded-[10px] border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-700">
           {error}
         </div>

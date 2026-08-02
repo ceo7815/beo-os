@@ -51,14 +51,15 @@ import { deriveExpensePnlMonth } from '../lib/financeExpensePnl'
 import {
   hasAttachedDocument,
   isGiOnlyRecord,
+  isSettledReconciliationStatus,
   reconciliationRowDate,
   reconciliationRowMap,
 } from '../lib/expenseReconciliation'
 import { AttachInvoiceModal } from '../components/finance/AttachInvoiceModal'
+import { ExpenseVatClassChip } from '../components/finance/ExpenseVatClassChip'
 import { refundLinkMap } from '../lib/expenseRefunds'
 import { RefundLinkNote } from '../components/finance/RefundLinkNote'
 import { matchMonthlyRecurringExpense } from '../lib/financeRecurringCatalog'
-import { hubSectionClass } from '../lib/hubSectionBorder'
 import { formatDateIL } from '../lib/dates'
 import {
   formatForeignAmount,
@@ -69,7 +70,6 @@ import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import {
   defaultVatClassForExpenseType,
   EXPENSE_VAT_CLASS_LABEL,
-  EXPENSE_VAT_CLASS_SHORT,
   resolveExpenseVatClass,
   suggestExpenseVatClass,
   vatClassToLiable,
@@ -221,6 +221,9 @@ export function Expenses() {
   const [recurringFilter, setRecurringFilter] = useState<
     'all' | 'fixed' | 'variable'
   >('all')
+  const [settlementFilter, setSettlementFilter] = useState<
+    'all' | 'open' | 'closed'
+  >('all')
 
   const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -340,7 +343,7 @@ export function Expenses() {
 
 
   useEffect(() => {
-    const SYNC_KEY = 'hub-finance-data-sync-v3'
+    const SYNC_KEY = 'hub-finance-data-sync-v4'
     if (expensesLoading || expenses.length === 0) return
     if (sessionStorage.getItem(SYNC_KEY)) return
 
@@ -353,21 +356,26 @@ export function Expenses() {
         if (cancelled) return
         const shouldRecur = matchMonthlyRecurringExpense(exp) != null
         const suggestedVat = suggestExpenseVatClass(exp)
-        const currentVat = resolveExpenseVatClass(exp)
         const needsRecur = exp.recurring !== shouldRecur
-        const needsVat = currentVat !== suggestedVat
+        // רק כשאין סיווג שמור — אחרת בחירה ידנית מהטבלה תידרס ברענון
+        const needsVat = !exp.vatClass
 
         if (!needsRecur && !needsVat) continue
 
-        await updateExpense(exp.id, {
-          ...(needsRecur ? { recurring: shouldRecur } : {}),
-          ...(needsVat
-            ? {
-                vatClass: suggestedVat,
-                vatLiable: vatClassToLiable(suggestedVat),
-              }
-            : {}),
-        })
+        // silent — בלי toast לכל שורה; סיכום אחד בסוף
+        await updateExpense(
+          exp.id,
+          {
+            ...(needsRecur ? { recurring: shouldRecur } : {}),
+            ...(needsVat
+              ? {
+                  vatClass: suggestedVat,
+                  vatLiable: vatClassToLiable(suggestedVat),
+                }
+              : {}),
+          },
+          { silent: true },
+        )
         if (needsRecur) {
           if (shouldRecur) recurringCount += 1
           else oneTimeCount += 1
@@ -433,11 +441,39 @@ export function Expenses() {
     recurringFilter,
   ])
 
+  /** סגירה לתצוגה בלבד — חשבונית / זיכוי / פטור ממסמך */
+  const isRowClosed = (row: FinanceExpense): boolean => {
+    if (refundLinks.get(row.id)?.fully === true) return true
+    return isSettledReconciliationStatus(
+      reconciliationById.get(row.id)?.status,
+    )
+  }
+
+  const visibleExpenses = useMemo(() => {
+    if (settlementFilter === 'all') return filteredExpenses
+    return filteredExpenses.filter((row) => {
+      const closed = isRowClosed(row)
+      return settlementFilter === 'closed' ? closed : !closed
+    })
+  }, [filteredExpenses, settlementFilter, refundLinks, reconciliationById])
+
+  const settlementCounts = useMemo(() => {
+    let closed = 0
+    for (const row of filteredExpenses) {
+      if (isRowClosed(row)) closed += 1
+    }
+    return {
+      closed,
+      open: filteredExpenses.length - closed,
+      total: filteredExpenses.length,
+    }
+  }, [filteredExpenses, refundLinks, reconciliationById])
+
   const expenseTotals = useMemo(() => {
     let gross = 0
     let vat = 0
     let net = 0
-    for (const row of filteredExpenses) {
+    for (const row of visibleExpenses) {
       const breakdown = resolveExpenseRowVat(row)
       gross += breakdown.gross
       net += breakdown.net
@@ -448,7 +484,7 @@ export function Expenses() {
       vat: Math.round(vat * 100) / 100,
       net: Math.round(net * 100) / 100,
     }
-  }, [filteredExpenses])
+  }, [visibleExpenses])
 
   // סיכומי KPI — לפי תקופה/לקוח/פרויקט בלבד (בלתי תלוי בכפתורי קבועות/משתנות)
   const expenseKpis = useMemo(() => {
@@ -718,22 +754,34 @@ export function Expenses() {
   const loading = incomesLoading || expensesLoading
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
-      <header className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center md:justify-between">
-        <div className="min-w-0 text-right md:order-2 md:flex-1">
+    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-5 px-4 py-6 sm:px-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 text-right">
           <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
             הוצאות
           </h1>
-          <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-            הזנה ידנית וייבוא מהבנק — כל רשומה נספרת מרגע שמירתה
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
+            ייבוא מהבנק · צירוף חשבונית · שיוך לפרויקט — שורה ירוקה = סגורה
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-sm font-semibold text-[var(--orange)] transition hover:bg-[var(--orange-light)]"
+          >
+            ⬆ ייבוא מהבנק
+          </button>
+          <button type="button" onClick={openAddExpense} className="hub-btn-orange text-sm">
+            + הוסף הוצאה
+          </button>
         </div>
       </header>
 
       <FinanceTabs badges={attention} />
 
       <section
-        className={`flex flex-col gap-3 rounded-2xl ${hubSectionClass(4)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:flex-row sm:flex-wrap sm:items-end`}
+        className={`flex flex-col gap-3 rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] sm:flex-row sm:flex-wrap sm:items-end`}
       >
         <div className="min-w-0 flex-[2]">
           <FieldLabel>תקופה</FieldLabel>
@@ -869,7 +917,7 @@ export function Expenses() {
       ) : null}
 
       {activeTab === 'expenses' ? (
-      <section aria-label="סיכום הוצאות" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section aria-label="סיכום הוצאות" className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         {(
           [
             {
@@ -877,21 +925,21 @@ export function Expenses() {
               label: 'סה״כ הוצאות',
               value: expenseKpis.allGross,
               count: expenseKpis.total,
-              valueClass: 'text-[#EF4444]',
+              valueClass: 'text-[#DC2626]',
             },
             {
               id: 'fixed' as const,
               label: 'קבועות',
               value: expenseKpis.fixedGross,
               count: expenseKpis.fixedCount,
-              valueClass: 'text-[#F59E0B]',
+              valueClass: 'text-[#D97706]',
             },
             {
               id: 'variable' as const,
               label: 'משתנות',
               value: expenseKpis.variableGross,
               count: expenseKpis.variableCount,
-              valueClass: 'text-[#6366F1]',
+              valueClass: 'text-[#4F46E5]',
             },
           ]
         ).map((card) => (
@@ -899,51 +947,87 @@ export function Expenses() {
             key={card.id}
             type="button"
             onClick={() => setRecurringFilter(card.id)}
-            className={`flex flex-col rounded-2xl border p-4 text-right shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(0,0,0,0.1)] ${
+            className={`flex flex-col rounded-xl border p-3.5 text-right transition ${
               recurringFilter === card.id
-                ? 'border-2 border-[var(--orange)] bg-[var(--orange-light)]'
-                : 'border-[var(--border)] bg-[var(--dash-panel-bg)]'
+                ? 'border-[var(--orange)] bg-[var(--orange-light)] shadow-[0_0_0_1px_var(--orange)]'
+                : 'border-[var(--border)] bg-[var(--dash-panel-bg)] hover:border-[var(--border-orange-soft)]'
             }`}
           >
-            <span className="flex items-center justify-between text-[12px] font-bold text-[var(--text-mid)]">
+            <span className="flex items-center justify-between text-[11px] font-bold text-[var(--text-mid)]">
               {card.label}
-              <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-extrabold">
+              <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[10px] font-extrabold tabular-nums">
                 {card.count}
               </span>
             </span>
             <span
-              className={`mt-2.5 text-[26px] font-extrabold tabular-nums leading-none ${card.valueClass}`}
+              className={`mt-2 text-[22px] font-extrabold tabular-nums leading-none ${card.valueClass}`}
             >
               {formatNis(card.value)}
             </span>
-            <span className="mt-2 text-[11px] text-[var(--text-mid)]">
+            <span className="mt-1.5 text-[10px] text-[var(--text-mid)]">
               כולל מע״מ
             </span>
           </button>
         ))}
-        <div className="flex flex-col rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 p-4 text-right">
-          <span className="text-[12px] font-bold text-[var(--text-mid)]">
+        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/35 p-3.5 text-right">
+          <span className="text-[11px] font-bold text-[var(--text-mid)]">
             מע״מ תשומות
           </span>
-          <span className="mt-2.5 text-[26px] font-extrabold tabular-nums leading-none text-[#8B5CF6]">
+          <span className="mt-2 text-[22px] font-extrabold tabular-nums leading-none text-[#7C3AED]">
             {formatNis(expenseKpis.inputVat)}
           </span>
-          <span className="mt-2 text-[11px] text-[var(--text-mid)]">
-            ניתן לקיזוז מול מע״מ עסקאות
+          <span className="mt-1.5 text-[10px] text-[var(--text-mid)]">
+            לקיזוז מול מע״מ עסקאות
           </span>
         </div>
       </section>
       ) : null}
 
       {activeTab === 'expenses' ? (
-      <section className={`rounded-2xl ${hubSectionClass(7)} p-4 shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:p-5`}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-extrabold text-[var(--text-dark)]">הוצאות</h2>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-4 shadow-[0_1px_8px_rgba(0,0,0,0.04)] sm:p-5">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-base font-extrabold text-[var(--text-dark)]">
+              רשימת הוצאות
+            </h2>
+            <p className="mt-0.5 text-[11px] text-[var(--text-mid)]">
+              {filterRangeLabel}
+              {settlementCounts.open > 0
+                ? ` · ${settlementCounts.open} ממתינות לחשבונית`
+                : ' · הכל סגור'}
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1">
               {(
                 [
-                  ['all', 'הכל'],
+                  ['all', `הכל (${settlementCounts.total})`],
+                  ['open', `ממתינות (${settlementCounts.open})`],
+                  ['closed', `סגורות (${settlementCounts.closed})`],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSettlementFilter(id)}
+                  className={
+                    settlementFilter === id
+                      ? id === 'closed'
+                        ? 'rounded-[8px] bg-[#DCFCE7] px-2.5 py-1.5 text-[11px] font-bold text-[#166534]'
+                        : id === 'open'
+                          ? 'rounded-[8px] bg-[#FEF3C7] px-2.5 py-1.5 text-[11px] font-bold text-[#92400E]'
+                          : 'rounded-[8px] bg-[var(--orange)] px-2.5 py-1.5 text-[11px] font-bold text-white'
+                      : 'rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-black/[0.03]'
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1">
+              {(
+                [
+                  ['all', 'סוג: הכל'],
                   ['fixed', 'קבועות'],
                   ['variable', 'משתנות'],
                 ] as const
@@ -954,41 +1038,41 @@ export function Expenses() {
                   onClick={() => setRecurringFilter(id)}
                   className={
                     recurringFilter === id
-                      ? 'rounded-[10px] border border-[var(--orange)] bg-[var(--orange)] px-3 py-1.5 text-[11px] font-bold text-white'
-                      : 'rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-mid)]'
+                      ? 'rounded-[8px] bg-[var(--text-dark)] px-2.5 py-1.5 text-[11px] font-bold text-white'
+                      : 'rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-black/[0.03]'
                   }
                 >
                   {label}
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-2 text-sm font-semibold text-[var(--orange)] transition hover:bg-[var(--orange-light)]"
-            >
-              ⬆ ייבוא מהבנק
-            </button>
             {expenses.length > 0 ? (
               <button
                 type="button"
                 onClick={() => setDeleteAllOpen(true)}
-                className="rounded-[10px] border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-sm font-semibold text-[#DC2626] transition hover:bg-[#FEE2E2]"
+                className="rounded-[10px] border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[11px] font-semibold text-[#DC2626] transition hover:bg-[#FEE2E2]"
               >
                 מחק הכל
               </button>
             ) : null}
-            <button type="button" onClick={openAddExpense} className="hub-btn-orange text-sm">
-              + הוסף הוצאה
-            </button>
           </div>
         </div>
         {loading ? (
           <p className="text-sm text-[var(--text-mid)]">טוען…</p>
-        ) : filteredExpenses.length === 0 ? (
+        ) : visibleExpenses.length === 0 ? (
           <EmptyState
-            title="אין הוצאות לטווח הנבחר"
-            description={`${filterRangeLabel} — הוסיפו הוצאה או שנו את הסינון`}
+            title={
+              filteredExpenses.length === 0
+                ? 'אין הוצאות לטווח הנבחר'
+                : settlementFilter === 'open'
+                  ? 'אין הוצאות ממתינות'
+                  : 'אין הוצאות סגורות בסינון'
+            }
+            description={
+              filteredExpenses.length === 0
+                ? `${filterRangeLabel} — הוסיפו הוצאה או שנו את הסינון`
+                : 'נסו לשנות את סינון הסגירה או סוג ההוצאה'
+            }
             icon={
               <svg viewBox="0 0 24 24" className="mx-auto h-10 w-10" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M12 8v8m-4-4h8M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -996,22 +1080,22 @@ export function Expenses() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
             <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
-                  <th className="px-2 py-2 text-right">תאריך</th>
-                  <th className="px-2 py-2 text-right">שם הוצאה</th>
-                  <th className="px-2 py-2 text-right">ברוטו</th>
-                  <th className="px-2 py-2 text-right">מע״מ</th>
-                  <th className="px-2 py-2 text-right">נטו</th>
-                  <th className="px-2 py-2 text-right">פרויקט</th>
-                  <th className="px-2 py-2 text-right">חשבונית</th>
-                  <th className="px-2 py-2 text-right" />
+              <thead className="sticky top-0 z-[1]">
+                <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
+                  <th className="px-2.5 py-2.5 text-right">תאריך</th>
+                  <th className="px-2.5 py-2.5 text-right">שם הוצאה</th>
+                  <th className="px-2.5 py-2.5 text-right">ברוטו</th>
+                  <th className="px-2.5 py-2.5 text-right">מע״מ</th>
+                  <th className="px-2.5 py-2.5 text-right">נטו</th>
+                  <th className="px-2.5 py-2.5 text-right">פרויקט</th>
+                  <th className="px-2.5 py-2.5 text-right">סטטוס · חשבונית</th>
+                  <th className="px-2.5 py-2.5 text-right" />
                 </tr>
               </thead>
               <tbody>
-                {filteredExpenses.map((row) => {
+                {visibleExpenses.map((row) => {
                   const typeDef = resolveExpenseType(row.type, expenseTypeById)
                   /** משכורת ומסים נספרים בחודש שעבורו שולמו, לא בחודש התשלום */
                   const accrualRow = isAccrualExpense(row, typeDef)
@@ -1028,18 +1112,30 @@ export function Expenses() {
                     : pnlAttributed
                       ? payMonth
                       : row.billingMonth
-                  /** צמד זיכוי־חיוב שהתאזן — מוצג מעומעם כדי שלא יתחרה על תשומת הלב */
                   const refundLink = refundLinks.get(row.id)
-                  const settled = refundLink?.fully === true
+                  const closed = isRowClosed(row)
+                  const openPending =
+                    !closed &&
+                    (reconciliationById.get(row.id)?.status ===
+                      'bank_missing_document' ||
+                      reconciliationById.get(row.id)?.status ===
+                        'manual_pending' ||
+                      refundLink?.fully === false)
                   return (
                     <tr
                       key={`${row.id}-${row.pnlMonth ?? row.billingMonth}-${payMonth}`}
-                      className={`border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)] ${
-                        settled ? 'bg-[var(--surface-muted)]/40 opacity-70' : ''
+                      className={`border-b border-[var(--border)]/80 transition ${
+                        closed
+                          ? 'bg-[#DCFCE7] hover:bg-[#BBF7D0]'
+                          : openPending
+                            ? 'bg-[#FFFBEB]/55 hover:bg-[#FEF3C7]/50'
+                            : 'hover:bg-[var(--surface-muted)]/70'
                       }`}
                     >
-                      <td className="whitespace-nowrap px-2 py-3 align-top tabular-nums">
-                        <div>{monthLabelHe(displayMonth)}</div>
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums">
+                        <div className="font-semibold text-[var(--text-dark)]">
+                          {monthLabelHe(displayMonth)}
+                        </div>
                         {row.paidDate ? (
                           <div className="mt-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
                             {row.paymentMethod === 'credit_card'
@@ -1061,15 +1157,25 @@ export function Expenses() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="px-2 py-3 align-top">
+                      <td className="px-2.5 py-3 align-top">
                         <div className="font-semibold text-[var(--text-dark)]">
                           {expenseDisplayName(row, typeDef)}
                         </div>
-                        <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
-                          {typeDef.label} · {EXPENSE_VAT_CLASS_SHORT[vatClass]}
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-mid)]">
+                          <span>{typeDef.label}</span>
+                          <span aria-hidden>·</span>
+                          <ExpenseVatClassChip
+                            value={vatClass}
+                            onChange={(next) => {
+                              void updateExpense(row.id, {
+                                vatClass: next,
+                                vatLiable: vatClassToLiable(next),
+                              })
+                            }}
+                          />
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-2 py-3 align-top tabular-nums font-bold">
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums font-bold text-[var(--text-dark)]">
                         {formatNis(breakdown.gross)}
                         {/* בעסקת מט״ח הסכום בשקלים תלוי בשער — הנקוב בחשבונית הוא סכום המקור */}
                         {isForeignCurrencyCode(row.currency) &&
@@ -1082,13 +1188,13 @@ export function Expenses() {
                           </span>
                         ) : null}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-3 align-top tabular-nums text-[#8B5CF6]">
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums text-[#7C3AED]">
                         {vatClass === 'vat_liable' ? formatNis(breakdown.vat) : '—'}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-3 align-top tabular-nums font-bold text-[#EF4444]">
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums font-bold text-[#DC2626]">
                         {formatNis(breakdown.net)}
                       </td>
-                      <td className="px-2 py-3 align-top">
+                      <td className="px-2.5 py-3 align-top">
                         {typeDef.fieldMode === 'salary' ? (
                           <span className="text-[11px] text-[var(--text-mid)]">
                             —
@@ -1125,62 +1231,65 @@ export function Expenses() {
                           </div>
                         )}
                       </td>
-                      <td className="px-2 py-3 align-top">
-                        <div className="flex flex-col items-start gap-1">
+                      <td className="px-2.5 py-3 align-top">
+                        <div className="flex min-w-[140px] flex-col items-start gap-1.5">
                           {refundLink ? (
                             <RefundLinkNote link={refundLink} />
                           ) : (
                             <ExpenseReconciliationBadge
                               status={reconciliationById.get(row.id)?.status}
                               linkedGi={reconciliationById.get(row.id)?.linkedGi}
+                              expense={row}
                             />
                           )}
-                          {hasAttachedDocument(row) && row.documentUrl ? (
-                            <a
-                              href={row.documentUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[10px] font-bold text-[var(--orange)] underline"
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {hasAttachedDocument(row) && row.documentUrl ? (
+                              <a
+                                href={row.documentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] font-bold text-[var(--orange)] underline decoration-[var(--orange)]/40 underline-offset-2"
+                              >
+                                {row.invoiceNumber?.trim()
+                                  ? `#${row.invoiceNumber.trim()}`
+                                  : 'צפייה במסמך'}
+                              </a>
+                            ) : null}
+                            {(() => {
+                              const linkedGi = reconciliationById.get(row.id)
+                                ?.linkedGi
+                              if (!canViewGiExpenseDocument(row, linkedGi)) {
+                                return null
+                              }
+                              const giId = resolveGiExpenseId(linkedGi)
+                              const giMeta = resolveGiExpenseLabel(linkedGi!)
+                              const bankMerchant =
+                                row.name ?? row.supplierName ?? row.description
+                              return (
+                                <GiExpenseDocumentButton
+                                  key={`gi-doc-${giId}`}
+                                  greenInvoiceId={giId!}
+                                  invoiceNumber={giMeta.invoiceNumber}
+                                  supplierName={giMeta.supplierName}
+                                  bankMerchantName={bankMerchant}
+                                />
+                              )
+                            })()}
+                            <button
+                              type="button"
+                              onClick={() => setAttachingExpense(row)}
+                              className={
+                                hasAttachedDocument(row)
+                                  ? uiBtnAttachGhost
+                                  : uiBtnAttach
+                              }
                             >
-                              {row.invoiceNumber?.trim()
-                                ? `#${row.invoiceNumber.trim()}`
-                                : 'צפייה במסמך'}
-                            </a>
-                          ) : null}
-                          {(() => {
-                            const linkedGi = reconciliationById.get(row.id)
-                              ?.linkedGi
-                            if (!canViewGiExpenseDocument(row, linkedGi)) {
-                              return null
-                            }
-                            const giId = resolveGiExpenseId(linkedGi)
-                            const giMeta = resolveGiExpenseLabel(linkedGi!)
-                            const bankMerchant =
-                              row.name ?? row.supplierName ?? row.description
-                            return (
-                              <GiExpenseDocumentButton
-                                key={`gi-doc-${giId}`}
-                                greenInvoiceId={giId!}
-                                invoiceNumber={giMeta.invoiceNumber}
-                                supplierName={giMeta.supplierName}
-                                bankMerchantName={bankMerchant}
-                              />
-                            )
-                          })()}
-                          <button
-                            type="button"
-                            onClick={() => setAttachingExpense(row)}
-                            className={
-                              hasAttachedDocument(row)
-                                ? uiBtnAttachGhost
-                                : uiBtnAttach
-                            }
-                          >
-                            {hasAttachedDocument(row) ? 'החלף' : 'צרף'}
-                          </button>
+                              {hasAttachedDocument(row) ? 'החלף' : 'צרף חשבונית'}
+                            </button>
+                          </div>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-2 py-3 align-top">
+                      <td className="whitespace-nowrap px-2.5 py-3 align-top">
                         <div className="flex gap-1">
                           <button
                             type="button"
@@ -1205,20 +1314,20 @@ export function Expenses() {
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/60 text-[13px] font-extrabold text-[var(--text-dark)]">
-                  <td className="px-2 py-3" colSpan={2}>
-                    סה״כ ({filteredExpenses.length})
+                <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/70 text-[13px] font-extrabold text-[var(--text-dark)]">
+                  <td className="px-2.5 py-3" colSpan={2}>
+                    סה״כ ({visibleExpenses.length})
                   </td>
-                  <td className="px-2 py-3 tabular-nums">
+                  <td className="px-2.5 py-3 tabular-nums">
                     {formatNis(expenseTotals.gross)}
                   </td>
-                  <td className="px-2 py-3 tabular-nums text-[#8B5CF6]">
+                  <td className="px-2.5 py-3 tabular-nums text-[#7C3AED]">
                     {formatNis(expenseTotals.vat)}
                   </td>
-                  <td className="px-2 py-3 tabular-nums text-[#EF4444]">
+                  <td className="px-2.5 py-3 tabular-nums text-[#DC2626]">
                     {formatNis(expenseTotals.net)}
                   </td>
-                  <td className="px-2 py-3" colSpan={3} />
+                  <td className="px-2.5 py-3" colSpan={3} />
                 </tr>
               </tfoot>
             </table>

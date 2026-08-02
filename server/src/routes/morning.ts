@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { requireAdmin } from '../middleware/requireAdmin.js'
-import { verifyFirebaseAdmin } from '../lib/firebaseAdmin.js'
+import { getAdminAuth, getAdminDb } from '../lib/firebaseAdmin.js'
 import { MorningClient, MorningError } from '../lib/morningClient.js'
 import {
   credentialsFromEnv,
@@ -19,19 +19,25 @@ function normalizeEnv(raw: unknown): MorningEnv {
 }
 
 export async function registerMorningRoutes(app: FastifyInstance): Promise<void> {
-  /** מצב האינטגרציה — האם Admin SDK מוגדר, האם יש מפתחות, ומתי סונכרן לאחרונה */
+  /**
+   * מצב האינטגרציה — מפתחות + syncState מהשרת (דיסק/env), בלי קריאת Firestore.
+   * firebaseReady = אפשר לאמת טוקן + לכתוב הכנסות (Admin מוגדר).
+   */
   app.get(
     '/api/integrations/morning/status',
     { preHandler: requireAdmin },
     async () => {
-      const verify = await verifyFirebaseAdmin()
-      const firebaseReady = verify.ok
       const creds = await loadMorningCredentials()
-      const syncState = firebaseReady ? await readSyncState() : null
+      const syncState = await readSyncState()
+      const authReady = Boolean(getAdminAuth())
+      const dbReady = Boolean(getAdminDb())
       return {
         ok: true,
-        firebaseReady,
-        firebaseReason: firebaseReady ? null : verify.reason ?? null,
+        firebaseReady: authReady && dbReady,
+        firebaseReason:
+          authReady && dbReady
+            ? null
+            : 'Firebase Admin לא מוגדר לכתיבת הכנסות — בדוק FIREBASE_SERVICE_ACCOUNT_B64',
         connected: Boolean(creds),
         env: creds?.env ?? null,
         credentialsFromEnv: credentialsFromEnv(),

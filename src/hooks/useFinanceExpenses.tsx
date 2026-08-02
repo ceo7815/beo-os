@@ -110,7 +110,11 @@ type FinanceExpensesContextValue = {
   error: Error | null
   addExpense: (data: NewFinanceExpenseInput) => Promise<boolean>
   addExpensesBatch: (rows: NewFinanceExpenseInput[]) => Promise<number>
-  updateExpense: (id: string, patch: FinanceExpensePatchInput) => Promise<void>
+  updateExpense: (
+    id: string,
+    patch: FinanceExpensePatchInput,
+    opts?: { silent?: boolean },
+  ) => Promise<void>
   deleteExpense: (id: string) => Promise<void>
   deleteAllExpenses: () => Promise<number>
 }
@@ -253,7 +257,11 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
   )
 
   const updateExpense = useCallback(
-    async (id: string, patch: FinanceExpensePatchInput) => {
+    async (
+      id: string,
+      patch: FinanceExpensePatchInput,
+      opts?: { silent?: boolean },
+    ) => {
       try {
         const next: Record<string, unknown> = {}
         if (patch.type != null) next.type = patch.type
@@ -430,9 +438,11 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
         }
         if (Object.keys(next).length === 0) return
         await updateDoc(doc(db, 'financeExpenses', id), stripUndefined(next))
-        toastFsSuccess('ההוצאה עודכנה')
+        if (!opts?.silent) toastFsSuccess('ההוצאה עודכנה')
       } catch (e) {
-        toastFsError('שגיאה בעדכון ההוצאה', e, 'updateExpense')
+        if (!opts?.silent) {
+          toastFsError('שגיאה בעדכון ההוצאה', e, 'updateExpense')
+        }
       }
     },
     [],

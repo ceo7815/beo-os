@@ -27,13 +27,27 @@ export function RefundLinkNote({ link }: { link: RefundLink }) {
   const many = link.counterparts.length > 1
 
   return (
-    <div className="rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-1.5">
+    <div
+      className={
+        link.fully
+          ? 'rounded-lg border border-[#A7F3D0]/80 bg-[#ECFDF5]/80 px-2 py-1.5'
+          : 'rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-2 py-1.5'
+      }
+    >
       <div className="flex items-center gap-1">
-        <span className="text-[10px] font-extrabold text-[#065F46]">
-          {link.fully ? 'בוצעה התאמה · סגור' : 'בוצעה התאמה חלקית'}
+        <span
+          className={`text-[10px] font-extrabold ${
+            link.fully ? 'text-[#065F46]' : 'text-[#92400E]'
+          }`}
+        >
+          {link.fully ? 'סגור בזיכוי · התאמה מלאה' : 'התאמת זיכוי חלקית'}
         </span>
       </div>
-      <div className="mt-0.5 text-[10px] leading-relaxed font-semibold text-[#047857]">
+      <div
+        className={`mt-0.5 text-[10px] leading-relaxed font-semibold ${
+          link.fully ? 'text-[#047857]' : 'text-[#A16207]'
+        }`}
+      >
         {link.role === 'refund' ? 'מול הוצאה' : many ? 'מול זיכויים' : 'מול זיכוי'}{' '}
         {many ? (
           `${link.counterparts.length} רשומות`

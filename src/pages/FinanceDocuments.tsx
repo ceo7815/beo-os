@@ -10,6 +10,7 @@ import { useFinanceExpenses } from '../hooks/useFinanceExpenses'
 import { useFinanceExpenseTypes } from '../hooks/useFinanceExpenseTypes'
 import { expenseTypeMap, resolveExpenseType } from '../lib/financeExpenseTypes'
 import {
+  isAccountantSelfFiledExpense,
   listReconciliationRows,
   reconciliationRowDate,
 } from '../lib/expenseReconciliation'
@@ -72,13 +73,16 @@ export function FinanceDocuments() {
     [expenses, period.filterYmFrom, period.filterYmTo],
   )
 
+  const hasLocalOrExemptDoc = (exp: FinanceExpense): boolean =>
+    Boolean(exp.documentUrl?.trim()) || isAccountantSelfFiledExpense(exp)
+
   const stats = useMemo(() => {
     let documented = 0
     let documentedAmount = 0
     let missing = 0
     let missingAmount = 0
     for (const exp of periodExpenses) {
-      if (exp.documentUrl?.trim()) {
+      if (hasLocalOrExemptDoc(exp)) {
         documented += 1
         documentedAmount += exp.amount
       } else {
@@ -92,7 +96,7 @@ export function FinanceDocuments() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return periodExpenses.filter((exp) => {
-      const hasDoc = Boolean(exp.documentUrl?.trim())
+      const hasDoc = hasLocalOrExemptDoc(exp)
       if (folderFilter === 'documented' && !hasDoc) return false
       if (folderFilter === 'missing' && hasDoc) return false
       if (!term) return true

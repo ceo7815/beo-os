@@ -92,8 +92,9 @@ export function useMorningIntegration() {
         '/api/integrations/morning/status',
       )
       setStatus(s)
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'שגיאה בטעינת סטטוס')
+    } catch {
+      // כשל סטטוס (רשת / מכסה / 500) לא חוסם את שאר המערכת
+      setError('status_unavailable')
       setStatus(null)
     } finally {
       setLoading(false)

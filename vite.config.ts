@@ -12,6 +12,13 @@ import { defineConfig } from 'vite'
 const FINANCE_DOCS_TARGET =
   process.env.VITE_FINANCE_DOCS_TARGET || 'https://pos.hub.co.il'
 
+/**
+ * סנכרון חשבונית ירוקה רץ בשרת — בפיתוח מפנים לפרודקשן כמו מסמכי הוצאות,
+ * כדי שהפאנל העליון לא ייפול ב-502 כשאין שרת מקומי על 8787.
+ */
+const INTEGRATIONS_TARGET =
+  process.env.VITE_INTEGRATIONS_TARGET || 'https://pos.hub.co.il'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -20,6 +27,10 @@ export default defineConfig({
       // חייב להופיע לפני '/api' — Vite בוחר את ההתאמה הראשונה ברשימה
       '/api/finance-documents': {
         target: FINANCE_DOCS_TARGET,
+        changeOrigin: true,
+      },
+      '/api/integrations': {
+        target: INTEGRATIONS_TARGET,
         changeOrigin: true,
       },
       '/api': {
