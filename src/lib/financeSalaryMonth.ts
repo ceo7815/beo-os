@@ -127,6 +127,47 @@ export function isTaxExpense(
   )
 }
 
+const VAT_REMITTANCE_PATTERNS: RegExp[] = [
+  /גביית\s*מע["״']?מ/,
+  /תשלום\s*מע["״']?מ/,
+  /מע["״']?מ\s*לתשלום/,
+]
+
+/**
+ * תשלום מע״מ לרשות המסים — סילוק חוב מע״מ, לא הוצאה תפעולית.
+ *
+ * ברווח הנקי המע״מ כבר מטופל דרך הכנסות/הוצאות נטו + שורת «מע״מ לתשלום».
+ * אם גם התשלום בפועל נספר בהוצאות, המע״מ נגרע פעמיים מהרווח.
+ * ביטוח לאומי / מס הכנסה / ניכויים נשארים ברווח (עלות אמיתית).
+ */
+export function isVatRemittanceExpense(
+  exp: {
+    type?: string
+    name?: string
+    description?: string
+    vatClass?: string
+  },
+  typeDef?: { id?: string },
+): boolean {
+  if (exp.vatClass === 'vat_liable') return false
+  const text = `${exp.name ?? ''} ${exp.description ?? ''}`
+  if (VAT_REMITTANCE_PATTERNS.some((re) => re.test(text))) return true
+
+  if (/ביטוח\s*לאומי|מס\s*הכנסה|מקדמות\s*מס|(?:^|\s)ניכויים(?:\s|$)/.test(text)) {
+    return false
+  }
+
+  const taxType = exp.type === 'tax' || typeDef?.id === 'tax'
+  const authority = looksLikeTaxAuthorityPayment(text)
+  if (!taxType && !authority) return false
+
+  // אזכור מע״מ, או רשות המסים/שע״מ בלי סימן שזה מס אחר
+  return (
+    /מע["״']?מ|מעמ/.test(text) ||
+    /רשות\s*המי?סים|נציבות\s*מס|שע["״']?מ/.test(text)
+  )
+}
+
 /** הוצאות שנספרות בחודש שעבורו שולמו, ולא בחודש התשלום */
 export function isAccrualExpense(
   exp: {

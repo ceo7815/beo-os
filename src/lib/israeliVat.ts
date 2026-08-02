@@ -105,7 +105,10 @@ export function resolveExpenseRowVat(exp: {
 }
 
 export function formatNisPlain(amount: number): string {
-  return `₪${round2(amount).toLocaleString('he-IL')}`
+  return `₪${round2(amount).toLocaleString('he-IL', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
 }
 
 /** חלק יחסי מפירוט מע״מ (לתשלום חלקי / יתרה) */

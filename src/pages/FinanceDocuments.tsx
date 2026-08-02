@@ -10,9 +10,10 @@ import { useFinanceExpenses } from '../hooks/useFinanceExpenses'
 import { useFinanceExpenseTypes } from '../hooks/useFinanceExpenseTypes'
 import { expenseTypeMap, resolveExpenseType } from '../lib/financeExpenseTypes'
 import {
-  isAccountantSelfFiledExpense,
-  listReconciliationRows,
+  isOpenReconciliationRow,
+  listInvoiceWorkflowRows,
   reconciliationRowDate,
+  type ReconciledExpenseRow,
 } from '../lib/expenseReconciliation'
 import {
   buildAccountantPackage,
@@ -44,6 +45,15 @@ function supplierLabel(exp: FinanceExpense): string {
   )
 }
 
+/**
+ * "עם חשבונית" / "חסרה" חייבים להתאים ל"סגורות" / "ממתינות" בהוצאות
+ * ולתג בהתאמות בנקים — כלומר לפי סטטוס התאמה פתוח, לא לפי קיום קובץ בלבד.
+ * (זיכוי / מספר חשבונית בלי קובץ נספרים כסגורים, לא כחסרים.)
+ */
+function rowNeedsInvoice(row: ReconciledExpenseRow): boolean {
+  return isOpenReconciliationRow(row)
+}
+
 export function FinanceDocuments() {
   const { expenses, loading } = useFinanceExpenses()
   const { types: expenseTypes } = useFinanceExpenseTypes()
@@ -63,52 +73,60 @@ export function FinanceDocuments() {
 
   const typeById = useMemo(() => expenseTypeMap(expenseTypes), [expenseTypes])
 
-  const periodExpenses = useMemo(
+  /** רק שורות שדורשות חשבונית — בלי משכורת / מיסים / עמלות */
+  const periodRows = useMemo(
     () =>
-      listReconciliationRows(
+      listInvoiceWorkflowRows(
         expenses,
         period.filterYmFrom,
         period.filterYmTo,
-      ).map((r) => r.expense),
-    [expenses, period.filterYmFrom, period.filterYmTo],
+        typeById,
+      ),
+    [expenses, period.filterYmFrom, period.filterYmTo, typeById],
   )
 
-  const hasLocalOrExemptDoc = (exp: FinanceExpense): boolean =>
-    Boolean(exp.documentUrl?.trim()) || isAccountantSelfFiledExpense(exp)
+  const periodExpenses = useMemo(
+    () => periodRows.map((r) => r.expense),
+    [periodRows],
+  )
 
   const stats = useMemo(() => {
     let documented = 0
     let documentedAmount = 0
     let missing = 0
     let missingAmount = 0
-    for (const exp of periodExpenses) {
-      if (hasLocalOrExemptDoc(exp)) {
-        documented += 1
-        documentedAmount += exp.amount
-      } else {
+    let withFile = 0
+    for (const row of periodRows) {
+      if (rowNeedsInvoice(row)) {
         missing += 1
-        missingAmount += exp.amount
+        missingAmount += row.expense.amount
+      } else {
+        documented += 1
+        documentedAmount += row.expense.amount
+        if (row.expense.documentUrl?.trim()) withFile += 1
       }
     }
-    return { documented, documentedAmount, missing, missingAmount }
-  }, [periodExpenses])
+    return { documented, documentedAmount, missing, missingAmount, withFile }
+  }, [periodRows])
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return periodExpenses.filter((exp) => {
-      const hasDoc = hasLocalOrExemptDoc(exp)
-      if (folderFilter === 'documented' && !hasDoc) return false
-      if (folderFilter === 'missing' && hasDoc) return false
+    return periodRows.filter((row) => {
+      const needsInvoice = rowNeedsInvoice(row)
+      if (folderFilter === 'documented' && needsInvoice) return false
+      if (folderFilter === 'missing' && !needsInvoice) return false
       if (!term) return true
+      const exp = row.expense
       return [supplierLabel(exp), exp.invoiceNumber, exp.description]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(term))
     })
-  }, [periodExpenses, folderFilter, search])
+  }, [periodRows, folderFilter, search])
 
   const folders = useMemo(() => {
     const byMonth = new Map<string, FinanceExpense[]>()
-    for (const exp of filtered) {
+    for (const row of filtered) {
+      const exp = row.expense
       const ym = reconciliationRowDate(exp).slice(0, 7)
       const list = byMonth.get(ym)
       if (list) list.push(exp)
@@ -164,8 +182,8 @@ export function FinanceDocuments() {
     const body = [
       'שלום,',
       '',
-      `מצורפות ${stats.documented} חשבוניות ספקים לתקופה ${period.filterRangeLabel}.`,
-      `סכום כולל: ${formatNis(stats.documentedAmount)}.`,
+      `מצורפות ${stats.withFile} חשבוניות ספקים לתקופה ${period.filterRangeLabel}.`,
+      `סכום כולל (תשלומים מתועדים): ${formatNis(stats.documentedAmount)}.`,
       'בקובץ קיים גם "מפתח-מסמכים.csv" עם פירוט מלא של כל חשבונית.',
       '',
       'תודה',
@@ -185,17 +203,17 @@ export function FinanceDocuments() {
             תיק חשבוניות
           </h1>
           <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-            כל החשבוניות מסודרות בתיקיות לפי חודש, מוכנות לשליחה לרואה החשבון
+            חשבוניות ספקים בלבד — משכורת, מיסים ועמלות בנק לא נכללים כאן
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 md:order-1">
           <button
             type="button"
             onClick={handleExport}
-            disabled={busy || stats.documented === 0}
+            disabled={busy || stats.withFile === 0}
             className="rounded-xl bg-[var(--orange)] px-4 py-2 text-sm font-bold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? 'אורז…' : `הורד תיק (${stats.documented})`}
+            {busy ? 'אורז…' : `הורד תיק (${stats.withFile})`}
           </button>
         </div>
       </header>
@@ -298,7 +316,7 @@ export function FinanceDocuments() {
                   ? stats.documented
                   : tab.id === 'missing'
                     ? stats.missing
-                    : periodExpenses.length
+                    : periodRows.length
               return (
                 <button
                   key={tab.id}
@@ -429,56 +447,11 @@ export function FinanceDocuments() {
         )}
       </section>
 
-      <AttachInvoiceModal expense={attaching} onClose={() => setAttaching(null)} />
+      <AttachInvoiceModal
+        expense={attaching}
+        onClose={() => setAttaching(null)}
+      />
     </div>
-  )
-}
-
-/** תמונה ממוזערת של המסמך — זיהוי מהיר של החשבונית בלי לפתוח אותה */
-function DocumentThumb({
-  url,
-  fileName,
-  onOpen,
-}: {
-  url?: string
-  fileName?: string
-  onOpen: () => void
-}) {
-  const base =
-    'flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border text-[9px] font-bold'
-
-  if (!url?.trim()) {
-    return (
-      <button
-        type="button"
-        onClick={onOpen}
-        title="אין מסמך שמור — לחצו להעלאה"
-        className={`${base} border-dashed border-[var(--border)] text-[var(--text-mid)] transition hover:border-[var(--orange)]`}
-      >
-        חסר
-      </button>
-    )
-  }
-
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      title={fileName || 'צפייה במסמך'}
-      className={`${base} border-[var(--border)] bg-[var(--surface-muted)]/50 text-[var(--text-mid)] transition hover:border-[var(--orange)]`}
-    >
-      {isImageDocument(fileName) ? (
-        <img
-          src={url}
-          alt={fileName ?? 'חשבונית'}
-          loading="lazy"
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        'PDF'
-      )}
-    </a>
   )
 }
 
@@ -499,14 +472,62 @@ function StatCard({
       : tone === 'alert'
         ? 'border-[#FECACA] bg-[#FEF2F2]'
         : 'border-[var(--border)] bg-[var(--dash-panel-bg)]'
-
   return (
-    <div className={`rounded-2xl border p-4 ${toneClass}`}>
-      <div className="text-[11px] font-bold text-[var(--text-mid)]">{label}</div>
-      <div className="mt-1 text-[20px] font-extrabold tabular-nums text-[var(--text-dark)]">
+    <div className={`rounded-2xl border px-4 py-3 ${toneClass}`}>
+      <div className="text-[11px] font-semibold text-[var(--text-mid)]">
+        {label}
+      </div>
+      <div className="mt-1 text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
         {value}
       </div>
-      <div className="mt-0.5 text-[11px] text-[var(--text-mid)]">{sub}</div>
+      <div className="mt-0.5 text-[12px] font-semibold tabular-nums text-[var(--text-mid)]">
+        {sub}
+      </div>
     </div>
+  )
+}
+
+function DocumentThumb({
+  url,
+  fileName,
+  onOpen,
+}: {
+  url?: string
+  fileName?: string
+  onOpen: () => void
+}) {
+  if (!url?.trim()) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex h-12 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-[var(--surface-muted)] text-[10px] font-bold text-[var(--text-light)]"
+        title="העלה חשבונית"
+      >
+        —
+      </button>
+    )
+  }
+  if (isImageDocument(fileName, url)) {
+    return (
+      <button type="button" onClick={onOpen} className="shrink-0" title="צפייה">
+        <img
+          src={url}
+          alt=""
+          className="h-12 w-10 rounded-lg border border-[var(--border)] object-cover"
+        />
+      </button>
+    )
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex h-12 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[#FEF2F2] text-[10px] font-extrabold text-[#B91C1C]"
+      title="PDF"
+    >
+      PDF
+    </a>
   )
 }

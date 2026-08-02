@@ -5,7 +5,7 @@ import type {
   GiExpenseDocKind,
 } from '../types'
 import { resolveExpenseType } from './financeExpenseTypes'
-import { isSalaryLikeExpense } from './financeSalaryMonth'
+import { isSalaryLikeExpense, isTaxExpense } from './financeSalaryMonth'
 import { isStatutoryGiExemptExpense } from './financeExpenseVat'
 import {
   isBankExpense,
@@ -19,7 +19,10 @@ import {
   withinMatchWindow,
   type CoverageStats,
 } from './financeMatchRules'
-import { fullyRefundedChargeIds } from './expenseRefunds'
+import {
+  expensesWithEffectiveRefundLinks,
+  fullyRefundedChargeIds,
+} from './expenseRefunds'
 
 export { isGiOnlyRecord, isBankExpense } from './expenseSource'
 
@@ -54,8 +57,8 @@ export const GI_DOC_KIND_LABEL: Record<GiExpenseDocKind, string> = {
   other: 'מסמך אחר',
 }
 
-/** סוגי הוצאה שבדרך כלל אין להם חשבונית מס ב-GI */
-const GI_EXEMPT_TYPE_IDS = new Set(['bank_fee', 'salary'])
+/** סוגי הוצאה שבדרך כלל אין להם חשבונית מס — לא בתיק ולא בהתאמות */
+const GI_EXEMPT_TYPE_IDS = new Set(['bank_fee', 'salary', 'tax'])
 
 // אין סובלנות באחוזים. התאמה נקבעת רק על סכום זהה — ראו financeMatchRules.
 
@@ -317,8 +320,20 @@ export function requiresGiDocument(
     ? resolveExpenseType(exp.type, typeById)
     : undefined
   if (isSalaryLikeExpense(exp, typeDef)) return false
+  if (isTaxExpense(exp, typeDef)) return false
   if (isStatutoryGiExemptExpense(exp)) return false
   return true
+}
+
+/**
+ * שורה ששייכת לזרימת חשבונית (תיק / התאמות בנק).
+ * משכורת, מיסים, עמלות בנק וכדומה מסומנים document_not_required ואינם מוצגים שם.
+ * חיוב שזוכה במלואו אינו אירוע מס — לא נדרשת חשבונית ולא מוצג בתיק.
+ */
+export function isInvoiceWorkflowRow(row: ReconciledExpenseRow): boolean {
+  return (
+    row.status !== 'document_not_required' && row.status !== 'refunded'
+  )
 }
 
 function sumMatchesBank(bankAmount: number, giAmounts: number[]): boolean {
@@ -520,8 +535,9 @@ function isDocumented(exp: FinanceExpense): boolean {
 function statusForBankPayment(
   bank: FinanceExpense,
   pair: ExpensePair | undefined,
+  typeById?: Map<string, FinanceExpenseTypeDef>,
 ): ExpenseReconciliationStatus {
-  if (!requiresGiDocument(bank)) return 'document_not_required'
+  if (!requiresGiDocument(bank, typeById)) return 'document_not_required'
   if (pair) return 'matched'
   if (isDocumented(bank)) return 'manual_ok'
   return 'bank_missing_document'
@@ -532,18 +548,21 @@ export function buildReconciledExpenseRows(
   expenses: FinanceExpense[],
   ymFrom?: string,
   ymTo?: string,
+  typeById?: Map<string, FinanceExpenseTypeDef>,
 ): ReconciledExpenseRow[] {
-  const pairs = computeExpensePairs(expenses)
+  // זיכוי↔חיוב בטוח נסגר גם בלי שיוך ידני — אין אירוע מס ואין חשבונית להגיש
+  const linked = expensesWithEffectiveRefundLinks(expenses)
+  const pairs = computeExpensePairs(linked)
   const bankPair = new Map<string, ExpensePair>()
   for (const p of pairs) {
     const prev = bankPair.get(p.bank.id)
     if (!prev || p.score > prev.score) bankPair.set(p.bank.id, p)
   }
   const matchedGiIds = new Set(pairs.map((p) => p.gi.id))
-  const fullyRefunded = fullyRefundedChargeIds(expenses)
+  const fullyRefunded = fullyRefundedChargeIds(linked)
   const rows: ReconciledExpenseRow[] = []
 
-  for (const exp of expenses) {
+  for (const exp of linked) {
     if (isGiOnlyRecord(exp)) continue
     // זיכוי אינו תשלום שממתין לחשבונית — הוא מטופל בשיוך מול החיוב שביטל
     if (exp.amount < 0) continue
@@ -564,13 +583,27 @@ export function buildReconciledExpenseRows(
     if (isBankExpense(exp)) {
       rows.push({
         expense: exp,
-        status: statusForBankPayment(exp, pair),
+        status: statusForBankPayment(exp, pair, typeById),
         linkedGi: pair?.gi,
       })
       continue
     }
 
     if (isAccountantSelfFiledExpense(exp)) {
+      rows.push({ expense: exp, status: 'document_not_required' })
+      continue
+    }
+
+    // הוצאה ידנית מסוג משכורת/מס — גם בלי bankRef לא שייכת לזרימת חשבונית
+    const typeDef = typeById
+      ? resolveExpenseType(exp.type, typeById)
+      : undefined
+    if (
+      GI_EXEMPT_TYPE_IDS.has(exp.type) ||
+      isSalaryLikeExpense(exp, typeDef) ||
+      isTaxExpense(exp, typeDef) ||
+      isStatutoryGiExemptExpense(exp)
+    ) {
       rows.push({ expense: exp, status: 'document_not_required' })
       continue
     }
@@ -602,9 +635,15 @@ export function reconciliationRowMap(
   expenses: FinanceExpense[],
   ymFrom?: string,
   ymTo?: string,
+  typeById?: Map<string, FinanceExpenseTypeDef>,
 ): Map<string, ReconciledExpenseRow> {
   const map = new Map<string, ReconciledExpenseRow>()
-  for (const row of buildReconciledExpenseRows(expenses, ymFrom, ymTo)) {
+  for (const row of buildReconciledExpenseRows(
+    expenses,
+    ymFrom,
+    ymTo,
+    typeById,
+  )) {
     if (!isGiOnlyRecord(row.expense)) {
       map.set(row.expense.id, row)
     }
@@ -744,8 +783,9 @@ export function listReconciliationRows(
   expenses: FinanceExpense[],
   ymFrom?: string,
   ymTo?: string,
+  typeById?: Map<string, FinanceExpenseTypeDef>,
 ): ReconciledExpenseRow[] {
-  return buildReconciledExpenseRows(expenses, ymFrom, ymTo)
+  return buildReconciledExpenseRows(expenses, ymFrom, ymTo, typeById)
     .filter((r) => !isGiOnlyRecord(r.expense))
     .sort((a, b) =>
       reconciliationRowDate(b.expense).localeCompare(
@@ -754,13 +794,29 @@ export function listReconciliationRows(
     )
 }
 
+/**
+ * שורות לתיק חשבוניות / מסך התאמות —
+ * בלי משכורת, מיסים, עמלות בנק וכל מה שלא דורש חשבונית.
+ */
+export function listInvoiceWorkflowRows(
+  expenses: FinanceExpense[],
+  ymFrom?: string,
+  ymTo?: string,
+  typeById?: Map<string, FinanceExpenseTypeDef>,
+): ReconciledExpenseRow[] {
+  return listReconciliationRows(expenses, ymFrom, ymTo, typeById).filter(
+    isInvoiceWorkflowRow,
+  )
+}
+
 /** תשלומים שעדיין מחכים לחשבונית — כולל הוצאות שהוזנו ידנית */
 export function listOpenReconciliationRows(
   expenses: FinanceExpense[],
   ymFrom?: string,
   ymTo?: string,
+  typeById?: Map<string, FinanceExpenseTypeDef>,
 ): ReconciledExpenseRow[] {
-  return listReconciliationRows(expenses, ymFrom, ymTo).filter(
+  return listInvoiceWorkflowRows(expenses, ymFrom, ymTo, typeById).filter(
     isOpenReconciliationRow,
   )
 }

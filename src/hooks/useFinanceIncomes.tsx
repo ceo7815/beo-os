@@ -186,6 +186,7 @@ export type NewFinanceIncomeInput = {
   monthlyRetainer?: boolean
   hostingClient?: boolean
   hostingType?: FinanceHostingType
+  hourlyServiceId?: string
   paidAmount?: number
   paymentMethod?: FinancePaymentMethod
   paidDate?: string
@@ -206,6 +207,8 @@ export type FinanceIncomePatchInput = {
   monthlyRetainer?: boolean
   hostingClient?: boolean
   hostingType?: FinanceHostingType | null
+  /** מזהה בנק שעות · `null` / `''` לניקוי */
+  hourlyServiceId?: string | null
   paidAmount?: number | null
   paymentMethod?: FinancePaymentMethod | null
   paidDate?: string | null
@@ -370,6 +373,7 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
           next.hostingClient = patch.hostingClient
           if (patch.hostingClient) {
             next.projectId = deleteField()
+            next.hourlyServiceId = deleteField()
           } else {
             next.hostingType = deleteField()
           }
@@ -380,15 +384,33 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
           next.hostingType = patch.hostingType
           next.hostingClient = true
           next.projectId = deleteField()
+          next.hourlyServiceId = deleteField()
+        }
+        if (patch.hourlyServiceId === null || patch.hourlyServiceId === '') {
+          next.hourlyServiceId = deleteField()
+        } else if (
+          typeof patch.hourlyServiceId === 'string' &&
+          patch.hourlyServiceId.trim()
+        ) {
+          next.hourlyServiceId = patch.hourlyServiceId.trim()
+          next.hostingClient = false
+          next.hostingType = deleteField()
+          next.projectId = deleteField()
         }
         if (
           typeof patch.projectId === 'string' &&
           patch.projectId.trim() &&
-          patch.hostingClient !== true
+          patch.hostingClient !== true &&
+          !patch.hourlyServiceId
         ) {
           next.projectId = patch.projectId.trim()
           next.hostingClient = false
-        } else if (patch.projectId === '' && patch.hostingClient !== true) {
+          next.hourlyServiceId = deleteField()
+        } else if (
+          patch.projectId === '' &&
+          patch.hostingClient !== true &&
+          !patch.hourlyServiceId
+        ) {
           // ביטול שיוך לפרויקט
           next.projectId = ''
         }
@@ -653,6 +675,9 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
           if (oldInc.hostingClient) {
             receiptRow.hostingClient = true
             if (oldInc.hostingType) receiptRow.hostingType = oldInc.hostingType
+          }
+          if (oldInc.hourlyServiceId?.trim()) {
+            receiptRow.hourlyServiceId = oldInc.hourlyServiceId.trim()
           }
 
           await addDoc(collection(db, 'financeIncomes'), receiptRow)

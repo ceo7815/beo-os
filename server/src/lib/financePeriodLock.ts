@@ -1,8 +1,7 @@
 // נעילת תקופה — עותק השרת.
 //
-// חודש נסגר בתאריך דיווח המע״מ (ה-19 בחודש העוקב). השיוך נקבע ונשמר
-// ברגע ההגשה ולא מחושב מחדש בקריאה, כי רשומה שנספרה בחודש שכבר דווח
-// לרשויות חייבת להישאר בו.
+// חודש הרו״ה = תאריך החשבונית תמיד. נעילת המע״מ מסמנת מאחרים ומונעת
+// עריכה למפרע, אך אינה מעבירה את ההוצאה לחודש אחר.
 //
 // הלוגיקה זהה ל-src/lib/financePeriodLock.ts. בדיקת הזהות
 // src/lib/__tests__/financePeriodLockParity.test.ts משווה בין השתיים
@@ -59,8 +58,6 @@ export function resolveAttributionMonth(
   today: string,
 ): AttributionOutcome {
   const documentMonth = documentDateYmd.slice(0, 7)
-  if (!isMonthLocked(documentMonth, today)) {
-    return { month: documentMonth, late: false, documentMonth }
-  }
-  return { month: openMonth(today), late: true, documentMonth }
+  const late = isMonthLocked(documentMonth, today)
+  return { month: documentMonth, late, documentMonth }
 }

@@ -15,7 +15,7 @@ import {
 import { amountsIdentical } from '../../lib/financeMatchRules'
 import {
   formatForeignAmount,
-  isForeignCurrencyCode,
+  resolveExpenseForeign,
 } from '../../lib/foreignCurrency'
 import { reconciliationRowDate } from '../../lib/expenseReconciliation'
 import { readInvoiceFile, type InvoiceReadResult } from '../../lib/pdfText'
@@ -73,6 +73,7 @@ export function AttachInvoiceModal({
   const [documentAmount, setDocumentAmount] = useState('')
   const [acceptGap, setAcceptGap] = useState(false)
   const [acceptDateGap, setAcceptDateGap] = useState(false)
+  const [expenseNote, setExpenseNote] = useState('')
   const [progress, setProgress] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -83,17 +84,18 @@ export function AttachInvoiceModal({
     setFile(null)
     setInvoiceNumber(expense?.invoiceNumber ?? '')
     // בעסקת מט״ח נפתח עם סכום המקור — זה מה שכתוב בחשבונית שתועלה
-    const suggested =
-      expense && isForeignCurrencyCode(expense.currency) && expense.originalAmount
-        ? Math.abs(expense.originalAmount)
-        : expense
-          ? Math.abs(expense.amount)
-          : null
+    const fx = expense ? resolveExpenseForeign(expense) : undefined
+    const suggested = fx
+      ? fx.amount
+      : expense
+        ? Math.abs(expense.amount)
+        : null
     setDocumentAmount(suggested == null ? '' : String(suggested))
     // ברירת המחדל היא מועד התשלום; שינוי לתאריך החשבונית מזיז את החודש
     setInvoiceDate(
       expense?.documentDate ?? (expense ? reconciliationRowDate(expense) : ''),
     )
+    setExpenseNote(expense?.expenseNote ?? '')
     setAcceptGap(false)
     setAcceptDateGap(false)
     setProgress(null)
@@ -110,13 +112,7 @@ export function AttachInvoiceModal({
 
   const foreign = useMemo(() => {
     if (!expense) return null
-    if (!isForeignCurrencyCode(expense.currency) || !expense.originalAmount) {
-      return null
-    }
-    return {
-      currency: expense.currency!,
-      amount: Math.abs(expense.originalAmount),
-    }
+    return resolveExpenseForeign(expense) ?? null
   }, [expense])
 
   /**
@@ -185,6 +181,7 @@ export function AttachInvoiceModal({
               pnlMonth: attribution.month,
             }
           : {}),
+        expenseNote: expenseNote.trim() ? expenseNote.trim() : null,
         supplierInvoiceReceived: true,
       })
       onClose()
@@ -419,7 +416,7 @@ export function AttachInvoiceModal({
             לפי תאריך החשבונית ההוצאה תעבור מ{monthLabelHe(attribution.currentMonth)}{' '}
             ל{monthLabelHe(attribution.month)}.
             {attribution.late
-              ? ` חודש ${monthLabelHe(attribution.documentMonth)} כבר דווח למע״מ, ולכן היא נספרת בחודש הפתוח ומסומנת כמאחרת.`
+              ? ` חודש ${monthLabelHe(attribution.documentMonth)} כבר דווח למע״מ — היא עדיין נספרת שם ומסומנת כמאחרת.`
               : ' זו ההוצאה של אותו חודש, גם אם התשלום יצא אחר כך.'}
           </p>
         ) : null}
@@ -476,6 +473,19 @@ export function AttachInvoiceModal({
             </label>
           </div>
         ) : null}
+
+        <div>
+          <div className="mb-2 text-[12px] font-bold text-[var(--text-mid)]">
+            הערה (תופיע באדום בשורת ההוצאה)
+          </div>
+          <textarea
+            value={expenseNote}
+            onChange={(e) => setExpenseNote(e.target.value)}
+            rows={2}
+            placeholder="לדוגמה: פער בגלל תשלום חלקי / חשבונית מאוחדת…"
+            className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2.5 text-sm font-semibold text-[var(--text-dark)] placeholder:font-normal placeholder:text-[var(--text-light)]"
+          />
+        </div>
 
         {progress !== null ? (
           <div className="text-[12px] font-semibold text-[var(--text-mid)]">

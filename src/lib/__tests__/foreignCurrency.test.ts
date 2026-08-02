@@ -5,6 +5,7 @@ import {
   isForeignCurrencyCode,
   normalizeCurrencyCode,
   parseForeignNote,
+  resolveExpenseForeign,
 } from '../foreignCurrency'
 import { amountsIdentical } from '../financeMatchRules'
 
@@ -41,6 +42,40 @@ describe('חילוץ מטבע וסכום מהערת חברת האשראי', () =
 
   it('קוד מטבע טקסטואלי מזוהה', () => {
     expect(parseForeignNote('סכום העסקה הוא 42.00 USD')?.currency).toBe('USD')
+  })
+
+  it('מזהה סמל לפני הסכום', () => {
+    expect(parseForeignNote('סכום העסקה $20.00')).toEqual({
+      currency: 'USD',
+      amount: 20,
+    })
+  })
+
+  it('מזהה USD לפני הסכום', () => {
+    expect(parseForeignNote('USD 15.5')).toEqual({
+      currency: 'USD',
+      amount: 15.5,
+    })
+  })
+})
+
+describe('resolveExpenseForeign', () => {
+  it('מעדיף שדות שמורים', () => {
+    expect(
+      resolveExpenseForeign({
+        currency: 'USD',
+        originalAmount: 20,
+        description: 'סכום העסקה הוא 99 $',
+      }),
+    ).toEqual({ currency: 'USD', amount: 20 })
+  })
+
+  it('מחלץ מתיאור כשאין שדות', () => {
+    expect(
+      resolveExpenseForeign({
+        description: 'סכום העסקה הוא 20.00 $',
+      }),
+    ).toEqual({ currency: 'USD', amount: 20 })
   })
 })
 

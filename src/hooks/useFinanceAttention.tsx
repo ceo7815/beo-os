@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { useFinanceExpenses } from './useFinanceExpenses'
+import { useFinanceExpenseTypes } from './useFinanceExpenseTypes'
+import { expenseTypeMap } from '../lib/financeExpenseTypes'
 import { listOpenReconciliationRows } from '../lib/expenseReconciliation'
 import type { FinanceTabBadges } from '../components/finance/FinanceTabs'
 
@@ -11,9 +13,16 @@ import type { FinanceTabBadges } from '../components/finance/FinanceTabs'
  */
 export function useFinanceAttention(ymFrom?: string, ymTo?: string): FinanceTabBadges {
   const { expenses } = useFinanceExpenses()
+  const { types } = useFinanceExpenseTypes()
+  const typeById = useMemo(() => expenseTypeMap(types), [types])
 
   return useMemo(() => {
-    const unmatched = listOpenReconciliationRows(expenses, ymFrom, ymTo).length
+    const unmatched = listOpenReconciliationRows(
+      expenses,
+      ymFrom,
+      ymTo,
+      typeById,
+    ).length
     return unmatched > 0 ? { unmatched } : {}
-  }, [expenses, ymFrom, ymTo])
+  }, [expenses, ymFrom, ymTo, typeById])
 }

@@ -22,6 +22,7 @@ import {
   type ImportDraft,
 } from '../../lib/bankImport/importDraft'
 import { suggestExpenseVatClass } from '../../lib/financeExpenseVat'
+import { clientScopedProjectOptions } from '../../lib/financeProjectAssign'
 import {
   defaultSalaryMonthFromPayment,
   extractEmployeeFromTransfer,
@@ -206,9 +207,14 @@ function rowToExpenseInput(
   const lateNote = attribution.late
     ? `מאחר — שייך ל${attribution.documentMonth}`
     : undefined
-  // סכום המט״ח נשמר בשדות ייעודיים, ולכן אינו חוזר גם בתיאור החופשי
+  // מט״ח בשדות ייעודיים + גם בתיאור לגיבוי/תצוגה ברשומות ישנות
+  const fxBackup =
+    r.tx.currency && r.tx.originalAmount
+      ? r.tx.foreignNote?.trim() ||
+        `סכום העסקה הוא ${Math.abs(r.tx.originalAmount)} ${r.tx.currency}`
+      : r.tx.foreignNote?.trim() || undefined
   const description =
-    [r.note.trim(), chargeNote, lateNote].filter(Boolean).join(' · ') ||
+    [r.note.trim(), fxBackup, chargeNote, lateNote].filter(Boolean).join(' · ') ||
     undefined
   const employeeName = isSalary
     ? extractEmployeeFromTransfer(r.tx.description)
@@ -318,13 +324,6 @@ export function ExpenseImportWizard({
    */
   const creditsAreRefunds = source === 'credit_card'
 
-  const projectOptions = useMemo(
-    () =>
-      [...projects]
-        .sort((a, b) => a.name.localeCompare(b.name, 'he'))
-        .map((p) => ({ value: p.id, label: p.name })),
-    [projects],
-  )
   const clientOptions = useMemo(
     () =>
       [...clients]
@@ -332,6 +331,15 @@ export function ExpenseImportWizard({
         .map((c) => ({ value: c.id, label: c.name })),
     [clients],
   )
+
+  const projectOptionsForRow = (row: {
+    clientId?: string
+    projectId?: string
+  }) =>
+    clientScopedProjectOptions(projects, {
+      clientId: row.clientId,
+      currentProjectId: row.projectId,
+    })
 
   const pendingRows = useMemo(
     () => rows.filter((r) => r.include && !r.saved && !r.isDuplicate),
@@ -753,6 +761,21 @@ export function ExpenseImportWizard({
   const controlOk =
     !totalMismatch && balanceControl?.status !== 'mismatch'
 
+  /**
+   * התאמה מלאה = אין שורות לסיווג, וכל החיובים (הוצאות) כבר במערכת.
+   * זיכויים וחיוב מרוכז של כרטיס מדולגים בכוונה ואינם שוברים את ההתאמה.
+   */
+  const chargeRows = useMemo(
+    () => rows.filter((r) => !r.tx.isCredit),
+    [rows],
+  )
+  const fullSystemMatch =
+    rows.length > 0 &&
+    groups.todo.length === 0 &&
+    (chargeRows.length === 0 ||
+      chargeRows.every((r) => r.isDuplicate || r.saved))
+  const matchStatusReady = rows.length > 0
+
   return (
     <Modal
       isOpen={isOpen}
@@ -931,6 +954,35 @@ export function ExpenseImportWizard({
                   : `הסכומים אינם תואמים לשורת הסה״כ — פער ${formatNis(gapAmount)}. בדקו את הפירוט לפני הייבוא.`}
             </p>
 
+            {matchStatusReady ? (
+              fullSystemMatch ? (
+                <div className="mt-3 rounded-xl border-2 border-[#059669] bg-[#ECFDF5] px-4 py-3.5 text-center shadow-sm">
+                  <p className="text-[15px] font-extrabold tracking-tight text-[#065F46]">
+                    ✓ התאמה מלאה
+                  </p>
+                  <p className="mt-1 text-[13px] font-bold text-[#047857]">
+                    כל מה שיש בקובץ כבר קיים במערכת — לא חסרה אף שורה.
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold text-[#059669]">
+                    {chargeRows.length} חיובים · {creditStats.count} זיכויים
+                    {cardSettlementSkips > 0
+                      ? ` · ${cardSettlementSkips} חיוב מרוכז דולג`
+                      : ''}{' '}
+                    · אין מה לייבא מחדש
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl border-2 border-[#F59E0B] bg-[#FFFBEB] px-4 py-3.5 text-center shadow-sm">
+                  <p className="text-[15px] font-extrabold tracking-tight text-[#92400E]">
+                    לא התאמה מלאה
+                  </p>
+                  <p className="mt-1 text-[13px] font-bold text-[#B45309]">
+                    נותרו {groups.todo.length} שורות לסיווג וייבוא.
+                  </p>
+                </div>
+              )
+            ) : null}
+
             {cardSettlementSkips > 0 ? (
               <p className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-[12px] text-[var(--text-mid)]">
                 <span className="font-bold text-[var(--text-dark)]">
@@ -1029,7 +1081,9 @@ export function ExpenseImportWizard({
             {visibleIndexes.length === 0 ? (
               <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-[12px] text-[var(--text-mid)]">
                 {listFilter === 'todo'
-                  ? 'אין הוצאות שממתינות לסיווג בקובץ הזה.'
+                  ? fullSystemMatch
+                    ? 'התאמה מלאה — כל השורות כבר במערכת, אין מה לסווג.'
+                    : 'אין הוצאות שממתינות לסיווג בקובץ הזה.'
                   : listFilter === 'done'
                     ? 'עדיין לא נשמרו הוצאות מהקובץ הזה.'
                     : 'כל שורות הקובץ ניתנות לייבוא.'}
@@ -1195,11 +1249,25 @@ export function ExpenseImportWizard({
                             </span>
                             <HubDropdownSelect
                               value={r.projectId}
-                              onChange={(v) => updateRow(idx, { projectId: v })}
-                              options={projectOptions}
+                              onChange={(v) => {
+                                const p = v
+                                  ? projects.find((x) => x.id === v)
+                                  : undefined
+                                updateRow(idx, {
+                                  projectId: v,
+                                  ...(p?.clientId
+                                    ? { clientId: p.clientId }
+                                    : {}),
+                                })
+                              }}
+                              options={projectOptionsForRow(r)}
                               emptyOption={{ label: 'ללא פרויקט' }}
                               searchable
-                              searchPlaceholder="חיפוש פרויקט…"
+                              searchPlaceholder={
+                                r.clientId
+                                  ? 'חיפוש פרויקט של הלקוח…'
+                                  : 'בחרו לקוח תחילה…'
+                              }
                             />
                           </div>
                           <div>
@@ -1208,7 +1276,18 @@ export function ExpenseImportWizard({
                             </span>
                             <HubDropdownSelect
                               value={r.clientId}
-                              onChange={(v) => updateRow(idx, { clientId: v })}
+                              onChange={(v) => {
+                                const projectStillValid =
+                                  !r.projectId ||
+                                  projects.find((p) => p.id === r.projectId)
+                                    ?.clientId === v
+                                updateRow(idx, {
+                                  clientId: v,
+                                  ...(projectStillValid
+                                    ? {}
+                                    : { projectId: '' }),
+                                })
+                              }}
                               options={clientOptions}
                               emptyOption={{ label: 'ללא לקוח' }}
                               searchable

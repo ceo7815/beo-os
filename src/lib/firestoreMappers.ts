@@ -47,7 +47,7 @@ import type {
 } from '../types'
 import { normalizeDueTimeHm } from './dates'
 import { parseFirestoreSupplierTypes } from './supplierTypes'
-import { parseForeignNote } from './foreignCurrency'
+import { resolveExpenseForeign } from './foreignCurrency'
 
 export function timestampToIso(value: unknown): string {
   if (value instanceof Timestamp) {
@@ -258,6 +258,9 @@ export function docToFinanceIncome(
     monthlyRetainer: x.monthlyRetainer === true,
     hostingClient: x.hostingClient === true,
     ...(isFinanceHostingType(x.hostingType) ? { hostingType: x.hostingType } : {}),
+    ...(typeof x.hourlyServiceId === 'string' && x.hourlyServiceId.trim()
+      ? { hourlyServiceId: x.hourlyServiceId.trim() }
+      : {}),
     ...(source ? { source } : {}),
     ...(greenInvoiceId ? { greenInvoiceId } : {}),
     ...(greenInvoiceType !== undefined ? { greenInvoiceType } : {}),
@@ -412,21 +415,20 @@ export function docToFinanceExpense(
     typeof v === 'number' && Number.isFinite(v) ? v : undefined
 
   /**
-   * רשומות שיובאו לפני שהמט״ח נשמר בשדות ייעודיים מחזיקות אותו רק בתוך
-   * התיאור. חילוץ בקריאה חוסך מיגרציה ומחזיר גם אותן להתאמה מול חשבונית.
+   * מט״ח: שדות ייעודיים, או חילוץ מתיאור ישן (לפני שנשמרו בשדות).
    */
-  const savedCurrency = str(x.currency)
-  const savedOriginal = num(x.originalAmount)
-  const legacyForeign =
-    savedCurrency && savedOriginal
-      ? undefined
-      : parseForeignNote(description ?? '')
-  const foreignFields = legacyForeign
-    ? { currency: legacyForeign.currency, originalAmount: legacyForeign.amount }
-    : {
-        ...(savedCurrency ? { currency: savedCurrency } : {}),
-        ...(savedOriginal ? { originalAmount: savedOriginal } : {}),
+  const resolvedForeign = resolveExpenseForeign({
+    currency: str(x.currency),
+    originalAmount: num(x.originalAmount),
+    description,
+    name,
+  })
+  const foreignFields = resolvedForeign
+    ? {
+        currency: resolvedForeign.currency,
+        originalAmount: resolvedForeign.amount,
       }
+    : {}
 
   return {
     id: d.id,
@@ -485,6 +487,7 @@ export function docToFinanceExpense(
       ? { documentMonth: str(x.documentMonth)!.slice(0, 7) }
       : {}),
     ...(x.isLateDocument === true ? { isLateDocument: true } : {}),
+    ...(str(x.expenseNote) ? { expenseNote: str(x.expenseNote)! } : {}),
     ...(str(x.refundForExpenseId)
       ? { refundForExpenseId: str(x.refundForExpenseId)! }
       : {}),

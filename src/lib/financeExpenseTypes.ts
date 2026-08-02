@@ -141,6 +141,10 @@ export function expenseAppliesToMonth(
   if (isSpreadExpense(exp)) {
     return spreadIndexOf(exp, targetYm) >= 0
   }
+  // תאריך החשבונית קובע את חודש הרו״ה (גם אם pnlMonth נשמר לחודש הפתוח בעבר)
+  if (exp.documentDate?.trim()) {
+    return exp.documentDate.trim().slice(0, 7) === targetYm
+  }
   const explicitPnl = exp.pnlMonth?.trim().slice(0, 7)
   if (explicitPnl) {
     return explicitPnl === targetYm

@@ -23,13 +23,14 @@ import {
   monthLabelHe,
   PLATFORM_OPTIONS,
 } from '../lib/financeCalc'
+import { clientScopedProjectOptions } from '../lib/financeProjectAssign'
 import { FinancePeriodFilter } from '../components/finance/FinancePeriodFilter'
+import { QuickCreateProjectModal } from '../components/finance/QuickCreateProjectModal'
 import { useFinancePeriodFilter } from '../hooks/useFinancePeriodFilter'
 import {
   expenseTypeMap,
   expenseDisplayName,
   expensePaymentMonth,
-  expenseUsesPnlAttribution,
   isOneTimeGeneralExpenseType,
   EXPENSE_TYPE_COLOR_PRESETS,
   resolveExpenseType,
@@ -62,7 +63,7 @@ import { matchMonthlyRecurringExpense } from '../lib/financeRecurringCatalog'
 import { formatDateIL } from '../lib/dates'
 import {
   formatForeignAmount,
-  isForeignCurrencyCode,
+  resolveExpenseForeign,
 } from '../lib/foreignCurrency'
 import { FinanceTabs } from '../components/finance/FinanceTabs'
 import { useFinanceAttention } from '../hooks/useFinanceAttention'
@@ -128,6 +129,10 @@ type ExpenseFormState = {
   recurring: boolean
   supplierInvoiceReceived: boolean
   hostingExpense: boolean
+  /** קוד מטבע מקור — USD / EUR וכו׳ */
+  currency: string
+  /** סכום במטבע המקור */
+  originalAmount: string
 }
 
 const emptyExpenseForm = (): ExpenseFormState => ({
@@ -148,6 +153,8 @@ const emptyExpenseForm = (): ExpenseFormState => ({
   recurring: false,
   supplierInvoiceReceived: false,
   hostingExpense: false,
+  currency: '',
+  originalAmount: '',
 })
 
 
@@ -228,6 +235,7 @@ export function Expenses() {
   const [importOpen, setImportOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<FinanceExpense | null>(null)
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(emptyExpenseForm)
+  const [expenseFormError, setExpenseFormError] = useState('')
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null)
   const [attachingExpense, setAttachingExpense] =
     useState<FinanceExpense | null>(null)
@@ -236,6 +244,11 @@ export function Expenses() {
   const [typeForm, setTypeForm] = useState<NewFinanceExpenseTypeInput>(
     newExpenseTypeDefaults(),
   )
+  const [quickCreateFor, setQuickCreateFor] = useState<{
+    expenseId: string
+    clientId: string
+    clientName: string
+  } | null>(null)
 
   const clientNameById = useMemo(() => {
     const m = new Map<string, string>()
@@ -262,18 +275,21 @@ export function Expenses() {
     return m
   }, [projects])
 
-  /** שיוך פרויקט ישירות מהשורה — שם הלקוח נלווה כי שמות פרויקטים חוזרים */
-  const projectAssignOptions = useMemo(
-    () =>
-      projects.map((p) => {
-        const clientName = p.clientId ? clientNameById.get(p.clientId) : ''
-        return {
-          value: p.id,
-          label: clientName ? `${p.name} · ${clientName}` : p.name,
-        }
-      }),
-    [projects, clientNameById],
-  )
+  /** שיוך פרויקט לפי לקוח השורה — לא כל הפרויקטים במערכת */
+  const projectOptionsForExpense = (row: {
+    clientId?: string
+    projectId?: string
+  }) => {
+    const clientId =
+      row.clientId?.trim() ||
+      (row.projectId ? projectClientById.get(row.projectId) : '') ||
+      ''
+    return clientScopedProjectOptions(projects, {
+      clientId,
+      currentProjectId: row.projectId,
+      clientNameById,
+    })
+  }
 
   const projectIdsForClient = useMemo(() => {
     if (!filterClientId) return new Set<string>()
@@ -352,8 +368,14 @@ export function Expenses() {
   const refundLinks = useMemo(() => refundLinkMap(expenses), [expenses])
 
   const reconciliationById = useMemo(
-    () => reconciliationRowMap(expenses, filterYmFrom, filterYmTo),
-    [expenses, filterYmFrom, filterYmTo],
+    () =>
+      reconciliationRowMap(
+        expenses,
+        filterYmFrom,
+        filterYmTo,
+        expenseTypeById,
+      ),
+    [expenses, filterYmFrom, filterYmTo, expenseTypeById],
   )
 
   const filteredExpenses = useMemo(() => {
@@ -393,6 +415,8 @@ export function Expenses() {
 
   /** סגירה לתצוגה בלבד — חשבונית / זיכוי / פטור ממסמך */
   const isRowClosed = (row: FinanceExpense): boolean => {
+    // זיכוי עצמו אינו אירוע מס — לא ממתין לחשבונית
+    if (row.amount < 0) return true
     if (refundLinks.get(row.id)?.fully === true) return true
     return isSettledReconciliationStatus(
       reconciliationById.get(row.id)?.status,
@@ -519,6 +543,7 @@ export function Expenses() {
 
   const openAddExpense = () => {
     setEditingExpense(null)
+    setExpenseFormError('')
     setExpenseForm({
       ...emptyExpenseForm(),
       clientId: filterClientId,
@@ -534,6 +559,7 @@ export function Expenses() {
         billingMonth: row.sourceBillingMonth ?? row.billingMonth,
       } as FinanceExpense)
     setEditingExpense(source)
+    setExpenseFormError('')
     const typeDef = resolveExpenseType(source.type, expenseTypeById)
     const noteMonth =
       typeDef.fieldMode === 'salary'
@@ -574,22 +600,49 @@ export function Expenses() {
       recurring: source.recurring,
       supplierInvoiceReceived: source.supplierInvoiceReceived === true,
       hostingExpense: source.hostingExpense === true,
+      currency: resolveExpenseForeign(source)?.currency ?? source.currency ?? '',
+      originalAmount: (() => {
+        const fx = resolveExpenseForeign(source)
+        if (fx) return String(fx.amount)
+        if (source.originalAmount) return String(Math.abs(source.originalAmount))
+        return ''
+      })(),
     })
     setExpenseModalOpen(true)
   }
 
   const submitExpense = () => {
+    setExpenseFormError('')
     const parsed = Number.parseFloat(expenseForm.amount.replace(/,/g, ''))
     const typeDef = resolveExpenseType(expenseForm.type, expenseTypeById)
     if (!Number.isFinite(parsed) || parsed <= 0 || !expenseForm.billingMonth) {
+      setExpenseFormError('יש למלא סכום וחודש תקינים')
       return
     }
     if (typeDef.fieldMode === 'salary') {
-      if (!expenseForm.employeeName.trim()) return
+      if (!expenseForm.employeeName.trim()) {
+        setExpenseFormError('יש למלא שם עובד')
+        return
+      }
     } else if (!expenseForm.name.trim()) {
+      setExpenseFormError('יש למלא שם הוצאה')
       return
     }
-    if (typeDef.fieldMode === 'supplier' && !expenseForm.supplierId.trim()) {
+    // ייבוא בנק לרוב בלי ספק מקושר — לא חוסמים עריכה בגלל זה
+    if (
+      typeDef.fieldMode === 'supplier' &&
+      !expenseForm.supplierId.trim() &&
+      !editingExpense
+    ) {
+      setExpenseFormError('יש לבחור ספק')
+      return
+    }
+    if (
+      expenseForm.currency.trim() &&
+      expenseForm.currency.trim().toUpperCase() !== 'ILS' &&
+      !Number.parseFloat(expenseForm.originalAmount.replace(/,/g, ''))
+    ) {
+      setExpenseFormError('נבחר מטבע מקור — יש למלא גם סכום במט״ח')
       return
     }
     const isVatLiable = expenseForm.vatClass === 'vat_liable'
@@ -660,8 +713,25 @@ export function Expenses() {
             : expenseForm.recurring,
       supplierInvoiceReceived: expenseForm.supplierInvoiceReceived,
       hostingExpense: expenseForm.hostingExpense,
+      ...( (() => {
+        const code = expenseForm.currency.trim().toUpperCase()
+        const fx = Number.parseFloat(expenseForm.originalAmount.replace(/,/g, ''))
+        if (code && code !== 'ILS' && Number.isFinite(fx) && fx !== 0) {
+          return { currency: code, originalAmount: Math.abs(fx) }
+        }
+        return {}
+      })() ),
     }
     if (editingExpense) {
+      const fxCode = expenseForm.currency.trim().toUpperCase()
+      const fxAmt = Number.parseFloat(
+        expenseForm.originalAmount.replace(/,/g, ''),
+      )
+      const hasFx =
+        !!fxCode &&
+        fxCode !== 'ILS' &&
+        Number.isFinite(fxAmt) &&
+        fxAmt !== 0
       void updateExpense(editingExpense.id, {
         ...payload,
         supplierId:
@@ -684,6 +754,8 @@ export function Expenses() {
         vatClass: expenseForm.vatClass,
         vatLiable: vatClassToLiable(expenseForm.vatClass),
         supplierInvoiceReceived: expenseForm.supplierInvoiceReceived,
+        currency: hasFx ? fxCode : null,
+        originalAmount: hasFx ? Math.abs(fxAmt) : null,
       }).then(() => setExpenseModalOpen(false))
     } else {
       void addExpense(payload).then(() => setExpenseModalOpen(false))
@@ -938,19 +1010,17 @@ export function Expenses() {
                   const typeDef = resolveExpenseType(row.type, expenseTypeById)
                   /** משכורת ומסים נספרים בחודש שעבורו שולמו, לא בחודש התשלום */
                   const accrualRow = isAccrualExpense(row, typeDef)
+                  /** חודש רו״ה = תאריך החשבונית (לא תאריך התשלום) */
                   const reportMonth = deriveExpensePnlMonth(row)
                   const vatClass = resolveExpenseVatClass(row)
                   const breakdown = resolveExpenseRowVat(row)
                   const payMonth = expensePaymentMonth(row)
-                  const pnlAttributed =
+                  const paymentDate = row.paidDate?.trim() || ''
+                  const invoiceDate = row.documentDate?.trim() || ''
+                  const monthMismatch =
                     !accrualRow &&
-                    (expenseUsesPnlAttribution(row) ||
-                      row.isPnlAttribution === true)
-                  const displayMonth = accrualRow
-                    ? reportMonth
-                    : pnlAttributed
-                      ? payMonth
-                      : row.billingMonth
+                    !!paymentDate &&
+                    payMonth !== reportMonth
                   const refundLink = refundLinks.get(row.id)
                   const closed = isRowClosed(row)
                   const openPending =
@@ -962,7 +1032,7 @@ export function Expenses() {
                       refundLink?.fully === false)
                   return (
                     <tr
-                      key={`${row.id}-${row.pnlMonth ?? row.billingMonth}-${payMonth}`}
+                      key={`${row.id}-${reportMonth}-${payMonth}`}
                       className={`border-b border-[var(--border)]/80 transition ${
                         closed
                           ? 'bg-[#DCFCE7] hover:bg-[#BBF7D0]'
@@ -972,26 +1042,41 @@ export function Expenses() {
                       }`}
                     >
                       <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums">
-                        <div className="font-semibold text-[var(--text-dark)]">
-                          {monthLabelHe(displayMonth)}
+                        <div
+                          className="font-semibold text-[var(--text-dark)]"
+                          title="חודש לפי תאריך החשבונית"
+                        >
+                          {monthLabelHe(reportMonth)}
                         </div>
-                        {row.paidDate ? (
-                          <div className="mt-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
-                            {row.paymentMethod === 'credit_card'
-                              ? 'עסקה'
-                              : 'ירד'}{' '}
-                            {formatDateIL(row.paidDate)}
-                            {row.chargeDate &&
-                            row.chargeDate !== row.paidDate ? (
-                              <span className="block">
-                                חיוב {formatDateIL(row.chargeDate)}
-                              </span>
-                            ) : null}
+                        <div className="mt-0.5 space-y-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
+                          {paymentDate ? (
+                            <div>
+                              תשלום {formatDateIL(paymentDate)}
+                              {row.chargeDate &&
+                              row.chargeDate !== paymentDate ? (
+                                <span className="block">
+                                  חיוב {formatDateIL(row.chargeDate)}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {invoiceDate ? (
+                            <div>חשבונית {formatDateIL(invoiceDate)}</div>
+                          ) : (
+                            <div className="text-[var(--text-light)]">
+                              חשבונית —
+                            </div>
+                          )}
+                        </div>
+                        {accrualRow && paymentDate ? (
+                          <div className="mt-1 inline-block rounded-md bg-[#FEF3C7] px-1.5 py-0.5 text-[10px] font-semibold text-[#92400E]">
+                            שולם {ymShort(paymentDate.slice(0, 7))} · משויך{' '}
+                            {ymShort(reportMonth)}
                           </div>
                         ) : null}
-                        {accrualRow && row.paidDate ? (
-                          <div className="mt-1 inline-block rounded-md bg-[#FEF3C7] px-1.5 py-0.5 text-[10px] font-semibold text-[#92400E]">
-                            שולם {ymShort(row.paidDate.slice(0, 7))} · משויך{' '}
+                        {monthMismatch ? (
+                          <div className="mt-1 inline-block rounded-md bg-[#E0E7FF] px-1.5 py-0.5 text-[10px] font-semibold text-[#3730A3]">
+                            שולם {ymShort(payMonth)} · לפי חשבונית{' '}
                             {ymShort(reportMonth)}
                           </div>
                         ) : null}
@@ -1017,15 +1102,15 @@ export function Expenses() {
                       <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums font-bold text-[var(--text-dark)]">
                         {formatNis(breakdown.gross)}
                         {/* בעסקת מט״ח הסכום בשקלים תלוי בשער — הנקוב בחשבונית הוא סכום המקור */}
-                        {isForeignCurrencyCode(row.currency) &&
-                        row.originalAmount ? (
-                          <span className="mt-0.5 block text-[10px] font-bold text-[#3730A3]">
-                            {formatForeignAmount(
-                              row.originalAmount,
-                              row.currency,
-                            )}
-                          </span>
-                        ) : null}
+                        {(() => {
+                          const fx = resolveExpenseForeign(row)
+                          if (!fx) return null
+                          return (
+                            <span className="mt-0.5 block text-[10px] font-bold text-[#3730A3]">
+                              {formatForeignAmount(fx.amount, fx.currency)}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums text-[#7C3AED]">
                         {vatClass === 'vat_liable' ? formatNis(breakdown.vat) : '—'}
@@ -1051,15 +1136,56 @@ export function Expenses() {
                             <HubDropdownSelect
                               value={row.projectId ?? ''}
                               onChange={(projectId) => {
+                                const p = projectId
+                                  ? projects.find((x) => x.id === projectId)
+                                  : undefined
                                 void updateExpense(row.id, {
                                   projectId: projectId || null,
+                                  ...(p?.clientId
+                                    ? { clientId: p.clientId }
+                                    : {}),
                                 })
                               }}
-                              options={projectAssignOptions}
+                              options={projectOptionsForExpense(row)}
                               emptyOption={{ label: 'ללא שיוך' }}
                               searchable
-                              searchPlaceholder="חיפוש פרויקט…"
+                              searchPlaceholder={
+                                row.clientId ||
+                                (row.projectId &&
+                                  projectClientById.get(row.projectId))
+                                  ? 'חיפוש פרויקט של הלקוח…'
+                                  : 'בחרו לקוח / פרויקט קיים…'
+                              }
                               menuClassName="min-w-[280px]"
+                              menuFooter={
+                                <button
+                                  type="button"
+                                  className="w-full rounded-lg bg-[var(--orange)] px-3 py-2 text-[12px] font-bold text-white transition hover:brightness-105"
+                                  onClick={() =>
+                                    setQuickCreateFor({
+                                      expenseId: row.id,
+                                      clientId:
+                                        row.clientId?.trim() ||
+                                        (row.projectId
+                                          ? (projectClientById.get(
+                                              row.projectId,
+                                            ) ?? '')
+                                          : ''),
+                                      clientName:
+                                        clientNameById.get(
+                                          row.clientId ??
+                                            (row.projectId
+                                              ? (projectClientById.get(
+                                                  row.projectId,
+                                                ) ?? '')
+                                              : ''),
+                                        ) ?? '',
+                                    })
+                                  }
+                                >
+                                  + פרויקט מהיר
+                                </button>
+                              }
                             />
                             {row.projectId &&
                             !projectNameById.has(row.projectId) ? (
@@ -1081,6 +1207,11 @@ export function Expenses() {
                               expense={row}
                             />
                           )}
+                          {row.expenseNote?.trim() ? (
+                            <div className="max-w-[220px] rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-2 py-1 text-[11px] font-bold leading-snug text-[#DC2626]">
+                              הערה: {row.expenseNote.trim()}
+                            </div>
+                          ) : null}
                           <div className="flex flex-wrap items-center gap-1.5">
                             {hasAttachedDocument(row) && row.documentUrl ? (
                               <a
@@ -1300,7 +1431,9 @@ export function Expenses() {
             ) : null}
             {selectedExpenseType.fieldMode === 'supplier' ? (
               <div>
-                <FieldLabel>ספק *</FieldLabel>
+                <FieldLabel>
+                  ספק{editingExpense ? ' (אופציונלי)' : ' *'}
+                </FieldLabel>
                 <div className={`${hubInputClass()} px-3 py-2.5`}>
                   <SupplierQuickSelect
                     id="finance-expense-supplier"
@@ -1346,7 +1479,20 @@ export function Expenses() {
                     clients={clients}
                     value={expenseForm.clientId}
                     onChange={(clientId) =>
-                      setExpenseForm((f) => ({ ...f, clientId }))
+                      setExpenseForm((f) => {
+                        const projectStillValid =
+                          !f.projectId ||
+                          projects.find((p) => p.id === f.projectId)
+                            ?.clientId === clientId
+                        return {
+                          ...f,
+                          clientId,
+                          projectId: projectStillValid ? f.projectId : '',
+                          linkedIncomeId: projectStillValid
+                            ? f.linkedIncomeId
+                            : '',
+                        }
+                      })
                     }
                   />
                 </div>
@@ -1355,6 +1501,8 @@ export function Expenses() {
                   <ProjectQuickSelect
                     projects={projects}
                     value={expenseForm.projectId}
+                    scopeByClient
+                    clientId={expenseForm.clientId}
                     clientNameById={clientNameById}
                     onChange={(projectId) => {
                       const p = projects.find((x) => x.id === projectId)
@@ -1377,6 +1525,11 @@ export function Expenses() {
                       }))
                     }}
                   />
+                  {!expenseForm.clientId ? (
+                    <p className="mt-1 text-[11px] text-[var(--text-mid)]">
+                      בחרו לקוח כדי לראות רק את הפרויקטים שלו
+                    </p>
+                  ) : null}
                 </div>
                 {expenseForm.projectId ? (
                   <div>
@@ -1495,6 +1648,44 @@ export function Expenses() {
                   }
                   className={hubInputClass()}
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>מטבע מקור</FieldLabel>
+                  <select
+                    value={expenseForm.currency}
+                    onChange={(e) =>
+                      setExpenseForm((f) => ({
+                        ...f,
+                        currency: e.target.value,
+                      }))
+                    }
+                    className={hubInputClass()}
+                  >
+                    <option value="">שקל בלבד</option>
+                    <option value="USD">USD $</option>
+                    <option value="EUR">EUR €</option>
+                    <option value="GBP">GBP £</option>
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel>סכום במט״ח</FieldLabel>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={expenseForm.originalAmount}
+                    disabled={!expenseForm.currency}
+                    onChange={(e) =>
+                      setExpenseForm((f) => ({
+                        ...f,
+                        originalAmount: e.target.value,
+                      }))
+                    }
+                    placeholder="20"
+                    className={hubInputClass()}
+                  />
+                </div>
               </div>
               <div>
                 <FieldLabel>
@@ -1651,6 +1842,12 @@ export function Expenses() {
             />
           </ExpenseFormSection>
 
+          {expenseFormError ? (
+            <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2.5 text-[12px] font-bold text-[#DC2626]">
+              {expenseFormError}
+            </p>
+          ) : null}
+
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
@@ -1781,6 +1978,23 @@ export function Expenses() {
           setDeleteAllOpen(false)
         }}
         message={`למחוק את כל ${expenses.length} ההוצאות במערכת? פעולה זו לא ניתנת לביטול — מומלץ לפני מעבר לעבודה עם ייבוא קבצים בלבד.`}
+      />
+
+      <QuickCreateProjectModal
+        open={!!quickCreateFor}
+        onClose={() => setQuickCreateFor(null)}
+        clientId={quickCreateFor?.clientId}
+        clientName={quickCreateFor?.clientName}
+        onCreated={(projectId) => {
+          if (!quickCreateFor) return
+          void updateExpense(quickCreateFor.expenseId, {
+            projectId,
+            ...(quickCreateFor.clientId
+              ? { clientId: quickCreateFor.clientId }
+              : {}),
+          })
+          setQuickCreateFor(null)
+        }}
       />
     </div>
   )

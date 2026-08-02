@@ -130,26 +130,30 @@ describe('דוח ההתאמות', () => {
   const expenses = [
     expense({ id: 'a', amount: 9000, bankRef: 'a' }),
     expense({ id: 'b', amount: 1000, bankRef: 'b', invoiceNumber: '1' }),
+    // משכורת לא נכנסת לדוח — לא דורשת חשבונית
     expense({ id: 'c', amount: 500, bankRef: 'c', type: 'salary', vatClass: 'statutory' }),
   ]
 
   it('מפריד בין ממתין למגובה ומסכם את שניהם', () => {
     const data = buildBankReconciliationReport(expenses, '2026-07', '2026-07')
 
-    expect(data.rows).toHaveLength(3)
+    expect(data.rows).toHaveLength(2)
     expect(data.openRows).toBe(1)
     expect(data.openAmount).toBe(9000)
-    expect(data.closedRows).toBe(2)
-    expect(data.closedAmount).toBe(1500)
-    expect(data.totalAmount).toBe(10500)
+    expect(data.closedRows).toBe(1)
+    expect(data.closedAmount).toBe(1000)
+    expect(data.totalAmount).toBe(10000)
   })
 
-  it('כולל גם את השורות הסגורות, כדי שאחוז הכיסוי לא יטעה', () => {
+  it('לא כולל משכורת/מיסים בדוח, ואחוז הכיסוי רק על שורות שדורשות חשבונית', () => {
     const data = buildBankReconciliationReport(expenses, '2026-07', '2026-07')
     const rowsSum = data.rows.reduce((s, r) => s + r.amount, 0)
 
     expect(rowsSum).toBe(data.totalAmount)
-    expect(data.coveragePercent).toBeCloseTo(14.3, 1)
+    expect(data.coveragePercent).toBeCloseTo(10, 1)
+    expect(data.rows.every((r) => r.status !== 'document_not_required')).toBe(
+      true,
+    )
   })
 
   it('תקופה ריקה אינה מדווחת ככשל', () => {

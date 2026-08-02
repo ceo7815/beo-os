@@ -9,10 +9,10 @@ import {
   cellToString,
   excelSerialToYmd,
 } from './readWorkbook'
-import { parseForeignNote } from '../foreignCurrency'
+import { normalizeCurrencyCode, parseForeignNote } from '../foreignCurrency'
 
-/** עמודות בייצוא כאל/דיינרס (מרכנתיל דיסקונט): תאריך · בית עסק · סכום · כרטיס · מועד חיוב · סוג · ארנק · הערות */
-const COL = {
+/** עמודות ברירת מחדל בייצוא כאל/דיינרס ישן */
+const DEFAULT_COL = {
   date: 0,
   merchant: 1,
   amount: 2,
@@ -21,7 +21,22 @@ const COL = {
   type: 5,
   wallet: 6,
   notes: 7,
+  originalAmount: -1,
+  currency: -1,
 } as const
+
+type ColMap = {
+  date: number
+  merchant: number
+  amount: number
+  card: number
+  chargeDate: number
+  type: number
+  wallet: number
+  notes: number
+  originalAmount: number
+  currency: number
+}
 
 /** סוגי עסקה שאינם הוצאה בפועל ויש לדלג עליהם */
 const SKIP_TYPES = ['עסקה בקליטה', 'בקליטה']
@@ -77,9 +92,71 @@ function isSummaryRow(row: unknown[]): boolean {
   return row.some((cell) => textLooksLikeSummary(cellToString(cell)))
 }
 
-function summaryAmount(row: unknown[]): number | undefined {
-  const amount = cellToNumber(row[COL.amount])
+function summaryAmount(row: unknown[], amountCol: number): number | undefined {
+  const amount = cellToNumber(row[amountCol])
   return amount > 0 ? amount : undefined
+}
+
+function findCol(headers: string[], predicates: ((h: string) => boolean)[]): number {
+  for (const pred of predicates) {
+    const idx = headers.findIndex(pred)
+    if (idx >= 0) return idx
+  }
+  return -1
+}
+
+/** מיפוי עמודות לפי כותרות — כולל סכום מקורי / מטבע כשקיימים */
+function resolveColumns(headerRow: unknown[]): ColMap {
+  const headers = headerRow.map((c) => cellToString(c).trim())
+  const date = findCol(headers, [
+    (h) => h.includes('תאריך עסקה'),
+    (h) => h === 'תאריך' || h.startsWith('תאריך'),
+  ])
+  const merchant = findCol(headers, [
+    (h) => h.includes('שם בית עסק'),
+    (h) => h.includes('בית עסק'),
+  ])
+  const amount = findCol(headers, [
+    (h) => h.includes('סכום החיוב') || h.includes('סכום בש'),
+    (h) => h === 'סכום' || (h.includes('סכום') && !h.includes('מקור')),
+  ])
+  const card = findCol(headers, [
+    (h) => h.includes('4 ספרות') || h.includes('כרטיס'),
+  ])
+  const chargeDate = findCol(headers, [
+    (h) => h.includes('מועד חיוב') || h.includes('תאריך חיוב'),
+  ])
+  const type = findCol(headers, [
+    (h) => h.includes('סוג עסקה') || h === 'סוג',
+  ])
+  const wallet = findCol(headers, [(h) => h.includes('ארנק')])
+  const notes = findCol(headers, [
+    (h) => h.includes('הערות') || h.includes('הערה'),
+  ])
+  const originalAmount = findCol(headers, [
+    (h) => h.includes('סכום מקור') || h.includes('סכום העסקה'),
+    (h) => h.includes('סכום במטבע'),
+  ])
+  const currency = findCol(headers, [
+    (h) => h === 'מטבע' || h.includes('מטבע מקור') || h.includes('מט״ח') || h.includes('מט"ח'),
+  ])
+
+  return {
+    date: date >= 0 ? date : DEFAULT_COL.date,
+    merchant: merchant >= 0 ? merchant : DEFAULT_COL.merchant,
+    amount: amount >= 0 ? amount : DEFAULT_COL.amount,
+    card: card >= 0 ? card : DEFAULT_COL.card,
+    chargeDate: chargeDate >= 0 ? chargeDate : DEFAULT_COL.chargeDate,
+    type: type >= 0 ? type : DEFAULT_COL.type,
+    wallet: wallet >= 0 ? wallet : DEFAULT_COL.wallet,
+    notes: notes >= 0 ? notes : DEFAULT_COL.notes,
+    originalAmount,
+    currency,
+  }
+}
+
+function cellAt(row: unknown[], idx: number): unknown {
+  return idx >= 0 ? row[idx] : undefined
 }
 
 export const calParser: BankParser = {
@@ -94,6 +171,7 @@ export const calParser: BankParser = {
     const skippedReasons: Partial<Record<SkipReason, number>> = {}
     let skipped = 0
     let headerSeen = false
+    let cols: ColMap = { ...DEFAULT_COL }
     let seq = 0
 
     const skip = (reason: SkipReason) => {
@@ -104,7 +182,10 @@ export const calParser: BankParser = {
 
     for (const row of rows) {
       if (!headerSeen) {
-        if (isHeaderRow(row)) headerSeen = true
+        if (isHeaderRow(row)) {
+          headerSeen = true
+          cols = resolveColumns(row)
+        }
         continue
       }
       if (isHeaderRow(row) || isTitleMetaRow(row)) {
@@ -113,16 +194,16 @@ export const calParser: BankParser = {
       }
       if (isSummaryRow(row)) {
         if (isExplicitTotalRow(row)) {
-          const total = summaryAmount(row)
+          const total = summaryAmount(row, cols.amount)
           if (total != null) fileTotal = total
         }
         skip('summary')
         continue
       }
 
-      const date = excelSerialToYmd(row[COL.date])
-      const merchant = cellToString(row[COL.merchant])
-      const rawAmount = cellToNumber(row[COL.amount])
+      const date = excelSerialToYmd(cellAt(row, cols.date))
+      const merchant = cellToString(cellAt(row, cols.merchant))
+      const rawAmount = cellToNumber(cellAt(row, cols.amount))
       if (textLooksLikeSummary(merchant)) {
         if (isExplicitTotalRow(row)) {
           const total = rawAmount > 0 ? rawAmount : undefined
@@ -137,8 +218,8 @@ export const calParser: BankParser = {
         continue
       }
 
-      const rawType = cellToString(row[COL.type])
-      const notes = cellToString(row[COL.notes])
+      const rawType = cellToString(cellAt(row, cols.type))
+      const notes = cellToString(cellAt(row, cols.notes))
       // "עסקה בקליטה" מופיעה לעיתים בעמודת הערות (לא בסוג) — לא נכללת בסה״כ הבנק
       const pendingText = `${rawType} ${notes}`
       if (SKIP_TYPES.some((t) => pendingText.includes(t))) {
@@ -146,7 +227,8 @@ export const calParser: BankParser = {
         continue
       }
 
-      const chargeDate = excelSerialToYmd(row[COL.chargeDate]) || undefined
+      const chargeDate =
+        excelSerialToYmd(cellAt(row, cols.chargeDate)) || undefined
 
       const isCredit =
         CREDIT_TYPES.some((t) => rawType.includes(t)) ||
@@ -154,9 +236,26 @@ export const calParser: BankParser = {
         notes.includes('זיכוי') ||
         notes.includes('החזר')
       const amount = Math.abs(rawAmount)
-      const account = cellToString(row[COL.card]) || undefined
-      const foreignNote = notes.includes('סכום העסקה') ? notes : undefined
-      const foreign = parseForeignNote(foreignNote)
+      const account = cellToString(cellAt(row, cols.card)) || undefined
+
+      // מט״ח: עמודות ייעודיות בקובץ, אחרת חילוץ מהערות / משורת הטקסט
+      const colOriginal = cellToNumber(cellAt(row, cols.originalAmount))
+      const colCurrency = normalizeCurrencyCode(
+        cellToString(cellAt(row, cols.currency)),
+      )
+      const fromCols =
+        colOriginal > 0 && colCurrency && colCurrency !== 'ILS'
+          ? { currency: colCurrency, amount: colOriginal }
+          : undefined
+      const fromNotes =
+        parseForeignNote(notes) ?? parseForeignNote(rowText(row))
+      const foreign = fromCols ?? fromNotes
+      const foreignNote =
+        notes && (notes.includes('סכום העסקה') || fromNotes)
+          ? notes
+          : foreign
+            ? `סכום העסקה הוא ${foreign.amount} ${foreign.currency}`
+            : undefined
 
       seq += 1
       const ref = `cal:${date}:${Math.round(amount * 100)}:${merchant}:${seq}`
@@ -197,7 +296,7 @@ export const calParser: BankParser = {
       Math.abs(parsedNet - fileTotal) > 1
     ) {
       warnings.push(
-        `פער התאמה: חיובים ${chargeSum.toFixed(0)} − זיכויים ${creditSum.toFixed(0)} = ${parsedNet.toFixed(0)}, מול סה״כ בקובץ ${fileTotal.toFixed(0)}`,
+        `פער התאמה: חיובים ${chargeSum.toFixed(2)} − זיכויים ${creditSum.toFixed(2)} = ${parsedNet.toFixed(2)}, מול סה״כ בקובץ ${fileTotal.toFixed(2)}`,
       )
     }
 

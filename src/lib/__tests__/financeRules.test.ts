@@ -12,6 +12,7 @@ import {
   expenseAccrualMonth,
   isSalaryLikeExpense,
   isTaxExpense,
+  isVatRemittanceExpense,
 } from '../financeSalaryMonth'
 import { calcVatFromGross } from '../israeliVat'
 
@@ -119,6 +120,46 @@ describe('חוק: רווח = הכנסות נטו פחות הוצאות נטו', 
 
     expect(s.expenseNetTotal).toBe(1000)
     expect(s.trueNetProfit).toBe(9000)
+  })
+
+  it('תשלום מע״מ לרשות לא נגרע מהרווח (אין כפל מע״מ)', () => {
+    const remittance = expense({
+      id: 'vat-pay',
+      type: 'tax',
+      name: 'תשלום מע״מ רשות המסים',
+      amount: 1800,
+      vatClass: 'statutory',
+      bankRef: 'bank-vat-1',
+      pnlMonth: '2026-07',
+    })
+    expect(isVatRemittanceExpense(remittance)).toBe(true)
+
+    const s = summaryOf(
+      [income({ amount: 11800 })],
+      [expense({ amount: 5900 }), remittance],
+    )
+
+    // רווח כמו בלי התשלום לרשות: 10000 − 5000
+    expect(s.trueNetProfit).toBe(5000)
+    expect(s.vatPayable).toBe(900)
+    expect(s.vatRemittanceExcluded).toBe(1800)
+    expect(s.expenseNetTotal).toBe(5000)
+  })
+
+  it('ביטוח לאומי נשאר ברווח — אינו תשלום מע״מ', () => {
+    const bl = expense({
+      id: 'bl',
+      type: 'tax',
+      name: 'ביטוח לאומי',
+      amount: 2000,
+      vatClass: 'statutory',
+      bankRef: 'bank-bl-1',
+      pnlMonth: '2026-07',
+    })
+    expect(isVatRemittanceExpense(bl)).toBe(false)
+    const s = summaryOf([income({ amount: 11800 })], [bl])
+    expect(s.trueNetProfit).toBe(8000)
+    expect(s.vatRemittanceExcluded).toBe(0)
   })
 })
 
@@ -320,13 +361,20 @@ describe('חוק: מסים נספרים בחודש שעבורו שולמו', () 
         bankRef: `cal:${row.paidDate}:${row.amount}`,
       }),
     )
-    const total = TAX_ROWS.reduce((s, r) => s + r.amount, 0)
+    // גביית מע״מ יוצאת מהרווח (סילוק חוב); ביטוח לאומי / ניכויים / מס הכנסה נשארים
+    const operatingTotal = TAX_ROWS.filter(
+      (r) => !isVatRemittanceExpense({ name: r.name, type: 'tax', vatClass: 'statutory' }),
+    ).reduce((s, r) => s + r.amount, 0)
+    const vatRemit = TAX_ROWS.filter((r) =>
+      isVatRemittanceExpense({ name: r.name, type: 'tax', vatClass: 'statutory' }),
+    ).reduce((s, r) => s + r.amount, 0)
 
     const july = summaryOf([], expenses, filters())
     const june = summaryOf([], expenses, filters({ ymFrom: '2026-06', ymTo: '2026-06' }))
 
     expect(july.expenseNetTotal).toBe(0)
-    expect(june.expenseNetTotal).toBe(total)
+    expect(june.expenseNetTotal).toBe(operatingTotal)
+    expect(june.vatRemittanceExcluded).toBe(vatRemit)
   })
 
   it('מס אינו מקזז מע״מ תשומות', () => {

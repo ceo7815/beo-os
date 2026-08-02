@@ -44,24 +44,25 @@ describe('חוק: החודש הפתוח', () => {
   })
 })
 
-describe('חוק: מסמך מאחר נכנס לחודש הפתוח ומסומן', () => {
+describe('חוק: מסמך מאחר נספר בחודש החשבונית ומסומן', () => {
   it('חשבונית יולי שהוגשה ב-10 באוגוסט נספרת ביולי', () => {
     const r = resolveAttributionMonth('2026-07-28', '2026-08-10')
     expect(r.month).toBe('2026-07')
     expect(r.late).toBe(false)
   })
 
-  it('אותה חשבונית שהוגשה ב-25 באוגוסט נספרת באוגוסט ומסומנת כמאחרת', () => {
+  it('אותה חשבונית שהוגשה ב-25 באוגוסט נשארת ביולי ומסומנת כמאחרת', () => {
     const r = resolveAttributionMonth('2026-07-28', '2026-08-25')
-    expect(r.month).toBe('2026-08')
+    expect(r.month).toBe('2026-07')
     expect(r.late).toBe(true)
     expect(r.documentMonth).toBe('2026-07')
   })
 
-  it('חודש המסמך המקורי נשמר גם כשהרשומה הוזזה', () => {
+  it('חודש המסמך המקורי נשמר גם אחרי נעילה', () => {
     const r = resolveAttributionMonth('2026-03-15', '2026-08-25')
     expect(r.documentMonth).toBe('2026-03')
-    expect(r.month).toBe('2026-08')
+    expect(r.month).toBe('2026-03')
+    expect(r.late).toBe(true)
   })
 
   it('חשבונית עתידית נשארת בחודש שלה', () => {

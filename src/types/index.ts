@@ -72,6 +72,8 @@ export interface FinanceIncome {
   hostingClient?: boolean
   /** monthly = חוזר כל חודש · yearly = חד־פעמי לשנה */
   hostingType?: FinanceHostingType
+  /** שיוך לבנק שעות (HourlyService) של הלקוח */
+  hourlyServiceId?: string
   createdAt: string
   /** הרחבה לתצוגה — מופע חודשי של ריטיינר */
   isAutoOccurrence?: boolean
@@ -224,6 +226,8 @@ export interface FinanceExpense {
   documentMonth?: string
   /** המסמך הגיע אחרי שחודשו כבר נדווח, ולכן נספר בחודש הפתוח */
   isLateDocument?: boolean
+  /** הערה ידנית על השורה — מוצגת בבולטות במסך ההוצאות */
+  expenseNote?: string
   /** מספר חודשים לפריסת תשלום מראש — שורה אחת, תצוגה חודשית */
   spreadMonths?: number
   /** YYYY-MM — תחילת הפריסה; ברירת מחדל היא חודש החיוב */

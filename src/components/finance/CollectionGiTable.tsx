@@ -27,7 +27,9 @@ export function CollectionGiTable({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-[var(--text-mid)]">אין חשבונות עסקה בטווח הנבחר</p>
+      <p className="py-4 text-center text-sm text-[var(--text-mid)]">
+        אין חשבונות עסקה בטווח הנבחר
+      </p>
     )
   }
 
@@ -42,18 +44,18 @@ export function CollectionGiTable({
   const round2 = (n: number) => Math.round(n * 100) / 100
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
       <table className="w-full min-w-[900px] border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
-            <th className="px-2 py-2 text-right">תאריך מסמך</th>
-            <th className="px-2 py-2 text-right">מספר</th>
-            <th className="px-2 py-2 text-right">לקוח</th>
-            <th className="px-2 py-2 text-right">פרויקט</th>
-            <th className="px-2 py-2 text-right">סכום</th>
-            <th className="px-2 py-2 text-right">יתרה פתוחה</th>
-            <th className="px-2 py-2 text-right">ימים פתוח</th>
-            <th className="px-2 py-2 text-right">סטטוס</th>
+        <thead className="sticky top-0 z-[1]">
+          <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
+            <th className="px-2.5 py-2.5 text-right">תאריך מסמך</th>
+            <th className="px-2.5 py-2.5 text-right">מספר</th>
+            <th className="px-2.5 py-2.5 text-right">לקוח</th>
+            <th className="px-2.5 py-2.5 text-right">פרויקט</th>
+            <th className="px-2.5 py-2.5 text-right">סכום</th>
+            <th className="px-2.5 py-2.5 text-right">יתרה פתוחה</th>
+            <th className="px-2.5 py-2.5 text-right">ימים פתוח</th>
+            <th className="px-2.5 py-2.5 text-right">סטטוס</th>
           </tr>
         </thead>
         <tbody>
@@ -61,47 +63,58 @@ export function CollectionGiTable({
             const badge = INCOME_STATUS_STYLE[row.status]
             const openDays = daysOpen(row.invoiceDate)
             const outstanding = incomeOutstandingAmount(row)
+            const isPartial =
+              row.status === 'partial' ||
+              (typeof row.paidAmount === 'number' &&
+                row.paidAmount > 0 &&
+                outstanding > 0)
             return (
               <tr
                 key={`${row.id}-${row.invoiceDate}`}
-                className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
+                className={`border-b border-[var(--border)]/80 transition ${
+                  isPartial
+                    ? 'bg-[#FFFBEB] hover:bg-[#FEF3C7]'
+                    : openDays > 30 && outstanding > 0
+                      ? 'bg-[#FEF2F2] hover:bg-[#FEE2E2]'
+                      : 'hover:bg-[var(--surface-muted)]/70'
+                }`}
               >
-                <td className="px-2 py-2.5 tabular-nums">
+                <td className="px-2.5 py-3 tabular-nums">
                   {formatDateIL(row.invoiceDate)}
                 </td>
-                <td className="px-2 py-2.5 tabular-nums text-[11px]">
+                <td className="px-2.5 py-3 tabular-nums text-[11px]">
                   #{row.invoiceNumber || row.greenInvoiceNumber || '—'}
                 </td>
-                <td className="px-2 py-2.5">
+                <td className="px-2.5 py-3">
                   {clientNameById.get(row.clientId) ??
                     row.greenInvoiceClientName ??
                     '—'}
                 </td>
-                <td className="px-2 py-2.5">
+                <td className="px-2.5 py-3">
                   {projectNameById.get(row.projectId) ?? '—'}
                 </td>
-                <td className="px-2 py-2.5 tabular-nums font-bold">
+                <td className="px-2.5 py-3 tabular-nums font-bold">
                   {formatNis(row.amount)}
                 </td>
-                <td className="px-2 py-2.5 tabular-nums font-bold text-[#F59E0B]">
+                <td className="px-2.5 py-3 tabular-nums font-extrabold text-[#D97706]">
                   {formatNis(outstanding)}
                 </td>
-                <td className="px-2 py-2.5 tabular-nums">
+                <td className="px-2.5 py-3 tabular-nums">
                   <span
                     className={
                       openDays > 30
-                        ? 'font-bold text-[#EF4444]'
+                        ? 'font-bold text-[#DC2626]'
                         : openDays > 14
-                          ? 'font-semibold text-[#F59E0B]'
+                          ? 'font-semibold text-[#D97706]'
                           : ''
                     }
                   >
                     {openDays} ימים
                   </span>
                 </td>
-                <td className="px-2 py-2.5">
+                <td className="px-2.5 py-3">
                   <span
-                    className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    className="inline-block rounded-lg px-2 py-0.5 text-[10px] font-bold"
                     style={{ backgroundColor: badge.bg, color: badge.color }}
                   >
                     {INCOME_STATUS_LABEL[row.status]}
@@ -112,17 +125,17 @@ export function CollectionGiTable({
           })}
         </tbody>
         <tfoot>
-          <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/60 text-[13px] font-extrabold text-[var(--text-dark)]">
-            <td className="px-2 py-3" colSpan={4}>
+          <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/70 text-[13px] font-extrabold text-[var(--text-dark)]">
+            <td className="px-2.5 py-3" colSpan={4}>
               סה״כ ({rows.length})
             </td>
-            <td className="px-2 py-3 tabular-nums">
+            <td className="px-2.5 py-3 tabular-nums">
               {formatNis(round2(totals.amount))}
             </td>
-            <td className="px-2 py-3 tabular-nums text-[#F59E0B]">
+            <td className="px-2.5 py-3 tabular-nums text-[#D97706]">
               {formatNis(round2(totals.outstanding))}
             </td>
-            <td className="px-2 py-3" colSpan={2} />
+            <td className="px-2.5 py-3" colSpan={2} />
           </tr>
         </tfoot>
       </table>

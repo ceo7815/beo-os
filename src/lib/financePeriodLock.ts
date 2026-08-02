@@ -4,12 +4,9 @@ import { addMonths, compareYm } from './financeMonthRange'
 /**
  * נעילת תקופה.
  *
- * חודש נסגר בתאריך דיווח המע״מ — ה-19 בחודש העוקב. מהרגע שדווח,
- * המספרים שלו קפואים: מסמך שמגיע אחר כך אינו יכול לשנות חודש שכבר דווח
- * לרשויות, ולכן הוא נספר בחודש הפתוח ומסומן כמאחר.
- *
- * זה הפתרון לחשבוניות שמשולמות כמה ימים אחרי סוף החודש: התאריך שקובע
- * הוא תאריך המסמך, אבל רק כל עוד החודש שלו פתוח.
+ * חודש נסגר בתאריך דיווח המע״מ — ה-19 בחודש העוקב. הנעילה מונעת עריכה
+ * למפרע ומסמנת מסמכים מאחרים, אבל חודש הרווח וההפסד נקבע תמיד לפי
+ * תאריך החשבונית (צבירה) — לא לפי מועד התשלום ולא לפי «החודש הפתוח».
  */
 export const VAT_REPORT_DAY = 19
 
@@ -38,19 +35,16 @@ export type AttributionOutcome = {
 }
 
 /**
- * קובע לאיזה חודש רשומה נכנסת, לפי תאריך המסמך שלה.
- * מסמך שחודשו עדיין פתוח נספר בחודש שלו. מסמך שהגיע אחרי הנעילה
- * נספר בחודש הפתוח ומסומן — כדי שתדע שהמספר החודשי כולל פריט מאחר.
+ * קובע לאיזה חודש רשומה נכנסת ברווח והפסד — תמיד חודש תאריך החשבונית.
+ * אם החודש כבר ננעל למע״מ, הרשומה עדיין נספרת שם ומסומנת כמאחרת.
  */
 export function resolveAttributionMonth(
   documentDateYmd: string,
   today = todayYmd(),
 ): AttributionOutcome {
   const documentMonth = documentDateYmd.slice(0, 7)
-  if (!isMonthLocked(documentMonth, today)) {
-    return { month: documentMonth, late: false, documentMonth }
-  }
-  return { month: openMonth(today), late: true, documentMonth }
+  const late = isMonthLocked(documentMonth, today)
+  return { month: documentMonth, late, documentMonth }
 }
 
 /** האם מותר לערוך רשומה שמשויכת לחודש הזה */

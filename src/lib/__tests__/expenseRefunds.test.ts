@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   listUnlinkedRefunds,
+  pairConfidentRefunds,
   refundCandidates,
   refundStatusFor,
   suggestedRefundMatch,
 } from '../expenseRefunds'
 import {
+  isInvoiceWorkflowRow,
   isOpenReconciliationRow,
+  listInvoiceWorkflowRows,
   listReconciliationRows,
 } from '../expenseReconciliation'
 import type { FinanceExpense } from '../../types'
@@ -100,7 +103,7 @@ describe('חוק: זיכוי משויך לחיוב שהוא מבטל', () => {
     expect(ids).not.toContain('small')
   })
 
-  it('כששני חיובים זהים מתאימים, אין הצעה אוטומטית', () => {
+  it('זיכוי אחד מול שני חיובים זהים — לא משייכים אוטומטית (דו-משמעי)', () => {
     const twin = expense({
       id: 'twin',
       name: 'RESPOND.IO',
@@ -108,6 +111,66 @@ describe('חוק: זיכוי משויך לחיוב שהוא מבטל', () => {
       paidDate: '2026-06-11',
     })
     expect(suggestedRefundMatch(REFUND, [CHARGE, twin, REFUND])).toBeNull()
+  })
+
+  it('N זיכויים מול N חיובים זהים — שיוך 1:1 בלי חשבונית', () => {
+    const c1 = expense({
+      id: 'wise-1',
+      name: 'Wise',
+      amount: 651,
+      paidDate: '2026-06-01',
+    })
+    const c2 = expense({
+      id: 'wise-2',
+      name: 'Wise',
+      amount: 651,
+      paidDate: '2026-06-02',
+    })
+    const c3 = expense({
+      id: 'wise-3',
+      name: 'Wise',
+      amount: 651,
+      paidDate: '2026-06-03',
+    })
+    const r1 = expense({
+      id: 'wr-1',
+      name: 'זיכוי — Wise',
+      amount: -651,
+      paidDate: '2026-07-06',
+    })
+    const r2 = expense({
+      id: 'wr-2',
+      name: 'זיכוי — Wise',
+      amount: -651,
+      paidDate: '2026-07-06',
+    })
+    const r3 = expense({
+      id: 'wr-3',
+      name: 'זיכוי — Wise',
+      amount: -651,
+      paidDate: '2026-07-06',
+    })
+    const all = [c1, c2, c3, r1, r2, r3]
+    const pairs = pairConfidentRefunds(all)
+    expect(pairs.size).toBe(3)
+    expect(new Set(pairs.values())).toEqual(
+      new Set(['wise-1', 'wise-2', 'wise-3']),
+    )
+
+    const workflowIds = listInvoiceWorkflowRows(all, '2026-06', '2026-07').map(
+      (r) => r.expense.id,
+    )
+    expect(workflowIds).not.toContain('wise-1')
+    expect(workflowIds).not.toContain('wise-2')
+    expect(workflowIds).not.toContain('wise-3')
+    for (const id of ['wise-1', 'wise-2', 'wise-3']) {
+      const row = listReconciliationRows(all, '2026-06', '2026-07').find(
+        (r) => r.expense.id === id,
+      )
+      expect(row?.status).toBe('refunded')
+      expect(row ? isInvoiceWorkflowRow(row) : true).toBe(false)
+      expect(row ? isOpenReconciliationRow(row) : true).toBe(false)
+    }
   })
 
   it('חיוב מאותו ספק מדורג לפני חיוב בסכום זהה מספק אחר', () => {
@@ -145,10 +208,31 @@ describe('חוק: חיוב שזוכה במלואו נסגר בלי חשבוני�
     expect(row ? isOpenReconciliationRow(row) : true).toBe(false)
   })
 
-  it('בלי שיוך, החיוב עדיין ממתין לחשבונית', () => {
+  it('בלי שיוך ידני — התאמה בטוחה סוגרת את החיוב אוטומטית', () => {
     const rows = listReconciliationRows([CHARGE, REFUND], '2026-06', '2026-07')
     const row = rows.find((r) => r.expense.id === 'charge')
-    expect(row?.status).toBe('bank_missing_document')
+    expect(row?.status).toBe('refunded')
+    expect(row ? isOpenReconciliationRow(row) : true).toBe(false)
+  })
+
+  it('זיכוי דו-משמעי (שני חיובים) משאיר את החיובים ממתינים לחשבונית', () => {
+    const twin = expense({
+      id: 'twin',
+      name: 'RESPOND.IO',
+      amount: 306,
+      paidDate: '2026-06-11',
+    })
+    const rows = listReconciliationRows(
+      [CHARGE, twin, REFUND],
+      '2026-06',
+      '2026-07',
+    )
+    expect(rows.find((r) => r.expense.id === 'charge')?.status).toBe(
+      'bank_missing_document',
+    )
+    expect(rows.find((r) => r.expense.id === 'twin')?.status).toBe(
+      'bank_missing_document',
+    )
   })
 
   it('הזיכוי עצמו אינו מופיע כשורה שממתינה לחשבונית', () => {

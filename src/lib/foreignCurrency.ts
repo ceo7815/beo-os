@@ -50,22 +50,60 @@ export type ForeignAmount = {
 }
 
 /**
- * מחלץ מטבע וסכום מהערת חברת האשראי, למשל "סכום העסקה הוא 20.00 $".
+ * מחלץ מטבע וסכום מהערת חברת האשראי, למשל:
+ * "סכום העסקה הוא 20.00 $" · "$20.00" · "20 דולר" · "USD 15.99"
  * מוחזר רק כשהמטבע אינו שקל — חיוב שקלי אינו זקוק לתרגום.
  */
 export function parseForeignNote(
   note: string | undefined,
 ): ForeignAmount | undefined {
   if (!note?.trim()) return undefined
-  const m = note.match(
-    /(\d[\d,]*(?:\.\d+)?)\s*([$€£₪]|[A-Za-z]{3}|דולר|אירו|יורו|שטרלינג)/,
+  const text = note.replace(/\u00a0/g, ' ')
+  const patterns: RegExp[] = [
+    // 20.00 $ · 20 USD · 20 דולר
+    /(\d[\d,]*(?:\.\d+)?)\s*([$€£₪]|USD|EUR|GBP|ILS|NIS|דולר|אירו|יורו|שטרלינג)/i,
+    // $20.00 · €15.99
+    /([$€£])\s*(\d[\d,]*(?:\.\d+)?)/,
+    // USD 20.00 · EUR 15
+    /\b(USD|EUR|GBP)\s*(\d[\d,]*(?:\.\d+)?)/i,
+  ]
+  for (const re of patterns) {
+    const m = text.match(re)
+    if (!m) continue
+    const a = m[1]!
+    const b = m[2]!
+    const amountRaw = /\d/.test(a) ? a : b
+    const currencyRaw = /\d/.test(a) ? b : a
+    const amount = Number(amountRaw.replace(/,/g, ''))
+    const currency = normalizeCurrencyCode(currencyRaw)
+    if (!Number.isFinite(amount) || amount <= 0) continue
+    if (!currency || currency === 'ILS') continue
+    return { currency, amount }
+  }
+  return undefined
+}
+
+/** מט״ח שמור בשדות, או מחולץ מתיאור/הערה ישנים */
+export function resolveExpenseForeign(exp: {
+  currency?: string
+  originalAmount?: number
+  description?: string
+  name?: string
+}): ForeignAmount | undefined {
+  if (
+    isForeignCurrencyCode(exp.currency) &&
+    typeof exp.originalAmount === 'number' &&
+    Number.isFinite(exp.originalAmount) &&
+    exp.originalAmount !== 0
+  ) {
+    return {
+      currency: normalizeCurrencyCode(exp.currency)!,
+      amount: Math.abs(exp.originalAmount),
+    }
+  }
+  return (
+    parseForeignNote(exp.description) ?? parseForeignNote(exp.name)
   )
-  if (!m) return undefined
-  const amount = Number(m[1]!.replace(/,/g, ''))
-  const currency = normalizeCurrencyCode(m[2])
-  if (!Number.isFinite(amount) || amount <= 0) return undefined
-  if (!currency || currency === 'ILS') return undefined
-  return { currency, amount }
 }
 
 export function formatForeignAmount(

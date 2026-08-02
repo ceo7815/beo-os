@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatNis } from '../../lib/financeCalc'
 import { formatDateIL } from '../../lib/dates'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
@@ -6,6 +6,7 @@ import { useFinanceExpenses } from '../../hooks/useFinanceExpenses'
 import {
   isRefundExpense,
   listUnlinkedRefunds,
+  pairConfidentRefunds,
   refundAmount,
   refundCandidates,
   refundStatusFor,
@@ -63,6 +64,24 @@ export function RefundMatchPanel({
     () => new Map(expenses.map((e) => [e.id, e])),
     [expenses],
   )
+
+  /** שומר שיוכים בטוחים (כולל N↔N כמו כמה Wise) כדי שלא ידרשו חשבונית */
+  const autoLinkKey = useRef('')
+  useEffect(() => {
+    const pairs = pairConfidentRefunds(expenses)
+    if (pairs.size === 0) return
+    const key = [...pairs.entries()]
+      .map(([r, c]) => `${r}:${c}`)
+      .sort()
+      .join('|')
+    if (key === autoLinkKey.current) return
+    autoLinkKey.current = key
+    void (async () => {
+      for (const [refundId, chargeId] of pairs) {
+        await updateExpense(refundId, { refundForExpenseId: chargeId })
+      }
+    })()
+  }, [expenses, updateExpense])
 
   async function link(refund: FinanceExpense, chargeId: string) {
     setBusyId(refund.id)

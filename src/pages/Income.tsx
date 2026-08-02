@@ -6,12 +6,15 @@ import { FinanceKpiCard } from '../components/finance/FinanceKpi'
 import { GreenInvoiceBadge } from '../components/finance/GreenInvoiceBadge'
 import {
   IncomeDocumentsTable,
+  HOURLY_ASSIGN_PREFIX,
   HOSTING_ASSIGN_PREFIX,
 } from '../components/finance/IncomeDocumentsTable'
 import { useFinancePeriodFilter } from '../hooks/useFinancePeriodFilter'
 import { useClients } from '../hooks/useClients'
 import { useFinanceIncomes } from '../hooks/useFinanceIncomes'
+import { useHourlyServices } from '../hooks/useHourlyServices'
 import { useProjects } from '../hooks/useProjects'
+import { parseHourlyAssignValue } from '../lib/financeProjectAssign'
 import {
   filterIncomePageDocs,
   formatNis,
@@ -33,6 +36,7 @@ import type { FinanceHostingType } from '../types'
 export function Income() {
   const { clients } = useClients()
   const { projects } = useProjects()
+  const { services: hourlyServices } = useHourlyServices()
   const { incomes, loading, updateIncome } = useFinanceIncomes()
   const attention = useFinanceAttention()
   const period = useFinancePeriodFilter()
@@ -123,7 +127,7 @@ export function Income() {
           הכנסות
         </h1>
         <p className="mt-1.5 text-[12px] text-[var(--text-mid)] md:text-[13px]">
-          מסמכי הכנסה מחשבונית ירוקה — קריאה בלבד
+          מסמכי הכנסה מחשבונית ירוקה · קבלה = תקבול לאותה עסקה (לא נספרת פעמיים)
         </p>
       </header>
 
@@ -221,21 +225,29 @@ export function Income() {
             clientNameById={clientNameById}
             projectNameById={projectNameById}
             projectsForAssign={projects}
+            hourlyServicesForAssign={hourlyServices}
             onAssignProject={(incomeId, value) => {
               if (value.startsWith(HOSTING_ASSIGN_PREFIX)) {
                 const hostingType = value.slice(
                   HOSTING_ASSIGN_PREFIX.length,
                 ) as FinanceHostingType
                 void updateIncome(incomeId, { hostingType })
+              } else if (value.startsWith(HOURLY_ASSIGN_PREFIX)) {
+                const hourlyServiceId = parseHourlyAssignValue(value)
+                if (hourlyServiceId) {
+                  void updateIncome(incomeId, { hourlyServiceId })
+                }
               } else if (value === '') {
                 void updateIncome(incomeId, {
                   hostingClient: false,
                   projectId: '',
+                  hourlyServiceId: null,
                 })
               } else {
                 void updateIncome(incomeId, {
                   projectId: value,
                   hostingClient: false,
+                  hourlyServiceId: null,
                 })
               }
             }}
@@ -273,6 +285,7 @@ export function Income() {
               rows={detailRows}
               clientNameById={clientNameById}
               projectNameById={projectNameById}
+              hourlyServicesForAssign={hourlyServices}
             />
           </div>
         ) : null}

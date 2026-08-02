@@ -17,6 +17,7 @@ import {
   EXPENSE_VAT_CLASS_SHORT,
   resolveExpenseVatClass,
 } from '../../lib/financeExpenseVat'
+import { isVatRemittanceExpense } from '../../lib/financeSalaryMonth'
 import { resolveExpenseRowVat, resolveIncomeVat } from '../../lib/israeliVat'
 import type {
   FinanceExpense,
@@ -173,10 +174,15 @@ export function FinanceKpiDetailModal({
   if (!metric) return null
 
   const expenseTypeById = new Map(expenseTypes.map((t) => [t.id, t]))
-  const vatLiableExpenses = expenses.filter(
+  /** הוצאות שנכנסות לרווח — בלי תשלום מע״מ לרשות (סילוק חוב) */
+  const pnlExpenses = expenses.filter((e) => {
+    const def = resolveExpenseType(e.type, expenseTypeById)
+    return !isVatRemittanceExpense(e, def)
+  })
+  const vatLiableExpenses = pnlExpenses.filter(
     (e) => resolveExpenseVatClass(e) === 'vat_liable',
   )
-  const nonVatExpenses = expenses.filter(
+  const nonVatExpenses = pnlExpenses.filter(
     (e) => resolveExpenseVatClass(e) !== 'vat_liable',
   )
 
@@ -247,12 +253,12 @@ export function FinanceKpiDetailModal({
     )
   } else if (metric === 'expense') {
     explanation =
-      'סכום ברוטו (כולל מע״מ) של כל ההוצאות בתקופה — הוצאות חייבות מע״מ (חשבוניות ספקים) והוצאות ללא מע״מ (ביטוח לאומי, מסים, ספקים פטורים). ההוצאות מנוהלות ידנית.'
+      'סכום ברוטו (כולל מע״מ) של הוצאות שנכנסות לרווח — חשבוניות ספקים והוצאות ללא מע״מ (ביטוח לאומי, מס הכנסה, ספקים פטורים). תשלום מע״מ לרשות המסים אינו נכלל כאן: הוא סילוק חוב שכבר מחושב בעמודת מע״מ לתשלום, ולא עלות עסק נוספת.'
     sourceNode = (
       <SourceTable
         columns={['שם הוצאה', 'סוג', 'פרויקט', 'ברוטו']}
         empty="אין הוצאות בתקופה"
-        rows={expenses.map((exp) => {
+        rows={pnlExpenses.map((exp) => {
           const r = expenseRow(exp)
           return [
             r.name,
@@ -283,7 +289,7 @@ export function FinanceKpiDetailModal({
     )
   } else if (metric === 'expenseNonVat') {
     explanation =
-      'הוצאות ללא מע״מ — תשלומים חוקיים (ביטוח לאומי, מס הכנסה, מע״מ לתשלום) וספקים פטורים. אינן ניתנות לקיזוז מע״מ ונספרות בסכום מלא.'
+      'הוצאות ללא מע״מ תשומות — ביטוח לאומי, מס הכנסה וספקים פטורים. נספרות בסכום מלא ברווח. תשלום מע״מ לרשות אינו נכלל כאן (מוצג בנפרד כמע״מ לתשלום).'
     sourceNode = (
       <SourceTable
         columns={['שם הוצאה', 'סוג', 'פרויקט', 'סכום']}
@@ -301,7 +307,7 @@ export function FinanceKpiDetailModal({
     )
   } else if (metric === 'vatPayable') {
     explanation =
-      'המע״מ שיש להעביר למדינה: מע״מ עסקאות (שנגבה מלקוחות) בניכוי מע״מ תשומות (ששולם לספקים). לא יורד מתחת לאפס.'
+      'המע״מ המחושב מול המדינה: מע״מ עסקאות (שנגבה מלקוחות) בניכוי מע״מ תשומות (ששולם לספקים). ערך שלילי = החזר שמגיע. התשלום בפועל לרשות שנרשם בבנק אינו נגרע שוב מהרווח.'
     formula = [
       {
         label: 'מע״מ עסקאות',
@@ -352,34 +358,22 @@ export function FinanceKpiDetailModal({
     ]
   } else if (metric === 'profit') {
     explanation =
-      'השורה התחתונה. מתחילים מהכנסות כולל מע״מ, מורידים הוצאות כולל מע״מ (= רווח גולמי), ואז מורידים את המע״מ לתשלום למדינה.'
+      'רווח נקי אמיתי = הכנסות נטו − הוצאות נטו. המע״מ אינו חלק מהרווח: הוא מחושב בנפרד כ«מע״מ לתשלום». תשלום מע״מ לרשות שנרשם כהוצאה בבנק הוצא מהחישוב — אחרת המע״מ היה נגרע פעמיים.' +
+      (summary.vatRemittanceExcluded > 0
+        ? ` בתקופה זו הוצאו מהרווח ${formatNis(summary.vatRemittanceExcluded)} של תשלומי מע״מ.`
+        : '')
     formula = [
       {
-        label: 'הכנסות (כולל מע״מ)',
-        value: formatNis(summary.incomeGross),
+        label: 'הכנסות נטו',
+        value: formatNis(summary.incomeNet),
         sign: '+',
         valueClass: 'text-[#10B981]',
       },
       {
-        label: 'הוצאות (כולל מע״מ)',
-        value: formatNis(
-          summary.expenseVatLiableGross + summary.expenseNonVatTotal,
-        ),
+        label: 'הוצאות נטו (בלי תשלום מע״מ לרשות)',
+        value: formatNis(summary.expenseNetTotal),
         sign: '−',
         valueClass: 'text-[#EF4444]',
-      },
-      {
-        label: 'רווח גולמי',
-        value: formatNis(summary.grossProfit),
-        sign: '=',
-        valueClass:
-          summary.grossProfit >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]',
-      },
-      {
-        label: 'מע״מ לתשלום',
-        value: formatNis(summary.vatPayable),
-        sign: '−',
-        valueClass: 'text-[#6366F1]',
       },
       {
         label: 'רווח נקי אמיתי',

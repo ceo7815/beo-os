@@ -23,6 +23,7 @@ import {
 } from './financeExpenseTypes'
 import { expensesForFinancialTotals } from './expenseSource'
 import { expenseRowForMonth, isSpreadExpense } from './financeExpenseSpread'
+import { isVatRemittanceExpense } from './financeSalaryMonth'
 import type {
   FinanceExpense,
   FinanceExpenseTypeDef,
@@ -30,8 +31,13 @@ import type {
   FinanceIncomeStatus,
 } from '../types'
 
+/** תצוגת ש״ח עם אגורות — בלי עיגול לשקל שלם (למשל 20.20 נשאר 20.20) */
 export function formatNis(amount: number): string {
-  return `₪${Math.round(amount).toLocaleString('he-IL')}`
+  const formatted = amount.toLocaleString('he-IL', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return `₪${formatted}`
 }
 
 export function ymFromDate(dateStr: string): string {
@@ -298,9 +304,14 @@ export type FinanceSummary = {
   expenseNetTotal: number
   /** מע״מ לתשלום = עסקאות − תשומות */
   vatPayable: number
+  /**
+   * תשלומי מע״מ לרשות שנרשמו כהוצאה — הוצאו מחישוב הרווח
+   * (כדי לא לגרוע מע״מ פעמיים).
+   */
+  vatRemittanceExcluded: number
   /** רווח גולמי = הכנסות ברוטו − הוצאות ברוטו (לפני קיזוז מע״מ) */
   grossProfit: number
-  /** רווח נקי אמיתי = רווח גולמי − מע״מ לתשלום */
+  /** רווח נקי אמיתי = הכנסות נטו − הוצאות נטו (בלי תשלום מע״מ לרשות) */
   trueNetProfit: number
 
   /** יתרה לגבייה — גלובלי */
@@ -414,10 +425,18 @@ export function computeSummary(
   let expenseInputVat = 0
   let expenseVatLiableNet = 0
   let expenseNonVatTotal = 0
+  let vatRemittanceExcluded = 0
+  const typeMap = expenseTypeMap(expenseTypes)
 
   for (const row of filteredExpenses) {
-    const vatClass = resolveExpenseVatClass(row)
+    const typeDef = resolveExpenseType(row.type, typeMap)
     const breakdown = resolveExpenseRowVat(row)
+    // תשלום מע״מ לרשות = סילוק חוב, לא עלות תפעולית ברווח
+    if (isVatRemittanceExpense(row, typeDef)) {
+      vatRemittanceExcluded += breakdown.gross
+      continue
+    }
+    const vatClass = resolveExpenseVatClass(row)
     if (vatClass === 'vat_liable') {
       expenseVatLiableGross += breakdown.gross
       expenseInputVat += breakdown.vat
@@ -434,6 +453,7 @@ export function computeSummary(
   expenseInputVat = roundMoney(expenseInputVat)
   expenseVatLiableNet = roundMoney(expenseVatLiableNet)
   expenseNonVatTotal = roundMoney(expenseNonVatTotal)
+  vatRemittanceExcluded = roundMoney(vatRemittanceExcluded)
 
   const expenseNetTotal = roundMoney(expenseVatLiableNet + expenseNonVatTotal)
   const expenseGrossTotal = roundMoney(expenseVatLiableGross + expenseNonVatTotal)
@@ -454,6 +474,7 @@ export function computeSummary(
     expenseNonVatTotal,
     expenseNetTotal,
     vatPayable,
+    vatRemittanceExcluded,
     grossProfit,
     trueNetProfit,
     collectionBalance,
@@ -537,6 +558,7 @@ export function computeProfitLossRows(
       // תשלום פרוס נספר לפי המנה החודשית שלו, לא במלוא הסכום
       const exp = isSpreadExpense(raw) ? expenseRowForMonth(raw, ym) : raw
       if (!exp) continue
+      if (isVatRemittanceExpense(exp, def)) continue
       const breakdown = resolveExpenseRowVat(exp)
       expenseGross += breakdown.gross
       expenseNet += breakdown.net
@@ -611,6 +633,7 @@ export function profitLossExpensesForMonth(
   const typeMap = expenseTypeMap(expenseTypes)
   return expensesForFinancialTotals(expenses).filter((exp) => {
     const def = resolveExpenseType(exp.type, typeMap)
+    if (isVatRemittanceExpense(exp, def)) return false
     return expenseAppliesToMonth(exp, ym, def)
   })
 }

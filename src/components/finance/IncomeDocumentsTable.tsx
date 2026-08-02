@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { formatDateIL } from '../../lib/dates'
 import {
   formatNis,
@@ -7,57 +8,60 @@ import {
 import {
   FINANCE_INCOME_DOCUMENT_LABELS,
   incomeDocumentKind,
+  isActualIncome,
+  isReceiptOnly,
 } from '../../lib/financeIncomeDocument'
 import {
   hostingIncomeLabel,
   isHostingIncome,
   resolveHostingType,
-  HOSTING_TYPE_LABEL,
 } from '../../lib/financeHostingTypes'
+import {
+  clientScopedAssignOptionsWithHosting,
+  HOURLY_ASSIGN_PREFIX,
+  HOSTING_ASSIGN_PREFIX,
+  hourlyAssignValue,
+  type HourlyAssignSource,
+} from '../../lib/financeProjectAssign'
+import {
+  buildIncomeDocumentPairMap,
+  buildInvoiceToReceiptMap,
+} from '../../lib/incomeDocumentPairs'
 import { incomePaymentDate } from '../../lib/financeIncomePayment'
 import { resolveIncomeVat } from '../../lib/israeliVat'
 import type { FinanceIncome } from '../../types'
 import { GreenInvoiceBadge } from './GreenInvoiceBadge'
+import { QuickCreateProjectModal } from './QuickCreateProjectModal'
 import { HubDropdownSelect } from '../shared/HubDropdownSelect'
 
-/** קידומת ערך-שיוך לאחסון בבורר השיוך */
-export const HOSTING_ASSIGN_PREFIX = 'hosting:'
+export { HOSTING_ASSIGN_PREFIX, HOURLY_ASSIGN_PREFIX } from '../../lib/financeProjectAssign'
 
-const HOSTING_ASSIGN_OPTIONS = [
-  { value: `${HOSTING_ASSIGN_PREFIX}monthly`, label: `☁ ${HOSTING_TYPE_LABEL.monthly}` },
-  { value: `${HOSTING_ASSIGN_PREFIX}yearly`, label: `☁ ${HOSTING_TYPE_LABEL.yearly}` },
-  {
-    value: `${HOSTING_ASSIGN_PREFIX}portal_monthly`,
-    label: `☁ ${HOSTING_TYPE_LABEL.portal_monthly}`,
-  },
-]
-
-/** הערך הנבחר הנוכחי לשורה — אחסון (לפי סוג) או מזהה פרויקט */
+/** הערך הנבחר הנוכחי לשורה — אחסון / בנק שעות / פרויקט */
 function assignValueForRow(row: FinanceIncome): string {
   if (isHostingIncome(row)) {
     const t = resolveHostingType(row)
     return t ? `${HOSTING_ASSIGN_PREFIX}${t}` : ''
   }
+  if (row.hourlyServiceId?.trim()) {
+    return hourlyAssignValue(row.hourlyServiceId.trim())
+  }
   return row.projectId || ''
 }
 
-/** אפשרויות שיוך לשורה — אחסון + רק פרויקטים של אותו לקוח (+ הפרויקט המשויך כעת) */
+/** אפשרויות שיוך לשורה — אחסון + בנקי שעות פעילים + פרויקטים של הלקוח */
 function assignOptionsForRow(
   projects: { id: string; name: string; clientId?: string }[],
   row: FinanceIncome,
+  hourlyServices: HourlyAssignSource[],
 ): { value: string; label: string }[] {
-  const clientId = row.clientId?.trim()
-  const matches = projects.filter((p) =>
-    clientId ? p.clientId === clientId : true,
-  )
-  if (row.projectId && !matches.some((p) => p.id === row.projectId)) {
-    const current = projects.find((p) => p.id === row.projectId)
-    if (current) matches.push(current)
-  }
-  const projectOpts = matches
-    .sort((a, b) => a.name.localeCompare(b.name, 'he'))
-    .map((p) => ({ value: p.id, label: p.name }))
-  return [...HOSTING_ASSIGN_OPTIONS, ...projectOpts]
+  const current = assignValueForRow(row)
+  return clientScopedAssignOptionsWithHosting(projects, {
+    clientId: row.clientId,
+    currentProjectId: row.projectId,
+    currentHourlyServiceId: row.hourlyServiceId,
+    currentAssignValue: current,
+    hourlyServices,
+  })
 }
 
 export function IncomeDocumentsTable({
@@ -65,6 +69,7 @@ export function IncomeDocumentsTable({
   clientNameById,
   projectNameById,
   projectsForAssign,
+  hourlyServicesForAssign,
   onAssignProject,
 }: {
   rows: FinanceIncome[]
@@ -72,114 +77,228 @@ export function IncomeDocumentsTable({
   projectNameById: Map<string, string>
   /** כשמסופק יחד עם onAssignProject — עמודת הפרויקט הופכת לנבחרת עם חיפוש (מסונן ללקוח השורה) */
   projectsForAssign?: { id: string; name: string; clientId?: string }[]
+  hourlyServicesForAssign?: HourlyAssignSource[]
   onAssignProject?: (incomeId: string, projectId: string) => void
 }) {
   const editableProjects = !!projectsForAssign && !!onAssignProject
+  const hourlyServices = hourlyServicesForAssign ?? []
+  const hourlyTitleById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const s of hourlyServices) m.set(s.id, s.title)
+    return m
+  }, [hourlyServices])
+  const [quickCreateFor, setQuickCreateFor] = useState<{
+    incomeId: string
+    clientId: string
+    clientName: string
+  } | null>(null)
+  const receiptToInvoice = useMemo(
+    () => buildIncomeDocumentPairMap(rows),
+    [rows],
+  )
+  const invoiceToReceipt = useMemo(
+    () => buildInvoiceToReceiptMap(rows),
+    [rows],
+  )
+
   if (rows.length === 0) {
     return (
       <p className="text-sm text-[var(--text-mid)]">אין רשומות בטווח הנבחר</p>
     )
   }
 
+  // סה״כ טבלה = רק מסמכי הכנסה (בלי קבלות — הן תקבול לאותה עסקה)
   const totals = rows.reduce(
     (acc, row) => {
+      if (!isActualIncome(row)) return acc
       const vat = resolveIncomeVat(row)
       acc.gross += vat.gross
       acc.vat += vat.vat
       acc.net += vat.net
+      acc.count += 1
       return acc
     },
-    { gross: 0, vat: 0, net: 0 },
+    { gross: 0, vat: 0, net: 0, count: 0 },
   )
+  const receiptCount = rows.filter((r) => isReceiptOnly(r)).length
   const round2 = (n: number) => Math.round(n * 100) / 100
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
       <table className="w-full min-w-[1000px] border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
-            <th className="px-2 py-2 text-right">סוג מסמך</th>
-            <th className="px-2 py-2 text-right">תאריך</th>
-            <th className="px-2 py-2 text-right">לקוח</th>
-            <th className="px-2 py-2 text-right">פרויקט</th>
-            <th className="px-2 py-2 text-right">ברוטו</th>
-            <th className="px-2 py-2 text-right">מע״מ</th>
-            <th className="px-2 py-2 text-right">נטו</th>
-            <th className="px-2 py-2 text-right">סטטוס</th>
-            <th className="px-2 py-2 text-right">מקור</th>
+        <thead className="sticky top-0 z-[1]">
+          <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
+            <th className="px-2.5 py-2.5 text-right">סוג מסמך</th>
+            <th className="px-2.5 py-2.5 text-right">תאריך</th>
+            <th className="px-2.5 py-2.5 text-right">לקוח</th>
+            <th className="px-2.5 py-2.5 text-right">פרויקט</th>
+            <th className="px-2.5 py-2.5 text-right">ברוטו</th>
+            <th className="px-2.5 py-2.5 text-right">מע״מ</th>
+            <th className="px-2.5 py-2.5 text-right">נטו</th>
+            <th className="px-2.5 py-2.5 text-right">סטטוס</th>
+            <th className="px-2.5 py-2.5 text-right">מקור</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
             const kind = incomeDocumentKind(row)
+            const isReceipt = kind === 'receipt'
             const badge = INCOME_STATUS_STYLE[row.status]
             const vat = resolveIncomeVat(row)
             const date =
               kind === 'tax_invoice_receipt' || kind === 'receipt'
                 ? incomePaymentDate(row)
                 : row.invoiceDate
+            const pairedInvoice = isReceipt
+              ? receiptToInvoice.get(row.id)
+              : undefined
+            const pairedReceipt =
+              kind === 'tax_invoice'
+                ? invoiceToReceipt.get(row.id)
+                : undefined
+            const invoiceNum =
+              pairedInvoice?.invoiceNumber ||
+              pairedInvoice?.greenInvoiceNumber
+            const receiptNum =
+              pairedReceipt?.invoiceNumber ||
+              pairedReceipt?.greenInvoiceNumber
+
             return (
               <tr
                 key={`${row.id}-${date}`}
-                className="border-b border-[var(--border)] transition hover:bg-[var(--surface-muted)]"
+                className={`border-b border-[var(--border)]/80 transition ${
+                  isReceipt
+                    ? 'bg-[var(--surface-muted)]/50 text-[var(--text-mid)] hover:bg-[var(--surface-muted)]'
+                    : 'hover:bg-[var(--surface-muted)]/70'
+                }`}
               >
-                <td className="px-2 py-2.5">
-                  <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-dark)]">
-                    {FINANCE_INCOME_DOCUMENT_LABELS[kind]}
-                  </span>
+                <td className="px-2.5 py-3">
+                  <div className="flex flex-col items-start gap-1">
+                    <span
+                      className={`rounded-lg px-2 py-0.5 text-[10px] font-bold ${
+                        isReceipt
+                          ? 'bg-[#E2E8F0] text-[#475569]'
+                          : 'bg-[var(--surface-muted)] text-[var(--text-dark)]'
+                      }`}
+                    >
+                      {FINANCE_INCOME_DOCUMENT_LABELS[kind]}
+                    </span>
+                    {isReceipt ? (
+                      <span className="text-[10px] font-semibold text-[var(--text-light)]">
+                        {invoiceNum
+                          ? `תקבול לחשבונית #${invoiceNum} · לא נספר`
+                          : 'תקבול · לא נספר כהכנסה'}
+                      </span>
+                    ) : null}
+                    {pairedReceipt && receiptNum ? (
+                      <span className="text-[10px] font-semibold text-[#047857]">
+                        שולם בקבלה #{receiptNum}
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
-                <td className="px-2 py-2.5 tabular-nums">
+                <td className="px-2.5 py-3 tabular-nums">
                   <div>{formatDateIL(date)}</div>
                   <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
                     #{row.invoiceNumber || row.greenInvoiceNumber || '—'}
                   </div>
                 </td>
-                <td className="px-2 py-2.5">
+                <td className="px-2.5 py-3">
                   {clientNameById.get(row.clientId) ??
                     row.greenInvoiceClientName ??
                     '—'}
                 </td>
-                <td className="px-2 py-2.5">
-                  {editableProjects ? (
+                <td className="px-2.5 py-3">
+                  {isReceipt ? (
+                    <span
+                      className="text-[11px] text-[var(--text-light)]"
+                      title="קבלה היא תקבול בלבד — השיוך נעשה בחשבונית"
+                    >
+                      —
+                    </span>
+                  ) : editableProjects ? (
                     <HubDropdownSelect
                       value={assignValueForRow(row)}
                       onChange={(v) => onAssignProject!(row.id, v)}
-                      options={assignOptionsForRow(projectsForAssign!, row)}
+                      options={assignOptionsForRow(
+                        projectsForAssign!,
+                        row,
+                        hourlyServices,
+                      )}
                       emptyOption={{ label: 'ללא שיוך' }}
                       searchable
-                      searchPlaceholder="חיפוש פרויקט / אחסון…"
+                      searchPlaceholder="חיפוש פרויקט / אחסון / בנק שעות…"
                       className="min-w-[160px]"
+                      menuClassName="min-w-[280px]"
+                      menuFooter={
+                        <button
+                          type="button"
+                          className="w-full rounded-lg bg-[var(--orange)] px-3 py-2 text-[12px] font-bold text-white transition hover:brightness-105"
+                          onClick={() =>
+                            setQuickCreateFor({
+                              incomeId: row.id,
+                              clientId: row.clientId ?? '',
+                              clientName:
+                                clientNameById.get(row.clientId) ??
+                                row.greenInvoiceClientName ??
+                                '',
+                            })
+                          }
+                        >
+                          + פרויקט מהיר
+                        </button>
+                      }
                     />
                   ) : isHostingIncome(row) ? (
                     <span className="text-[11px] font-semibold text-[var(--text-mid)]">
                       {hostingIncomeLabel(row) ?? 'אחסון'}
                     </span>
+                  ) : row.hourlyServiceId ? (
+                    <span className="text-[11px] font-semibold text-[var(--text-mid)]">
+                      ⏱{' '}
+                      {hourlyTitleById.get(row.hourlyServiceId) ??
+                        'בנק שעות'}
+                    </span>
                   ) : (
                     projectNameById.get(row.projectId) ?? '—'
                   )}
                 </td>
-                <td className="px-2 py-2.5 tabular-nums font-bold">
+                <td
+                  className={`px-2.5 py-3 tabular-nums font-bold ${
+                    isReceipt ? 'text-[var(--text-mid)]' : ''
+                  }`}
+                >
                   {formatNis(vat.gross)}
                 </td>
-                <td className="px-2 py-2.5 tabular-nums text-[#6366F1]">
+                <td
+                  className={`px-2.5 py-3 tabular-nums ${
+                    isReceipt ? 'text-[var(--text-light)]' : 'text-[#4F46E5]'
+                  }`}
+                >
                   {formatNis(vat.vat)}
                 </td>
-                <td className="px-2 py-2.5 tabular-nums font-bold text-[#10B981]">
+                <td
+                  className={`px-2.5 py-3 tabular-nums font-bold ${
+                    isReceipt ? 'text-[var(--text-mid)]' : 'text-[#059669]'
+                  }`}
+                >
                   {formatNis(vat.net)}
                 </td>
-                <td className="px-2 py-2.5">
+                <td className="px-2.5 py-3">
                   <span
-                    className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold"
+                    className="inline-block rounded-lg px-2 py-0.5 text-[10px] font-bold"
                     style={{ backgroundColor: badge.bg, color: badge.color }}
                   >
                     {INCOME_STATUS_LABEL[row.status]}
                   </span>
                 </td>
-                <td className="px-2 py-2.5">
+                <td className="px-2.5 py-3">
                   {row.source === 'green_invoice' ? (
                     <GreenInvoiceBadge />
                   ) : (
-                    <span className="text-[10px] text-[var(--text-mid)]">ידני</span>
+                    <span className="text-[10px] text-[var(--text-mid)]">
+                      ידני
+                    </span>
                   )}
                 </td>
               </tr>
@@ -187,23 +306,40 @@ export function IncomeDocumentsTable({
           })}
         </tbody>
         <tfoot>
-          <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/60 text-[13px] font-extrabold text-[var(--text-dark)]">
-            <td className="px-2 py-3" colSpan={4}>
-              סה״כ ({rows.length})
+          <tr className="border-t-2 border-[var(--border)] bg-[var(--surface-muted)]/70 text-[13px] font-extrabold text-[var(--text-dark)]">
+            <td className="px-2.5 py-3" colSpan={4}>
+              סה״כ הכנסה ({totals.count} מסמכים
+              {receiptCount > 0
+                ? ` · ${receiptCount} קבלות לא נספרות`
+                : ''}
+              )
             </td>
-            <td className="px-2 py-3 tabular-nums">
+            <td className="px-2.5 py-3 tabular-nums">
               {formatNis(round2(totals.gross))}
             </td>
-            <td className="px-2 py-3 tabular-nums text-[#6366F1]">
+            <td className="px-2.5 py-3 tabular-nums text-[#4F46E5]">
               {formatNis(round2(totals.vat))}
             </td>
-            <td className="px-2 py-3 tabular-nums text-[#10B981]">
+            <td className="px-2.5 py-3 tabular-nums text-[#059669]">
               {formatNis(round2(totals.net))}
             </td>
-            <td className="px-2 py-3" colSpan={2} />
+            <td className="px-2.5 py-3" colSpan={2} />
           </tr>
         </tfoot>
       </table>
+
+      <QuickCreateProjectModal
+        open={quickCreateFor != null}
+        onClose={() => setQuickCreateFor(null)}
+        clientId={quickCreateFor?.clientId}
+        clientName={quickCreateFor?.clientName}
+        onCreated={(projectId) => {
+          if (quickCreateFor && onAssignProject) {
+            onAssignProject(quickCreateFor.incomeId, projectId)
+          }
+          setQuickCreateFor(null)
+        }}
+      />
     </div>
   )
 }

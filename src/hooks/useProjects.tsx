@@ -103,7 +103,7 @@ type ProjectsContextValue = {
   error: Error | null
   addProject: (
     data: Omit<Project, 'id' | 'createdAt' | 'taskCount' | 'doneCount'>,
-  ) => Promise<boolean>
+  ) => Promise<string | null>
   updateProject: (id: string, data: Partial<Project>) => Promise<boolean>
   deleteProject: (id: string) => Promise<void>
 }

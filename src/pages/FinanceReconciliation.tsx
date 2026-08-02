@@ -11,13 +11,14 @@ import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import { useFinanceExpenses } from '../hooks/useFinanceExpenses'
 import { useFinanceExpenseTypes } from '../hooks/useFinanceExpenseTypes'
 import { expenseTypeMap, resolveExpenseType } from '../lib/financeExpenseTypes'
+import { deriveExpensePnlMonth } from '../lib/financeExpensePnl'
 import {
   resolveExpenseVatClass,
   vatClassToLiable,
 } from '../lib/financeExpenseVat'
 import {
   isOpenReconciliationRow,
-  listReconciliationRows,
+  listInvoiceWorkflowRows,
   reconciliationRowDate,
 } from '../lib/expenseReconciliation'
 import {
@@ -26,7 +27,7 @@ import {
 } from '../lib/bankReconciliationReport'
 import {
   formatForeignAmount,
-  isForeignCurrencyCode,
+  resolveExpenseForeign,
 } from '../lib/foreignCurrency'
 import { formatNis, monthLabelHe } from '../lib/financeCalc'
 import { formatDateIL } from '../lib/dates'
@@ -55,9 +56,16 @@ export function FinanceReconciliation() {
 
   const typeById = useMemo(() => expenseTypeMap(expenseTypes), [expenseTypes])
 
+  /** בלי משכורת / מיסים / עמלות — רק תשלומים שדורשים חשבונית */
   const rows = useMemo(
-    () => listReconciliationRows(expenses, period.filterYmFrom, period.filterYmTo),
-    [expenses, period.filterYmFrom, period.filterYmTo],
+    () =>
+      listInvoiceWorkflowRows(
+        expenses,
+        period.filterYmFrom,
+        period.filterYmTo,
+        typeById,
+      ),
+    [expenses, period.filterYmFrom, period.filterYmTo, typeById],
   )
 
   const totals = useMemo(() => {
@@ -110,7 +118,7 @@ export function FinanceReconciliation() {
             התאמות בנקים
           </h1>
           <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-            תשלום מהבנק מול חשבונית — שורה ירוקה = סגורה · צהובה = ממתינה
+            תשלום מול חשבונית ספק — משכורת, מיסים ועמלות לא מוצגים כאן
           </p>
         </div>
         <button
@@ -259,8 +267,10 @@ export function FinanceReconciliation() {
                   const open = isOpenReconciliationRow(row)
                   const typeDef = resolveExpenseType(exp.type, typeById)
                   const vatClass = resolveExpenseVatClass(exp)
-                  const rowDate = reconciliationRowDate(exp)
-                  const billingYm = rowDate.slice(0, 7)
+                  const paymentDate =
+                    exp.paidDate?.trim() || reconciliationRowDate(exp)
+                  const invoiceDate = exp.documentDate?.trim() || ''
+                  const reportMonth = deriveExpensePnlMonth(exp)
                   return (
                     <tr
                       key={exp.id}
@@ -271,18 +281,27 @@ export function FinanceReconciliation() {
                       }`}
                     >
                       <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums">
-                        <div className="font-semibold text-[var(--text-dark)]">
-                          {monthLabelHe(billingYm)}
+                        <div
+                          className="font-semibold text-[var(--text-dark)]"
+                          title="חודש לפי תאריך החשבונית"
+                        >
+                          {monthLabelHe(reportMonth)}
                         </div>
-                        <div className="mt-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
-                          {exp.paymentMethod === 'credit_card' ? 'עסקה' : 'ירד'}{' '}
-                          {formatDateIL(rowDate)}
+                        <div className="mt-0.5 space-y-0.5 text-[10px] font-semibold text-[var(--text-mid)]">
+                          {paymentDate ? (
+                            <div>תשלום {formatDateIL(paymentDate)}</div>
+                          ) : null}
                           {exp.chargeDate &&
                           exp.chargeDate !== exp.paidDate ? (
-                            <span className="block">
-                              חיוב {formatDateIL(exp.chargeDate)}
-                            </span>
+                            <div>חיוב {formatDateIL(exp.chargeDate)}</div>
                           ) : null}
+                          {invoiceDate ? (
+                            <div>חשבונית {formatDateIL(invoiceDate)}</div>
+                          ) : (
+                            <div className="text-[var(--text-light)]">
+                              חשבונית —
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-2.5 py-3 align-top">
@@ -305,15 +324,15 @@ export function FinanceReconciliation() {
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-3 align-top tabular-nums font-bold text-[var(--text-dark)]">
                         {formatNis(exp.amount)}
-                        {isForeignCurrencyCode(exp.currency) &&
-                        exp.originalAmount ? (
-                          <span className="mt-0.5 block text-[10px] font-bold text-[#3730A3]">
-                            {formatForeignAmount(
-                              exp.originalAmount,
-                              exp.currency,
-                            )}
-                          </span>
-                        ) : null}
+                        {(() => {
+                          const fx = resolveExpenseForeign(exp)
+                          if (!fx) return null
+                          return (
+                            <span className="mt-0.5 block text-[10px] font-bold text-[#3730A3]">
+                              {formatForeignAmount(fx.amount, fx.currency)}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td className="whitespace-nowrap px-2.5 py-3 align-top text-[11px] font-semibold text-[var(--text-mid)]">
                         {exp.paymentMethod === 'credit_card'
@@ -327,6 +346,11 @@ export function FinanceReconciliation() {
                             linkedGi={row.linkedGi}
                             expense={exp}
                           />
+                          {exp.expenseNote?.trim() ? (
+                            <div className="max-w-[220px] rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-2 py-1 text-[11px] font-bold leading-snug text-[#DC2626]">
+                              הערה: {exp.expenseNote.trim()}
+                            </div>
+                          ) : null}
                           {exp.documentUrl ? (
                             <a
                               href={exp.documentUrl}

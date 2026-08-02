@@ -1,4 +1,5 @@
 import type { FinanceExpense, FinanceIncome } from '../types'
+import { formatNis } from './financeCalc'
 import {
   expenseAccrualMonth,
   isAccrualExpense,
@@ -6,10 +7,6 @@ import {
 } from './financeSalaryMonth'
 import { isTaxReceiptIncome } from './financeIncomeDocument'
 import { incomePaymentDate } from './financeIncomePayment'
-
-function formatNisLocal(amount: number): string {
-  return `₪${Math.round(amount).toLocaleString('he-IL')}`
-}
 
 export function incomeYm(inc: FinanceIncome): string {
   if (isTaxReceiptIncome(inc)) return incomePaymentDate(inc).slice(0, 7)
@@ -70,11 +67,12 @@ export function resolveLinkedIncome(
 
 /**
  * חודש שבו ההוצאה נספרת ברווח והפסד.
- * הוצאה נשארת בחודש שלה — אין הזזה אוטומטית לחודש של הכנסת הפרויקט.
- * רווחיות פרויקט נמדדת על כל חיי הפרויקט, ולכן ההזזה רק עיוותה את הדוח החודשי.
+ * חוק: תאריך החשבונית (documentDate) קובע — לא תאריך התשלום.
+ * משכורת/מסים — חודש הצבירה שעבורו שולמו.
  */
 export function deriveExpensePnlMonth(exp: FinanceExpense): string {
   if (isAccrualExpense(exp)) return expenseAccrualMonth(exp)
+  if (exp.documentDate?.trim()) return exp.documentDate.trim().slice(0, 7)
   if (exp.pnlMonth?.trim()) return exp.pnlMonth.slice(0, 7)
   return exp.billingMonth.slice(0, 7)
 }
@@ -101,7 +99,7 @@ export function expenseUsesPnlAttribution(exp: FinanceExpense): boolean {
 export function incomeLinkLabel(inc: FinanceIncome): string {
   const parts = [incomeYm(inc)]
   if (inc.invoiceNumber?.trim()) parts.push(`#${inc.invoiceNumber.trim()}`)
-  parts.push(formatNisLocal(inc.amount))
+  parts.push(formatNis(inc.amount))
   return parts.join(' · ')
 }
 

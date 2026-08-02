@@ -273,16 +273,143 @@ export function refundCandidates(
   )
 }
 
+function isConfidentCandidate(c: RefundCandidate): boolean {
+  return c.sameMerchant && (c.exactAmount || c.nearAmount)
+}
+
+/**
+ * שיוך אוטומטי בטוח של זיכויים לחיובים.
+ *
+ * - זיכוי עם מועמד יחיד → משויך אליו.
+ * - N זיכויים מול N חיובים מאותו ספק (סכום זהה/קרוב) → שיוך 1:1 לפי תאריך.
+ * - זיכוי אחד מול שני חיובים זהים → לא משייכים (דו-משמעי).
+ *
+ * מחזיר Map: מזהה זיכוי → מזהה חיוב.
+ */
+export function pairConfidentRefunds(
+  expenses: FinanceExpense[],
+): Map<string, string> {
+  const out = new Map<string, string>()
+  const claimedCharges = new Set<string>()
+  for (const exp of expenses) {
+    const target = exp.refundForExpenseId?.trim()
+    if (target && isRefundExpense(exp)) claimedCharges.add(target)
+  }
+
+  const byId = new Map(expenses.map((e) => [e.id, e]))
+  const pending = listUnlinkedRefunds(expenses).map((r) => r.id)
+
+  const freeConfident = (refund: FinanceExpense): RefundCandidate[] =>
+    refundCandidates(refund, expenses).filter(
+      (c) => isConfidentCandidate(c) && !claimedCharges.has(c.charge.id),
+    )
+
+  // מעבר 1: מועמד יחיד (כולל אחרי שזיכויים אחרים «פינו» חיובים)
+  let changed = true
+  while (changed) {
+    changed = false
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const refund = byId.get(pending[i]!)
+      if (!refund) continue
+      const candidates = freeConfident(refund)
+      if (candidates.length !== 1) continue
+      const chargeId = candidates[0]!.charge.id
+      out.set(refund.id, chargeId)
+      claimedCharges.add(chargeId)
+      pending.splice(i, 1)
+      changed = true
+    }
+  }
+
+  // מעבר 2: קבוצת ספק מאוזנת — מספר זיכויים = מספר חיובים פנויים תואמים
+  const byMerchant = new Map<string, string[]>()
+  for (const id of pending) {
+    const refund = byId.get(id)
+    if (!refund) continue
+    const key = merchantOf(refund)
+    if (!key) continue
+    const list = byMerchant.get(key) ?? []
+    list.push(id)
+    byMerchant.set(key, list)
+  }
+
+  for (const ids of byMerchant.values()) {
+    const refunds = ids
+      .map((id) => byId.get(id)!)
+      .filter(Boolean)
+      .sort((a, b) => expenseDate(a).localeCompare(expenseDate(b)))
+    if (refunds.length === 0) continue
+
+    const chargePool: FinanceExpense[] = []
+    const seen = new Set<string>()
+    for (const refund of refunds) {
+      for (const c of freeConfident(refund)) {
+        if (seen.has(c.charge.id)) continue
+        seen.add(c.charge.id)
+        chargePool.push(c.charge)
+      }
+    }
+    if (chargePool.length !== refunds.length) continue
+
+    const chargesLeft = [...chargePool].sort((a, b) =>
+      expenseDate(a).localeCompare(expenseDate(b)),
+    )
+    const groupPairs: { refundId: string; chargeId: string }[] = []
+    let ok = true
+    for (const refund of refunds) {
+      const idx = chargesLeft.findIndex((charge) => {
+        const { exact, near } = amountsAgree(charge, refund)
+        return (
+          merchantOf(charge) === merchantOf(refund) &&
+          charge.paymentMethod === refund.paymentMethod &&
+          (exact || near)
+        )
+      })
+      if (idx < 0) {
+        ok = false
+        break
+      }
+      const [charge] = chargesLeft.splice(idx, 1)
+      groupPairs.push({ refundId: refund.id, chargeId: charge!.id })
+    }
+    if (!ok || chargesLeft.length !== 0) continue
+
+    for (const pair of groupPairs) {
+      out.set(pair.refundId, pair.chargeId)
+      claimedCharges.add(pair.chargeId)
+      const idx = pending.indexOf(pair.refundId)
+      if (idx >= 0) pending.splice(idx, 1)
+    }
+  }
+
+  return out
+}
+
+/** מחיל שיוכי זיכוי אוטומטיים בזיכרון — בלי כתיבה ל-Firestore */
+export function expensesWithEffectiveRefundLinks(
+  expenses: FinanceExpense[],
+): FinanceExpense[] {
+  const pairs = pairConfidentRefunds(expenses)
+  if (pairs.size === 0) return expenses
+  return expenses.map((exp) => {
+    const chargeId = pairs.get(exp.id)
+    if (!chargeId) return exp
+    return { ...exp, refundForExpenseId: chargeId }
+  })
+}
+
 /**
  * ההתאמה שבטוח לסמן מראש: אותו ספק, סכום זהה או בטווח סטיית שער,
- * ואין חיוב אחר שעונה על אותם תנאים.
+ * ובלי דו-משמעות מול חיוב אחר פנוי.
  */
 export function suggestedRefundMatch(
   refund: FinanceExpense,
   expenses: FinanceExpense[],
 ): RefundCandidate | null {
-  const confident = refundCandidates(refund, expenses).filter(
-    (c) => c.sameMerchant && (c.exactAmount || c.nearAmount),
+  const chargeId = pairConfidentRefunds(expenses).get(refund.id)
+  if (!chargeId) return null
+  return (
+    refundCandidates(refund, expenses).find((c) => c.charge.id === chargeId) ??
+    null
   )
-  return confident.length === 1 ? confident[0]! : null
 }

@@ -38,12 +38,23 @@ describe('חוק: תאריך החשבונית קובע את חודש הרווח 
     expect(a.moves).toBe(false)
   })
 
-  it('חודש שכבר דווח למע״מ אינו משתנה למפרע', () => {
-    // 25.8 — יולי כבר דווח ב-19.8, ולכן החשבונית נספרת באוגוסט ומסומנת
+  it('חודש שכבר דווח למע״מ עדיין נספר לפי תאריך החשבונית ומסומן כמאחר', () => {
+    // 25.8 — יולי כבר דווח ב-19.8, אבל הרו״ה נשאר בחודש החשבונית
     const a = attributionForInvoiceDate(expense(), '2026-07-31', '2026-08-25')
-    expect(a.month).toBe('2026-08')
+    expect(a.month).toBe('2026-07')
     expect(a.late).toBe(true)
     expect(a.documentMonth).toBe('2026-07')
+  })
+
+  it('תשלום ביולי עבור חשבונית מיוני נכנס ליוני', () => {
+    const a = attributionForInvoiceDate(
+      expense({ billingMonth: '2026-07', paidDate: '2026-07-05' }),
+      '2026-06-29',
+      '2026-08-02',
+    )
+    expect(a.month).toBe('2026-06')
+    expect(a.late).toBe(true)
+    expect(a.moves).toBe(true)
   })
 
   it('החודש הנוכחי נלקח מ-pnlMonth כשהוא קיים', () => {

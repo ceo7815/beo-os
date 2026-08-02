@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 export type HubDropdownOption = { value: string; label: string }
 
@@ -17,6 +17,8 @@ type Props = {
   searchPlaceholder?: string
   /** הרחבת התפריט מעבר לרוחב הכפתור — לעמודת טבלה צרה עם ערכים ארוכים */
   menuClassName?: string
+  /** כפתור/פעולה בתחתית התפריט (למשל «+ פרויקט מהיר») */
+  menuFooter?: ReactNode
 }
 
 export function HubDropdownSelect({
@@ -30,6 +32,7 @@ export function HubDropdownSelect({
   searchable = false,
   searchPlaceholder = 'חיפוש…',
   menuClassName = '',
+  menuFooter,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -218,6 +221,15 @@ export function HubDropdownSelect({
             </li>
           ) : null}
           </ul>
+          {menuFooter ? (
+            <div
+              className="border-t border-[var(--border)] p-2"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => setOpen(false)}
+            >
+              {menuFooter}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

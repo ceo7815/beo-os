@@ -102,6 +102,11 @@ export type FinanceExpensePatchInput = {
   documentDate?: string | null
   documentMonth?: string | null
   isLateDocument?: boolean
+  /** הערה על השורה — null מוחק */
+  expenseNote?: string | null
+  /** מט״ח — null מוחק את שני השדות */
+  currency?: string | null
+  originalAmount?: number | null
 }
 
 type FinanceExpensesContextValue = {
@@ -435,6 +440,28 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
           next.isLateDocument = patch.isLateDocument
             ? true
             : (deleteField() as unknown as boolean)
+        }
+        if (patch.expenseNote === null || patch.expenseNote === '') {
+          next.expenseNote = deleteField()
+        } else if (
+          typeof patch.expenseNote === 'string' &&
+          patch.expenseNote.trim()
+        ) {
+          next.expenseNote = patch.expenseNote.trim()
+        }
+        if (patch.currency === null || patch.originalAmount === null) {
+          next.currency = deleteField()
+          next.originalAmount = deleteField()
+        } else if (
+          typeof patch.currency === 'string' &&
+          patch.currency.trim() &&
+          patch.currency.trim().toUpperCase() !== 'ILS' &&
+          typeof patch.originalAmount === 'number' &&
+          Number.isFinite(patch.originalAmount) &&
+          patch.originalAmount !== 0
+        ) {
+          next.currency = patch.currency.trim().toUpperCase()
+          next.originalAmount = Math.round(patch.originalAmount * 100) / 100
         }
         if (Object.keys(next).length === 0) return
         await updateDoc(doc(db, 'financeExpenses', id), stripUndefined(next))

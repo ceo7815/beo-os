@@ -255,7 +255,7 @@ export function Finance() {
             tone={summary.trueNetProfit >= 0 ? 'profit' : 'expense'}
             label="רווח נקי אמיתי"
             value={formatNis(summary.trueNetProfit)}
-            hint="הכנסות נטו פחות הוצאות נטו"
+            hint="הכנסות נטו − הוצאות נטו · בלי תשלום מע״מ לרשות"
             onClick={() => setDetailMetric('profit')}
             footer={
               <div className="flex flex-col gap-1">
@@ -348,6 +348,23 @@ export function Finance() {
           </h2>
           <p className="mt-0.5 text-[11px] text-[var(--text-mid)]">
             לחצו על הכנסות או הוצאות לפירוט השורות · ירוק = רווח · אדום = הפסד
+          </p>
+          <p className="mt-2 rounded-xl border border-[#DBEAFE] bg-[#EFF6FF] px-3 py-2 text-[11px] leading-relaxed text-[#1E40AF]">
+            <span className="font-extrabold">הערה לחישוב הרווח: </span>
+            תשלום מע״מ לרשות המסים שהוזן כהוצאה בבנק אינו נספר כאן ברווח הנקי
+            ובהוצאות — כדי שלא ייגרע פעמיים. המע״מ כבר מטופל כך: הכנסות והוצאות
+            נטו (בלי מע״מ) + עמודת «מע״מ לתשלום» (עסקאות − תשומות). התשלום בפועל
+            לרשות הוא סילוק אותו חוב, לא עלות עסק נוספת.
+            {summary.vatRemittanceExcluded > 0 ? (
+              <>
+                {' '}
+                בתקופה המסוננת הוצאו מהרווח{' '}
+                <span className="font-extrabold tabular-nums">
+                  {formatNis(summary.vatRemittanceExcluded)}
+                </span>{' '}
+                של תשלומי מע״מ שנרשמו כהוצאה.
+              </>
+            ) : null}
           </p>
         </div>
         {loading ? (

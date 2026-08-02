@@ -3,7 +3,7 @@ import { monthLabelHe } from './financeCalc'
 import { resolveExpenseType } from './financeExpenseTypes'
 import {
   isOpenReconciliationRow,
-  listReconciliationRows,
+  listInvoiceWorkflowRows,
   RECONCILIATION_STATUS_LABEL,
   reconciliationRowDate,
 } from './expenseReconciliation'
@@ -89,7 +89,12 @@ export function buildBankReconciliationReport(
   ymTo: string,
   options?: { typeById?: Map<string, FinanceExpenseTypeDef> },
 ): BankReconciliationReportData {
-  const rows = listReconciliationRows(expenses, ymFrom, ymTo)
+  const rows = listInvoiceWorkflowRows(
+    expenses,
+    ymFrom,
+    ymTo,
+    options?.typeById,
+  )
 
   let openRows = 0
   let openAmount = 0
