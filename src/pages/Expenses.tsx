@@ -81,6 +81,13 @@ import {
   ISRAEL_VAT_PERCENT_LABEL,
   resolveExpenseRowVat,
 } from '../lib/israeliVat'
+import {
+  ClientFinanceCardModal,
+  type ClientFinanceTarget,
+} from '../components/finance/ClientFinanceCardModal'
+import { FinanceClickable } from '../components/finance/FinanceClickable'
+import { SortableTh } from '../components/finance/SortableTh'
+import { sortByKey, useTableSort } from '../lib/financeTableSort'
 import { useClients } from '../hooks/useClients'
 import {
   useFinanceExpenseTypes,
@@ -230,6 +237,12 @@ export function Expenses() {
   const [settlementFilter, setSettlementFilter] = useState<
     'all' | 'open' | 'closed'
   >('all')
+  /** סינון מהיר בלחיצה על שם הוצאה/ספק — UX בלבד */
+  const [nameQuickFilter, setNameQuickFilter] = useState('')
+  const [clientCard, setClientCard] = useState<ClientFinanceTarget | null>(null)
+  const { sort: expenseSort, toggle: toggleExpenseSort } = useTableSort<
+    'date' | 'name' | 'gross'
+  >('date', 'desc')
 
   const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -424,12 +437,40 @@ export function Expenses() {
   }
 
   const visibleExpenses = useMemo(() => {
-    if (settlementFilter === 'all') return filteredExpenses
-    return filteredExpenses.filter((row) => {
-      const closed = isRowClosed(row)
-      return settlementFilter === 'closed' ? closed : !closed
+    let rows =
+      settlementFilter === 'all'
+        ? filteredExpenses
+        : filteredExpenses.filter((row) => {
+            const closed = isRowClosed(row)
+            return settlementFilter === 'closed' ? closed : !closed
+          })
+    const q = nameQuickFilter.trim().toLowerCase()
+    if (q) {
+      rows = rows.filter((row) => {
+        const typeDef = resolveExpenseType(row.type, expenseTypeById)
+        const label = expenseDisplayName(row, typeDef).toLowerCase()
+        return (
+          label.includes(q) ||
+          (row.supplierName ?? '').toLowerCase().includes(q) ||
+          (row.name ?? '').toLowerCase().includes(q)
+        )
+      })
+    }
+    return sortByKey(rows, expenseSort, (row, key) => {
+      if (key === 'date') return reconciliationRowDate(row)
+      if (key === 'gross') return row.amount
+      const typeDef = resolveExpenseType(row.type, expenseTypeById)
+      return expenseDisplayName(row, typeDef)
     })
-  }, [filteredExpenses, settlementFilter, refundLinks, reconciliationById])
+  }, [
+    filteredExpenses,
+    settlementFilter,
+    refundLinks,
+    reconciliationById,
+    nameQuickFilter,
+    expenseSort,
+    expenseTypeById,
+  ])
 
   const settlementCounts = useMemo(() => {
     let closed = 0
@@ -935,6 +976,16 @@ export function Expenses() {
                 </button>
               ))}
             </div>
+            {nameQuickFilter.trim() ? (
+              <button
+                type="button"
+                onClick={() => setNameQuickFilter('')}
+                className="rounded-[8px] border border-[var(--orange)] bg-[var(--orange-light)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--orange)]"
+                title="נקה סינון שם"
+              >
+                שם: {nameQuickFilter} ×
+              </button>
+            ) : null}
             <div className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1">
               {(
                 [
@@ -995,9 +1046,25 @@ export function Expenses() {
             <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-[1]">
                 <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
-                  <th className="px-2.5 py-2.5 text-right">תאריך</th>
-                  <th className="px-2.5 py-2.5 text-right">שם הוצאה</th>
-                  <th className="px-2.5 py-2.5 text-right">ברוטו</th>
+                  <SortableTh
+                    label="תאריך"
+                    columnKey="date"
+                    sort={expenseSort}
+                    onSort={toggleExpenseSort}
+                  />
+                  <SortableTh
+                    label="שם הוצאה"
+                    columnKey="name"
+                    sort={expenseSort}
+                    onSort={toggleExpenseSort}
+                    defaultDir="asc"
+                  />
+                  <SortableTh
+                    label="ברוטו"
+                    columnKey="gross"
+                    sort={expenseSort}
+                    onSort={toggleExpenseSort}
+                  />
                   <th className="px-2.5 py-2.5 text-right">מע״מ</th>
                   <th className="px-2.5 py-2.5 text-right">נטו</th>
                   <th className="px-2.5 py-2.5 text-right">פרויקט</th>
@@ -1082,9 +1149,31 @@ export function Expenses() {
                         ) : null}
                       </td>
                       <td className="px-2.5 py-3 align-top">
-                        <div className="font-semibold text-[var(--text-dark)]">
+                        <FinanceClickable
+                          className="font-semibold text-[var(--text-dark)] hover:text-[var(--orange)]"
+                          title="סנן לפי שם זה"
+                          onClick={() =>
+                            setNameQuickFilter(expenseDisplayName(row, typeDef))
+                          }
+                        >
                           {expenseDisplayName(row, typeDef)}
-                        </div>
+                        </FinanceClickable>
+                        {row.clientId && clientNameById.get(row.clientId) ? (
+                          <div className="mt-0.5">
+                            <FinanceClickable
+                              className="text-[10px]"
+                              title="כרטיס פיננסי ללקוח"
+                              onClick={() =>
+                                setClientCard({
+                                  clientId: row.clientId,
+                                  clientName: clientNameById.get(row.clientId!)!,
+                                })
+                              }
+                            >
+                              {clientNameById.get(row.clientId)}
+                            </FinanceClickable>
+                          </div>
+                        ) : null}
                         <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-mid)]">
                           <span>{typeDef.label}</span>
                           <span aria-hidden>·</span>
@@ -1995,6 +2084,12 @@ export function Expenses() {
           })
           setQuickCreateFor(null)
         }}
+      />
+
+      <ClientFinanceCardModal
+        target={clientCard}
+        onClose={() => setClientCard(null)}
+        clientNameById={clientNameById}
       />
     </div>
   )

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Modal } from '../shared/Modal'
 import { formatDateIL } from '../../lib/dates'
 import {
@@ -25,6 +26,8 @@ import type {
   FinanceExpenseTypeDef,
   FinanceIncome,
 } from '../../types'
+import type { ClientFinanceTarget } from './ClientFinanceCardModal'
+import { FinanceClickable } from './FinanceClickable'
 
 export type PnlMonthDetailKind = 'income' | 'expense'
 
@@ -34,13 +37,18 @@ export type PnlMonthDetail = {
   kind: PnlMonthDetailKind
 }
 
+type DetailCell =
+  | string
+  | { text: string; className?: string }
+  | { node: ReactNode; className?: string }
+
 function DetailTable({
   columns,
   rows,
   empty,
 }: {
   columns: string[]
-  rows: (string | { text: string; className?: string })[][]
+  rows: DetailCell[][]
   empty: string
 }) {
   if (rows.length === 0) {
@@ -72,15 +80,25 @@ function DetailTable({
               className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-muted)]/40"
             >
               {cells.map((cell, ci) => {
-                const isObj = typeof cell === 'object'
-                const text = isObj ? cell.text : cell
-                const cls = isObj ? cell.className : undefined
+                const isObj = typeof cell === 'object' && cell !== null
+                const hasNode = isObj && 'node' in cell
+                const text = !isObj
+                  ? cell
+                  : hasNode
+                    ? null
+                    : (cell as { text: string }).text
+                const node = hasNode
+                  ? (cell as { node: ReactNode }).node
+                  : null
+                const cls = isObj
+                  ? (cell as { className?: string }).className
+                  : undefined
                 return (
                   <td
                     key={ci}
                     className={`px-2.5 py-2 ${ci === cells.length - 1 ? 'text-left tabular-nums font-bold' : 'text-right'} ${cls ?? ''}`}
                   >
-                    {text}
+                    {node ?? text}
                   </td>
                 )
               })}
@@ -99,6 +117,7 @@ export function FinancePnlMonthDetailModal({
   expenses,
   expenseTypes,
   clientNameById,
+  onClientClick,
 }: {
   detail: PnlMonthDetail | null
   onClose: () => void
@@ -106,6 +125,7 @@ export function FinancePnlMonthDetailModal({
   expenses: FinanceExpense[]
   expenseTypes: FinanceExpenseTypeDef[]
   clientNameById: Map<string, string>
+  onClientClick?: (target: ClientFinanceTarget) => void
 }) {
   if (!detail) return null
 
@@ -155,10 +175,31 @@ export function FinancePnlMonthDetailModal({
                 clientNameById.get(inc.clientId) ??
                 inc.greenInvoiceClientName ??
                 '—'
+              const clientCell: DetailCell =
+                client !== '—' && onClientClick
+                  ? {
+                      node: (
+                        <FinanceClickable
+                          title="כרטיס פיננסי ללקוח"
+                          onClick={() =>
+                            onClientClick({
+                              clientId: inc.clientId?.trim() || undefined,
+                              clientName: client,
+                              guestName: !inc.clientId?.trim()
+                                ? client
+                                : undefined,
+                            })
+                          }
+                        >
+                          {client}
+                        </FinanceClickable>
+                      ),
+                    }
+                  : client
               return [
                 FINANCE_INCOME_DOCUMENT_LABELS[kind],
                 formatDateIL(date),
-                client,
+                clientCell,
                 { text: formatNis(vat.gross), className: 'text-[#10B981]' },
               ]
             })}

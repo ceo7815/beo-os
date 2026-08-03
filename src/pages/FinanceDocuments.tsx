@@ -22,6 +22,8 @@ import {
 } from '../lib/accountantPackage'
 import { formatNis, monthLabelHe } from '../lib/financeCalc'
 import { formatDateIL } from '../lib/dates'
+import { sortByKey, useTableSort } from '../lib/financeTableSort'
+import { FinanceClickable } from '../components/finance/FinanceClickable'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import type { FinanceExpense } from '../types'
 
@@ -62,6 +64,9 @@ export function FinanceDocuments() {
 
   const [folderFilter, setFolderFilter] = useState<FolderFilter>('documented')
   const [search, setSearch] = useState('')
+  const { sort: docSort, toggle: toggleDocSort } = useTableSort<
+    'date' | 'amount'
+  >('date', 'desc')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [attaching, setAttaching] = useState<FinanceExpense | null>(null)
   const [progress, setProgress] = useState<PackageProgress | null>(null)
@@ -136,12 +141,12 @@ export function FinanceDocuments() {
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([ym, items]) => ({
         ym,
-        items: items.sort((a, b) =>
-          reconciliationRowDate(b).localeCompare(reconciliationRowDate(a)),
+        items: sortByKey(items, docSort, (exp, key) =>
+          key === 'amount' ? exp.amount : reconciliationRowDate(exp),
         ),
         amount: items.reduce((sum, e) => sum + e.amount, 0),
       }))
-  }, [filtered])
+  }, [filtered, docSort])
 
   async function handleExport() {
     setPackageError(null)
@@ -333,13 +338,45 @@ export function FinanceDocuments() {
               )
             })}
           </div>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="חיפוש ספק או מספר חשבונית"
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-[13px] text-[var(--text-dark)] outline-none focus:border-[var(--orange)] md:w-[260px]"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1">
+              {(
+                [
+                  ['date', 'תאריך'],
+                  ['amount', 'סכום'],
+                ] as const
+              ).map(([key, label]) => {
+                const active = docSort.key === key
+                const arrow = !active
+                  ? '↕'
+                  : docSort.dir === 'asc'
+                    ? '↑'
+                    : '↓'
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleDocSort(key)}
+                    className={
+                      active
+                        ? 'rounded-[8px] bg-[var(--orange)] px-2.5 py-1.5 text-[11px] font-bold text-white'
+                        : 'rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-black/[0.03]'
+                    }
+                    title={`מיון לפי ${label}`}
+                  >
+                    {label} {arrow}
+                  </button>
+                )
+              })}
+            </div>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="חיפוש ספק או מספר חשבונית"
+              className="w-full rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] px-3 py-2 text-[13px] text-[var(--text-dark)] outline-none focus:border-[var(--orange)] md:w-[260px]"
+            />
+          </div>
         </div>
 
         {loading ? (
@@ -396,9 +433,13 @@ export function FinanceDocuments() {
                             <span className="w-[86px] shrink-0 text-[12px] tabular-nums text-[var(--text-mid)]">
                               {formatDateIL(reconciliationRowDate(exp))}
                             </span>
-                            <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-dark)]">
+                            <FinanceClickable
+                              className="min-w-0 flex-1 truncate text-[13px]"
+                              title="סנן לפי ספק"
+                              onClick={() => setSearch(supplierLabel(exp))}
+                            >
                               {supplierLabel(exp)}
-                            </span>
+                            </FinanceClickable>
                             <span className="hidden w-[130px] shrink-0 truncate text-[12px] text-[var(--text-mid)] md:block">
                               {typeDef?.label ?? exp.type}
                             </span>

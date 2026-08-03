@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react'
 import { EmptyState } from '../components/shared/EmptyState'
+import {
+  ClientFinanceCardModal,
+  type ClientFinanceTarget,
+} from '../components/finance/ClientFinanceCardModal'
 import { CollectionGiTable } from '../components/finance/CollectionGiTable'
 import {
   FinanceKpiCard,
@@ -36,6 +40,7 @@ export function Collections() {
   const [filterProjectId, setFilterProjectId] = useState('')
   const [filterClientId, setFilterClientId] = useState('')
   const [detailMetric, setDetailMetric] = useState<FinanceMetricId | null>(null)
+  const [clientCard, setClientCard] = useState<ClientFinanceTarget | null>(null)
 
   const projectIdsForClient = useMemo(() => {
     if (!filterClientId) return new Set<string>()
@@ -278,6 +283,7 @@ export function Collections() {
             rows={filteredRows}
             clientNameById={clientNameById}
             projectNameById={projectNameById}
+            onClientClick={setClientCard}
           />
         )}
       </section>
@@ -293,6 +299,13 @@ export function Collections() {
         clientNameById={clientNameById}
         projectNameById={projectNameById}
         periodLabel={period.filterRangeLabel}
+        onClientClick={setClientCard}
+      />
+
+      <ClientFinanceCardModal
+        target={clientCard}
+        onClose={() => setClientCard(null)}
+        clientNameById={clientNameById}
       />
     </div>
   )

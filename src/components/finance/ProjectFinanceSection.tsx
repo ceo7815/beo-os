@@ -17,15 +17,21 @@ import { useFinanceExpenseTypes } from '../../hooks/useFinanceExpenseTypes'
 import { ProgressBar } from '../shared/ProgressBar'
 import { FinanceHeroCard, FinanceMiniStat } from './FinanceKpi'
 import { IncomeDocumentsTable } from './IncomeDocumentsTable'
+import type { ClientFinanceTarget } from './ClientFinanceCardModal'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
 import type { Client, Project } from '../../types'
 
 type Props = {
   project: Project
   client?: Client
+  onClientClick?: (target: ClientFinanceTarget) => void
 }
 
-export function ProjectFinanceSection({ project, client }: Props) {
+export function ProjectFinanceSection({
+  project,
+  client,
+  onClientClick,
+}: Props) {
   const { incomes } = useFinanceIncomes()
   const { expenses } = useFinanceExpenses()
   const { types: expenseTypes } = useFinanceExpenseTypes()
@@ -270,6 +276,7 @@ export function ProjectFinanceSection({ project, client }: Props) {
             )}
             clientNameById={clientNameById}
             projectNameById={projectNameById}
+            onClientClick={onClientClick}
           />
         )}
       </section>

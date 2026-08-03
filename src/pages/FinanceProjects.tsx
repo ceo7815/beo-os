@@ -1,13 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '../components/shared/EmptyState'
 import { Modal } from '../components/shared/Modal'
 import { Badge } from '../components/shared/Badge'
+import {
+  ClientFinanceCardModal,
+  type ClientFinanceTarget,
+} from '../components/finance/ClientFinanceCardModal'
+import { FinanceClickable } from '../components/finance/FinanceClickable'
 import { FinanceHeroCard } from '../components/finance/FinanceKpi'
 import { GreenInvoiceBadge } from '../components/finance/GreenInvoiceBadge'
+import { SortableTh } from '../components/finance/SortableTh'
 import { FinanceTabs } from '../components/finance/FinanceTabs'
 import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import { ProjectFinanceSection } from '../components/finance/ProjectFinanceSection'
 import { HostingFinanceSection } from '../components/finance/HostingFinanceSection'
+import { sortByKey, useTableSort } from '../lib/financeTableSort'
 import { useClients } from '../hooks/useClients'
 import { useProjects } from '../hooks/useProjects'
 import { useFinanceIncomes } from '../hooks/useFinanceIncomes'
@@ -54,6 +61,10 @@ export function FinanceProjects() {
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const [hostingOpen, setHostingOpen] = useState(false)
   const [portalOpen, setPortalOpen] = useState(false)
+  const [clientCard, setClientCard] = useState<ClientFinanceTarget | null>(null)
+  const { sort, toggle } = useTableSort<
+    'client' | 'income' | 'expense' | 'profit' | 'collection'
+  >('income', 'desc')
 
   // אחסון אתרים — חודשי + שנתי (ללא פורטל); הוצאות אחסון מיוחסות לכאן
   const hosting = useMemo(
@@ -105,16 +116,27 @@ export function FinanceProjects() {
     })
   }, [projects, incomes, expenses, expenseTypes, clientNameById])
 
+  const getProjectSortValue = useCallback(
+    (
+      r: ProjectFinanceRow,
+      key: 'client' | 'income' | 'expense' | 'profit' | 'collection',
+    ): string | number => {
+      if (key === 'client') return r.clientName
+      if (key === 'income') return r.incomeGross
+      if (key === 'expense') return r.expenseGross
+      if (key === 'profit') return r.netProfit
+      return r.collectionBalance
+    },
+    [],
+  )
+
   const filteredRows = useMemo(() => {
     const list =
       statusFilter === 'all'
         ? rows
         : rows.filter((r) => r.project.status === statusFilter)
-    return [...list].sort((a, b) => {
-      if (b.incomeGross !== a.incomeGross) return b.incomeGross - a.incomeGross
-      return a.project.name.localeCompare(b.project.name, 'he')
-    })
-  }, [rows, statusFilter])
+    return sortByKey(list, sort, getProjectSortValue)
+  }, [rows, statusFilter, sort, getProjectSortValue])
 
   const totals = useMemo(
     () =>
@@ -310,13 +332,44 @@ export function FinanceProjects() {
               <thead>
                 <tr className="border-b border-[var(--border)] text-[11px] font-bold text-[var(--text-mid)]">
                   <th className="px-2 py-2 text-right">פרויקט</th>
-                  <th className="px-2 py-2 text-right">לקוח</th>
+                  <SortableTh
+                    label="לקוח"
+                    columnKey="client"
+                    sort={sort}
+                    onSort={toggle}
+                    defaultDir="asc"
+                    className="!px-2 !py-2"
+                  />
                   <th className="px-2 py-2 text-right">סטטוס</th>
                   <th className="px-2 py-2 text-right">תאריך תחילה</th>
-                  <th className="px-2 py-2 text-right">הכנסות</th>
-                  <th className="px-2 py-2 text-right">הוצאות</th>
-                  <th className="px-2 py-2 text-right">רווח נקי</th>
-                  <th className="px-2 py-2 text-right">יתרה לגבייה</th>
+                  <SortableTh
+                    label="הכנסות"
+                    columnKey="income"
+                    sort={sort}
+                    onSort={toggle}
+                    className="!px-2 !py-2"
+                  />
+                  <SortableTh
+                    label="הוצאות"
+                    columnKey="expense"
+                    sort={sort}
+                    onSort={toggle}
+                    className="!px-2 !py-2"
+                  />
+                  <SortableTh
+                    label="רווח נקי"
+                    columnKey="profit"
+                    sort={sort}
+                    onSort={toggle}
+                    className="!px-2 !py-2"
+                  />
+                  <SortableTh
+                    label="יתרה לגבייה"
+                    columnKey="collection"
+                    sort={sort}
+                    onSort={toggle}
+                    className="!px-2 !py-2"
+                  />
                 </tr>
               </thead>
               <tbody>
@@ -338,7 +391,24 @@ export function FinanceProjects() {
                       </div>
                     </td>
                     <td className="px-2 py-3 text-[var(--text-mid)]">
-                      {r.clientName}
+                      {r.project.clientId &&
+                      r.clientName !== 'לקוח לא ידוע' &&
+                      r.clientName !== 'פנימי' &&
+                      r.clientName !== 'ללא לקוח' ? (
+                        <FinanceClickable
+                          title="כרטיס פיננסי ללקוח"
+                          onClick={() =>
+                            setClientCard({
+                              clientId: r.project.clientId,
+                              clientName: r.clientName,
+                            })
+                          }
+                        >
+                          {r.clientName}
+                        </FinanceClickable>
+                      ) : (
+                        r.clientName
+                      )}
                     </td>
                     <td className="px-2 py-3">
                       <Badge
@@ -408,6 +478,7 @@ export function FinanceProjects() {
           <ProjectFinanceSection
             project={openRow.project}
             client={openClient}
+            onClientClick={setClientCard}
           />
         ) : null}
       </Modal>
@@ -419,7 +490,10 @@ export function FinanceProjects() {
         size="xl"
       >
         {hostingOpen ? (
-          <HostingFinanceSection filterTypes={['monthly', 'yearly']} />
+          <HostingFinanceSection
+            filterTypes={['monthly', 'yearly']}
+            onClientClick={setClientCard}
+          />
         ) : null}
       </Modal>
 
@@ -434,9 +508,16 @@ export function FinanceProjects() {
             filterTypes={['portal_monthly']}
             includeExpenses={false}
             noun="פורטל"
+            onClientClick={setClientCard}
           />
         ) : null}
       </Modal>
+
+      <ClientFinanceCardModal
+        target={clientCard}
+        onClose={() => setClientCard(null)}
+        clientNameById={clientNameById}
+      />
     </div>
   )
 }

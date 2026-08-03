@@ -9,9 +9,14 @@ import {
   type FinanceMetricId,
 } from '../components/finance/FinanceKpiDetailModal'
 import {
+  ClientFinanceCardModal,
+  type ClientFinanceTarget,
+} from '../components/finance/ClientFinanceCardModal'
+import {
   FinancePnlMonthDetailModal,
   type PnlMonthDetail,
 } from '../components/finance/FinancePnlMonthDetailModal'
+import { FinancePnlChart } from '../components/finance/FinancePnlChart'
 import { FinancePeriodFilter } from '../components/finance/FinancePeriodFilter'
 import { useFinancePeriodFilter } from '../hooks/useFinancePeriodFilter'
 import { useClients } from '../hooks/useClients'
@@ -46,6 +51,7 @@ export function Finance() {
   const [pnlMonthDetail, setPnlMonthDetail] = useState<PnlMonthDetail | null>(
     null,
   )
+  const [clientCard, setClientCard] = useState<ClientFinanceTarget | null>(null)
 
   const projectIdsForClient = useMemo(() => {
     if (!filterClientId) return new Set<string>()
@@ -473,6 +479,21 @@ export function Finance() {
             </table>
           </div>
         )}
+
+        {!loading && pnlRows.length > 0 ? (
+          <div className="mt-4">
+            <FinancePnlChart
+              rows={pnlRows}
+              onMonthClick={(row) =>
+                setPnlMonthDetail({
+                  ym: row.ym,
+                  label: row.label,
+                  kind: 'income',
+                })
+              }
+            />
+          </div>
+        ) : null}
       </section>
 
       <FinanceKpiDetailModal
@@ -486,6 +507,7 @@ export function Finance() {
         clientNameById={clientNameById}
         projectNameById={projectNameById}
         periodLabel={period.filterRangeLabel}
+        onClientClick={setClientCard}
       />
 
       <FinancePnlMonthDetailModal
@@ -494,6 +516,13 @@ export function Finance() {
         incomes={incomes}
         expenses={expenses}
         expenseTypes={expenseTypes}
+        clientNameById={clientNameById}
+        onClientClick={setClientCard}
+      />
+
+      <ClientFinanceCardModal
+        target={clientCard}
+        onClose={() => setClientCard(null)}
         clientNameById={clientNameById}
       />
     </div>

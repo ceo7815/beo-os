@@ -31,6 +31,9 @@ import {
 } from '../lib/foreignCurrency'
 import { formatNis, monthLabelHe } from '../lib/financeCalc'
 import { formatDateIL } from '../lib/dates'
+import { sortByKey, useTableSort } from '../lib/financeTableSort'
+import { FinanceClickable } from '../components/finance/FinanceClickable'
+import { SortableTh } from '../components/finance/SortableTh'
 import type { FinanceExpense } from '../types'
 
 type StatusFilter = 'open' | 'closed' | 'all'
@@ -52,6 +55,11 @@ export function FinanceReconciliation() {
   const attention = useFinanceAttention(period.filterYmFrom, period.filterYmTo)
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open')
+  /** סינון מהיר בלחיצה על שם ספק — UX בלבד */
+  const [nameQuickFilter, setNameQuickFilter] = useState('')
+  const { sort: reconSort, toggle: toggleReconSort } = useTableSort<
+    'date' | 'amount'
+  >('date', 'desc')
   const [attaching, setAttaching] = useState<FinanceExpense | null>(null)
 
   const typeById = useMemo(() => expenseTypeMap(expenseTypes), [expenseTypes])
@@ -94,10 +102,25 @@ export function FinanceReconciliation() {
   }, [rows])
 
   const visibleRows = useMemo(() => {
-    if (statusFilter === 'all') return rows
-    const wantOpen = statusFilter === 'open'
-    return rows.filter((r) => isOpenReconciliationRow(r) === wantOpen)
-  }, [rows, statusFilter])
+    let list =
+      statusFilter === 'all'
+        ? rows
+        : rows.filter(
+            (r) =>
+              isOpenReconciliationRow(r) === (statusFilter === 'open'),
+          )
+    const term = nameQuickFilter.trim().toLowerCase()
+    if (term) {
+      list = list.filter((r) =>
+        merchantLabel(r.expense).toLowerCase().includes(term),
+      )
+    }
+    return sortByKey(list, reconSort, (row, key) =>
+      key === 'amount'
+        ? row.expense.amount
+        : reconciliationRowDate(row.expense),
+    )
+  }, [rows, statusFilter, nameQuickFilter, reconSort])
 
   function handlePrint() {
     printBankReconciliationReport(
@@ -201,31 +224,43 @@ export function FinanceReconciliation() {
                 : ' · הכל סגור'}
             </p>
           </div>
-          <div className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1">
-            {(
-              [
-                ['open', `ממתינות (${totals.openCount})`],
-                ['closed', `סגורות (${totals.closedCount})`],
-                ['all', `הכל (${rows.length})`],
-              ] as const
-            ).map(([id, label]) => (
+          <div className="flex flex-wrap items-center gap-2">
+            {nameQuickFilter.trim() ? (
               <button
-                key={id}
                 type="button"
-                onClick={() => setStatusFilter(id)}
-                className={
-                  statusFilter === id
-                    ? id === 'closed'
-                      ? 'rounded-[8px] bg-[#DCFCE7] px-2.5 py-1.5 text-[11px] font-bold text-[#166534]'
-                      : id === 'open'
-                        ? 'rounded-[8px] bg-[#FEF3C7] px-2.5 py-1.5 text-[11px] font-bold text-[#92400E]'
-                        : 'rounded-[8px] bg-[var(--orange)] px-2.5 py-1.5 text-[11px] font-bold text-white'
-                    : 'rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-black/[0.03]'
-                }
+                onClick={() => setNameQuickFilter('')}
+                className="rounded-[8px] border border-[var(--orange)] bg-[var(--orange-light)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--orange)]"
+                title="נקה סינון שם"
               >
-                {label}
+                שם: {nameQuickFilter} ×
               </button>
-            ))}
+            ) : null}
+            <div className="flex flex-wrap gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1">
+              {(
+                [
+                  ['open', `ממתינות (${totals.openCount})`],
+                  ['closed', `סגורות (${totals.closedCount})`],
+                  ['all', `הכל (${rows.length})`],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setStatusFilter(id)}
+                  className={
+                    statusFilter === id
+                      ? id === 'closed'
+                        ? 'rounded-[8px] bg-[#DCFCE7] px-2.5 py-1.5 text-[11px] font-bold text-[#166534]'
+                        : id === 'open'
+                          ? 'rounded-[8px] bg-[#FEF3C7] px-2.5 py-1.5 text-[11px] font-bold text-[#92400E]'
+                          : 'rounded-[8px] bg-[var(--orange)] px-2.5 py-1.5 text-[11px] font-bold text-white'
+                      : 'rounded-[8px] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-mid)] hover:bg-black/[0.03]'
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -253,9 +288,19 @@ export function FinanceReconciliation() {
             <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-[1]">
                 <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
-                  <th className="px-2.5 py-2.5 text-right">תאריך</th>
+                  <SortableTh
+                    label="תאריך"
+                    columnKey="date"
+                    sort={reconSort}
+                    onSort={toggleReconSort}
+                  />
                   <th className="px-2.5 py-2.5 text-right">ספק / תיאור</th>
-                  <th className="px-2.5 py-2.5 text-right">סכום</th>
+                  <SortableTh
+                    label="סכום"
+                    columnKey="amount"
+                    sort={reconSort}
+                    onSort={toggleReconSort}
+                  />
                   <th className="px-2.5 py-2.5 text-right">אמצעי</th>
                   <th className="px-2.5 py-2.5 text-right">סטטוס · חשבונית</th>
                   <th className="px-2.5 py-2.5 text-right" />
@@ -305,9 +350,12 @@ export function FinanceReconciliation() {
                         </div>
                       </td>
                       <td className="px-2.5 py-3 align-top">
-                        <div className="font-semibold text-[var(--text-dark)]">
+                        <FinanceClickable
+                          title="סנן לפי ספק"
+                          onClick={() => setNameQuickFilter(merchantLabel(exp))}
+                        >
                           {merchantLabel(exp)}
-                        </div>
+                        </FinanceClickable>
                         <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--text-mid)]">
                           <span>{typeDef?.label ?? exp.type}</span>
                           <span aria-hidden>·</span>

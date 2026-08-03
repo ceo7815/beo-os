@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { formatDateIL } from '../../lib/dates'
 import {
   formatNis,
@@ -27,11 +27,17 @@ import {
   buildInvoiceToReceiptMap,
 } from '../../lib/incomeDocumentPairs'
 import { incomePaymentDate } from '../../lib/financeIncomePayment'
+import { sortByKey, useTableSort } from '../../lib/financeTableSort'
 import { resolveIncomeVat } from '../../lib/israeliVat'
 import type { FinanceIncome } from '../../types'
+import type { ClientFinanceTarget } from './ClientFinanceCardModal'
+import { FinanceClickable } from './FinanceClickable'
 import { GreenInvoiceBadge } from './GreenInvoiceBadge'
 import { QuickCreateProjectModal } from './QuickCreateProjectModal'
+import { SortableTh } from './SortableTh'
 import { HubDropdownSelect } from '../shared/HubDropdownSelect'
+
+type IncomeSortKey = 'date' | 'client' | 'gross' | 'status'
 
 export { HOSTING_ASSIGN_PREFIX, HOURLY_ASSIGN_PREFIX } from '../../lib/financeProjectAssign'
 
@@ -63,6 +69,22 @@ function assignOptionsForRow(
   })
 }
 
+function rowDisplayDate(row: FinanceIncome): string {
+  const kind = incomeDocumentKind(row)
+  return kind === 'tax_invoice_receipt' || kind === 'receipt'
+    ? incomePaymentDate(row)
+    : row.invoiceDate
+}
+
+function rowClientLabel(
+  row: FinanceIncome,
+  clientNameById: Map<string, string>,
+): string {
+  return (
+    clientNameById.get(row.clientId) ?? row.greenInvoiceClientName ?? '—'
+  )
+}
+
 export function IncomeDocumentsTable({
   rows,
   clientNameById,
@@ -70,6 +92,7 @@ export function IncomeDocumentsTable({
   projectsForAssign,
   hourlyServicesForAssign,
   onAssignProject,
+  onClientClick,
 }: {
   rows: FinanceIncome[]
   clientNameById: Map<string, string>
@@ -78,6 +101,8 @@ export function IncomeDocumentsTable({
   projectsForAssign?: { id: string; name: string; clientId?: string }[]
   hourlyServicesForAssign?: HourlyAssignSource[]
   onAssignProject?: (incomeId: string, projectId: string) => void
+  /** לחיצה על שם לקוח — פתיחת כרטיס פיננסי */
+  onClientClick?: (target: ClientFinanceTarget) => void
 }) {
   const editableProjects = !!projectsForAssign && !!onAssignProject
   const hourlyServices = hourlyServicesForAssign ?? []
@@ -91,6 +116,20 @@ export function IncomeDocumentsTable({
     clientId: string
     clientName: string
   } | null>(null)
+  const { sort, toggle } = useTableSort<IncomeSortKey>('date', 'desc')
+  const getSortValue = useCallback(
+    (row: FinanceIncome, key: IncomeSortKey): string | number => {
+      if (key === 'date') return rowDisplayDate(row)
+      if (key === 'client') return rowClientLabel(row, clientNameById)
+      if (key === 'gross') return resolveIncomeVat(row).gross
+      return row.status
+    },
+    [clientNameById],
+  )
+  const sortedRows = useMemo(
+    () => sortByKey(rows, sort, getSortValue),
+    [rows, sort, getSortValue],
+  )
   const receiptToInvoice = useMemo(
     () => buildIncomeDocumentPairMap(rows),
     [rows],
@@ -128,26 +167,46 @@ export function IncomeDocumentsTable({
         <thead className="sticky top-0 z-[1]">
           <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
             <th className="px-2.5 py-2.5 text-right">סוג מסמך</th>
-            <th className="px-2.5 py-2.5 text-right">תאריך</th>
-            <th className="px-2.5 py-2.5 text-right">לקוח</th>
+            <SortableTh
+              label="תאריך"
+              columnKey="date"
+              sort={sort}
+              onSort={toggle}
+            />
+            <SortableTh
+              label="לקוח"
+              columnKey="client"
+              sort={sort}
+              onSort={toggle}
+              defaultDir="asc"
+            />
             <th className="px-2.5 py-2.5 text-right">פרויקט</th>
-            <th className="px-2.5 py-2.5 text-right">ברוטו</th>
+            <SortableTh
+              label="ברוטו"
+              columnKey="gross"
+              sort={sort}
+              onSort={toggle}
+            />
             <th className="px-2.5 py-2.5 text-right">מע״מ</th>
             <th className="px-2.5 py-2.5 text-right">נטו</th>
-            <th className="px-2.5 py-2.5 text-right">סטטוס</th>
+            <SortableTh
+              label="סטטוס"
+              columnKey="status"
+              sort={sort}
+              onSort={toggle}
+              defaultDir="asc"
+            />
             <th className="px-2.5 py-2.5 text-right">מקור</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {sortedRows.map((row) => {
             const kind = incomeDocumentKind(row)
             const isReceipt = kind === 'receipt'
             const badge = INCOME_STATUS_STYLE[row.status]
             const vat = resolveIncomeVat(row)
-            const date =
-              kind === 'tax_invoice_receipt' || kind === 'receipt'
-                ? incomePaymentDate(row)
-                : row.invoiceDate
+            const date = rowDisplayDate(row)
+            const clientLabel = rowClientLabel(row, clientNameById)
             const pairedInvoice = isReceipt
               ? receiptToInvoice.get(row.id)
               : undefined
@@ -161,6 +220,7 @@ export function IncomeDocumentsTable({
             const receiptNum =
               pairedReceipt?.invoiceNumber ||
               pairedReceipt?.greenInvoiceNumber
+            const docNum = row.invoiceNumber || row.greenInvoiceNumber || ''
 
             return (
               <tr
@@ -199,13 +259,43 @@ export function IncomeDocumentsTable({
                 <td className="px-2.5 py-3 tabular-nums">
                   <div>{formatDateIL(date)}</div>
                   <div className="mt-0.5 text-[10px] text-[var(--text-mid)]">
-                    #{row.invoiceNumber || row.greenInvoiceNumber || '—'}
+                    {docNum ? (
+                      <FinanceClickable
+                        className="text-[10px] font-semibold text-[var(--text-mid)]"
+                        title="העתק מספר מסמך"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(docNum)
+                        }}
+                      >
+                        #{docNum}
+                      </FinanceClickable>
+                    ) : (
+                      '#—'
+                    )}
                   </div>
                 </td>
                 <td className="px-2.5 py-3">
-                  {clientNameById.get(row.clientId) ??
-                    row.greenInvoiceClientName ??
-                    '—'}
+                  {clientLabel !== '—' ? (
+                    <FinanceClickable
+                      title="כרטיס פיננסי ללקוח"
+                      onClick={
+                        onClientClick
+                          ? () =>
+                              onClientClick({
+                                clientId: row.clientId?.trim() || undefined,
+                                clientName: clientLabel,
+                                guestName: !row.clientId?.trim()
+                                  ? clientLabel
+                                  : undefined,
+                              })
+                          : undefined
+                      }
+                    >
+                      {clientLabel}
+                    </FinanceClickable>
+                  ) : (
+                    '—'
+                  )}
                 </td>
                 <td className="px-2.5 py-3">
                   {isReceipt ? (

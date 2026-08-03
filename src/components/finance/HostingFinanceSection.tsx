@@ -16,6 +16,7 @@ import { useFinanceExpenses } from '../../hooks/useFinanceExpenses'
 import { useFinanceExpenseTypes } from '../../hooks/useFinanceExpenseTypes'
 import { FinanceHeroCard, FinanceMiniStat } from './FinanceKpi'
 import { IncomeDocumentsTable } from './IncomeDocumentsTable'
+import type { ClientFinanceTarget } from './ClientFinanceCardModal'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
 
 type HostingFinanceSectionProps = {
@@ -25,12 +26,14 @@ type HostingFinanceSectionProps = {
   includeExpenses?: boolean
   /** מילה לתצוגה: "אחסון" / "פורטל" */
   noun?: string
+  onClientClick?: (target: ClientFinanceTarget) => void
 }
 
 export function HostingFinanceSection({
   filterTypes,
   includeExpenses = true,
   noun = 'אחסון',
+  onClientClick,
 }: HostingFinanceSectionProps = {}) {
   const { clients } = useClients()
   const { incomes } = useFinanceIncomes()
@@ -257,6 +260,7 @@ export function HostingFinanceSection({
                               )}
                               clientNameById={clientNameById}
                               projectNameById={projectNameById}
+                              onClientClick={onClientClick}
                             />
                           </td>
                         </tr>
@@ -283,6 +287,7 @@ export function HostingFinanceSection({
             )}
             clientNameById={clientNameById}
             projectNameById={projectNameById}
+            onClientClick={onClientClick}
           />
         )}
       </section>

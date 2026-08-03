@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react'
 import { todayYmd } from '../../lib/dates'
 import { formatDateIL } from '../../lib/dates'
 import {
@@ -6,7 +7,11 @@ import {
   INCOME_STATUS_STYLE,
 } from '../../lib/financeCalc'
 import { incomeOutstandingAmount } from '../../lib/financeIncomePayment'
+import { sortByKey, useTableSort } from '../../lib/financeTableSort'
 import type { FinanceIncome } from '../../types'
+import type { ClientFinanceTarget } from './ClientFinanceCardModal'
+import { FinanceClickable } from './FinanceClickable'
+import { SortableTh } from './SortableTh'
 
 function daysOpen(invoiceDate: string, today = todayYmd()): number {
   const due = invoiceDate.slice(0, 10)
@@ -16,15 +21,41 @@ function daysOpen(invoiceDate: string, today = todayYmd()): number {
   return Math.max(0, Math.floor(ms / 86400000))
 }
 
+type CollectionSortKey = 'date' | 'client' | 'amount' | 'outstanding' | 'days'
+
 export function CollectionGiTable({
   rows,
   clientNameById,
   projectNameById,
+  onClientClick,
 }: {
   rows: FinanceIncome[]
   clientNameById: Map<string, string>
   projectNameById: Map<string, string>
+  onClientClick?: (target: ClientFinanceTarget) => void
 }) {
+  const { sort, toggle } = useTableSort<CollectionSortKey>('date', 'desc')
+  const getSortValue = useCallback(
+    (row: FinanceIncome, key: CollectionSortKey): string | number => {
+      if (key === 'date') return row.invoiceDate
+      if (key === 'client') {
+        return (
+          clientNameById.get(row.clientId) ??
+          row.greenInvoiceClientName ??
+          ''
+        )
+      }
+      if (key === 'amount') return row.amount
+      if (key === 'outstanding') return incomeOutstandingAmount(row)
+      return daysOpen(row.invoiceDate)
+    },
+    [clientNameById],
+  )
+  const sortedRows = useMemo(
+    () => sortByKey(rows, sort, getSortValue),
+    [rows, sort, getSortValue],
+  )
+
   if (rows.length === 0) {
     return (
       <p className="py-4 text-center text-sm text-[var(--text-mid)]">
@@ -48,18 +79,44 @@ export function CollectionGiTable({
       <table className="w-full min-w-[900px] border-collapse text-sm">
         <thead className="sticky top-0 z-[1]">
           <tr className="border-b border-[var(--border)] bg-[var(--surface-muted)]/80 text-[11px] font-bold text-[var(--text-mid)] backdrop-blur-sm">
-            <th className="px-2.5 py-2.5 text-right">תאריך מסמך</th>
+            <SortableTh
+              label="תאריך מסמך"
+              columnKey="date"
+              sort={sort}
+              onSort={toggle}
+            />
             <th className="px-2.5 py-2.5 text-right">מספר</th>
-            <th className="px-2.5 py-2.5 text-right">לקוח</th>
+            <SortableTh
+              label="לקוח"
+              columnKey="client"
+              sort={sort}
+              onSort={toggle}
+              defaultDir="asc"
+            />
             <th className="px-2.5 py-2.5 text-right">פרויקט</th>
-            <th className="px-2.5 py-2.5 text-right">סכום</th>
-            <th className="px-2.5 py-2.5 text-right">יתרה פתוחה</th>
-            <th className="px-2.5 py-2.5 text-right">ימים פתוח</th>
+            <SortableTh
+              label="סכום"
+              columnKey="amount"
+              sort={sort}
+              onSort={toggle}
+            />
+            <SortableTh
+              label="יתרה פתוחה"
+              columnKey="outstanding"
+              sort={sort}
+              onSort={toggle}
+            />
+            <SortableTh
+              label="ימים פתוח"
+              columnKey="days"
+              sort={sort}
+              onSort={toggle}
+            />
             <th className="px-2.5 py-2.5 text-right">סטטוס</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {sortedRows.map((row) => {
             const badge = INCOME_STATUS_STYLE[row.status]
             const openDays = daysOpen(row.invoiceDate)
             const outstanding = incomeOutstandingAmount(row)
@@ -68,6 +125,10 @@ export function CollectionGiTable({
               (typeof row.paidAmount === 'number' &&
                 row.paidAmount > 0 &&
                 outstanding > 0)
+            const clientLabel =
+              clientNameById.get(row.clientId) ??
+              row.greenInvoiceClientName ??
+              '—'
             return (
               <tr
                 key={`${row.id}-${row.invoiceDate}`}
@@ -86,9 +147,27 @@ export function CollectionGiTable({
                   #{row.invoiceNumber || row.greenInvoiceNumber || '—'}
                 </td>
                 <td className="px-2.5 py-3">
-                  {clientNameById.get(row.clientId) ??
-                    row.greenInvoiceClientName ??
-                    '—'}
+                  {clientLabel !== '—' ? (
+                    <FinanceClickable
+                      title="כרטיס פיננסי ללקוח"
+                      onClick={
+                        onClientClick
+                          ? () =>
+                              onClientClick({
+                                clientId: row.clientId?.trim() || undefined,
+                                clientName: clientLabel,
+                                guestName: !row.clientId?.trim()
+                                  ? clientLabel
+                                  : undefined,
+                              })
+                          : undefined
+                      }
+                    >
+                      {clientLabel}
+                    </FinanceClickable>
+                  ) : (
+                    '—'
+                  )}
                 </td>
                 <td className="px-2.5 py-3">
                   {projectNameById.get(row.projectId) ?? '—'}

@@ -5,6 +5,10 @@ import { FinancePeriodFilter } from '../components/finance/FinancePeriodFilter'
 import { FinanceKpiCard } from '../components/finance/FinanceKpi'
 import { GreenInvoiceBadge } from '../components/finance/GreenInvoiceBadge'
 import {
+  ClientFinanceCardModal,
+  type ClientFinanceTarget,
+} from '../components/finance/ClientFinanceCardModal'
+import {
   IncomeDocumentsTable,
   HOURLY_ASSIGN_PREFIX,
   HOSTING_ASSIGN_PREFIX,
@@ -48,6 +52,7 @@ export function Income() {
   const [detailKind, setDetailKind] = useState<NormalizedIncomeDocumentKind | null>(
     null,
   )
+  const [clientCard, setClientCard] = useState<ClientFinanceTarget | null>(null)
 
   const filters = useMemo(
     () => ({
@@ -226,6 +231,7 @@ export function Income() {
             projectNameById={projectNameById}
             projectsForAssign={projects}
             hourlyServicesForAssign={hourlyServices}
+            onClientClick={setClientCard}
             onAssignProject={(incomeId, value) => {
               if (value.startsWith(HOSTING_ASSIGN_PREFIX)) {
                 const hostingType = value.slice(
@@ -286,10 +292,17 @@ export function Income() {
               clientNameById={clientNameById}
               projectNameById={projectNameById}
               hourlyServicesForAssign={hourlyServices}
+              onClientClick={setClientCard}
             />
           </div>
         ) : null}
       </Modal>
+
+      <ClientFinanceCardModal
+        target={clientCard}
+        onClose={() => setClientCard(null)}
+        clientNameById={clientNameById}
+      />
     </div>
   )
 }

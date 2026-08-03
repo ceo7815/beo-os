@@ -1,6 +1,9 @@
+import type { ReactNode } from 'react'
 import { Modal } from '../shared/Modal'
 import { formatDateIL } from '../../lib/dates'
 import { formatNis, type FinanceSummary } from '../../lib/financeCalc'
+import type { ClientFinanceTarget } from './ClientFinanceCardModal'
+import { FinanceClickable } from './FinanceClickable'
 import {
   FINANCE_INCOME_DOCUMENT_LABELS,
   incomeDocumentKind,
@@ -75,13 +78,18 @@ function FormulaBlock({ rows }: { rows: FormulaRow[] }) {
   )
 }
 
+type SourceCell =
+  | string
+  | { text: string; className?: string }
+  | { node: ReactNode; className?: string }
+
 function SourceTable({
   columns,
   rows,
   empty,
 }: {
   columns: string[]
-  rows: (string | { text: string; className?: string })[][]
+  rows: SourceCell[][]
   empty: string
 }) {
   if (rows.length === 0) {
@@ -113,15 +121,22 @@ function SourceTable({
               className="border-b border-[var(--border)] last:border-0"
             >
               {cells.map((cell, ci) => {
-                const isObj = typeof cell === 'object'
-                const text = isObj ? cell.text : cell
-                const cls = isObj ? cell.className : undefined
+                const isObj = typeof cell === 'object' && cell !== null
+                const hasNode = isObj && 'node' in cell
+                const text =
+                  !isObj ? cell : hasNode ? null : (cell as { text: string }).text
+                const node = hasNode
+                  ? (cell as { node: ReactNode }).node
+                  : null
+                const cls = isObj
+                  ? (cell as { className?: string }).className
+                  : undefined
                 return (
                   <td
                     key={ci}
                     className={`px-2.5 py-2 ${ci === cells.length - 1 ? 'text-left tabular-nums font-bold' : 'text-right'} ${cls ?? ''}`}
                   >
-                    {text}
+                    {node ?? text}
                   </td>
                 )
               })}
@@ -156,6 +171,7 @@ export function FinanceKpiDetailModal({
   clientNameById,
   projectNameById,
   periodLabel,
+  onClientClick,
 }: {
   metric: FinanceMetricId | null
   onClose: () => void
@@ -170,7 +186,29 @@ export function FinanceKpiDetailModal({
   clientNameById: Map<string, string>
   projectNameById: Map<string, string>
   periodLabel: string
+  onClientClick?: (target: ClientFinanceTarget) => void
 }) {
+  const clientCell = (inc: FinanceIncome): SourceCell => {
+    const label =
+      clientNameById.get(inc.clientId) ?? inc.greenInvoiceClientName ?? '—'
+    if (label === '—' || !onClientClick) return label
+    return {
+      node: (
+        <FinanceClickable
+          title="כרטיס פיננסי ללקוח"
+          onClick={() =>
+            onClientClick({
+              clientId: inc.clientId?.trim() || undefined,
+              clientName: label,
+              guestName: !inc.clientId?.trim() ? label : undefined,
+            })
+          }
+        >
+          {label}
+        </FinanceClickable>
+      ),
+    }
+  }
   if (!metric) return null
 
   const expenseTypeById = new Map(expenseTypes.map((t) => [t.id, t]))
@@ -227,7 +265,7 @@ export function FinanceKpiDetailModal({
           return [
             FINANCE_INCOME_DOCUMENT_LABELS[r.kind],
             formatDateIL(r.date),
-            r.client,
+            clientCell(inc),
             formatNis(r.vat.gross),
           ]
         })}
@@ -245,7 +283,7 @@ export function FinanceKpiDetailModal({
           return [
             FINANCE_INCOME_DOCUMENT_LABELS[r.kind],
             formatDateIL(r.date),
-            r.client,
+            clientCell(inc),
             { text: formatNis(r.vat.vat), className: 'text-[#6366F1]' },
           ]
         })}
@@ -406,17 +444,13 @@ export function FinanceKpiDetailModal({
         rows={sorted.map((inc) => {
           const vat = resolveIncomeVat(inc)
           const outstanding = incomeOutstandingAmount(inc)
-          const client =
-            clientNameById.get(inc.clientId) ??
-            inc.greenInvoiceClientName ??
-            '—'
           const project = inc.projectId
             ? (projectNameById.get(inc.projectId) ?? '—')
             : '—'
           return [
             `#${inc.invoiceNumber || inc.greenInvoiceNumber || '—'}`,
             formatDateIL(inc.invoiceDate),
-            client,
+            clientCell(inc),
             project,
             formatNis(vat.gross),
             {
