@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { Badge } from '../components/shared/Badge'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { Modal } from '../components/shared/Modal'
 import { useClients } from '../hooks/useClients'
 import { useHourlyServices } from '../hooks/useHourlyServices'
@@ -20,6 +21,7 @@ import {
   HOURLY_SERVICE_STATUS_LABEL,
 } from '../lib/hourlyServiceLabels'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportHourlyServicesToExcel } from '../lib/excelTableExports'
 import type { HourlyServiceKind, HourlyServiceStatus } from '../types'
 
 type FilterStatus = 'all' | HourlyServiceStatus
@@ -130,16 +132,30 @@ export function HourlyServices() {
             בנקי שעות ללקוחות — חבילה, תאריכי ביצוע ותיעוד עבודה (ללא חשבונות חודשיים).
           </p>
         </div>
-        <button
-          type="button"
-          className={uiBtnBrand}
-          onClick={() => {
-            setForm(emptyForm())
-            setModalOpen(true)
-          }}
-        >
-          + בנק שעות חדש
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton
+            onClick={() =>
+              exportHourlyServicesToExcel({
+                services: rows,
+                entries,
+                clientNameById: new Map(
+                  clients.map((c) => [c.id, c.name] as const),
+                ),
+              })
+            }
+            disabled={rows.length === 0 && entries.length === 0}
+          />
+          <button
+            type="button"
+            className={uiBtnBrand}
+            onClick={() => {
+              setForm(emptyForm())
+              setModalOpen(true)
+            }}
+          >
+            + בנק שעות חדש
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 [&>*]:min-w-0">

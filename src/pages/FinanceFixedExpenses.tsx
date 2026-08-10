@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '../components/shared/EmptyState'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { FinanceKpiCard } from '../components/finance/FinanceKpi'
 import { FinanceTabs } from '../components/finance/FinanceTabs'
 import { SortableTh } from '../components/finance/SortableTh'
@@ -18,6 +19,7 @@ import {
   groupToCatalogItem,
 } from '../lib/fixedExpenses'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportFixedExpensesCatalogToExcel } from '../lib/excelTableExports'
 import type { FinanceFixedExpenseCatalogItem, FinancePaymentMethod } from '../types'
 
 type SortKey = 'name' | 'type' | 'amount' | 'payment' | 'timing'
@@ -203,13 +205,24 @@ export function FinanceFixedExpenses() {
 
   return (
     <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
-      <header>
-        <h1 className="text-[22px] font-extrabold text-[var(--text-dark)] md:text-[26px]">
-          הוצאות קבועות
-        </h1>
-        <p className="mt-1.5 text-[12px] text-[var(--text-mid)] md:text-[13px]">
-          רק הרשימה השמורה כאן נכנסת לתחזית התזרים — ערכו ולחצו «שמור הוצאות קבועות»
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[22px] font-extrabold text-[var(--text-dark)] md:text-[26px]">
+            הוצאות קבועות
+          </h1>
+          <p className="mt-1.5 text-[12px] text-[var(--text-mid)] md:text-[13px]">
+            רק הרשימה השמורה כאן נכנסת לתחזית התזרים — ערכו ולחצו «שמור הוצאות קבועות»
+          </p>
+        </div>
+        <ExportExcelButton
+          onClick={() =>
+            exportFixedExpensesCatalogToExcel({
+              items: draft,
+              expenseTypeById: typeMap,
+            })
+          }
+          disabled={draft.length === 0}
+        />
       </header>
 
       <FinanceTabs badges={attention} />

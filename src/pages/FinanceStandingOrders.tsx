@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { EmptyState } from '../components/shared/EmptyState'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { FinanceKpiCard } from '../components/finance/FinanceKpi'
 import { GreenInvoiceBadge } from '../components/finance/GreenInvoiceBadge'
 import {
@@ -21,6 +22,7 @@ import {
   isGiRecurringActive,
 } from '../lib/giRecurringDisplay'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportGiStandingOrdersToExcel } from '../lib/excelTableExports'
 import type { FinanceGiRecurringPayment } from '../types'
 
 type SortKey = 'client' | 'amount' | 'interval' | 'next' | 'status'
@@ -88,13 +90,21 @@ export function FinanceStandingOrders() {
 
   return (
     <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
-      <header>
-        <h1 className="text-[22px] font-extrabold text-[var(--text-dark)] md:text-[26px]">
-          הוראות קבע
-        </h1>
-        <p className="mt-1.5 text-[12px] text-[var(--text-mid)] md:text-[13px]">
-          הוראות קבע פעילות מחשבונית ירוקה · מתעדכן בכל סנכרון הכנסות
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[22px] font-extrabold text-[var(--text-dark)] md:text-[26px]">
+            הוראות קבע
+          </h1>
+          <p className="mt-1.5 text-[12px] text-[var(--text-mid)] md:text-[13px]">
+            הוראות קבע פעילות מחשבונית ירוקה · מתעדכן בכל סנכרון הכנסות
+          </p>
+        </div>
+        <ExportExcelButton
+          onClick={() =>
+            exportGiStandingOrdersToExcel({ rows, clientNameById })
+          }
+          disabled={rows.length === 0}
+        />
       </header>
 
       <FinanceTabs badges={attention} />

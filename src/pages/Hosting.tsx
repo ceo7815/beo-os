@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type FormEvent } from 'react'
 import { formatDateIL, todayYmd } from '../lib/dates'
 import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { Modal } from '../components/shared/Modal'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { useClients } from '../hooks/useClients'
 import { useHosting } from '../hooks/useHosting'
 import type {
@@ -12,6 +13,7 @@ import type {
   HostingServerType,
 } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportHostingToExcel } from '../lib/excelTableExports'
 
 const PROVIDER_HINTS = [
   'Hostinger',
@@ -1001,6 +1003,15 @@ export function Hosting() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <ExportExcelButton
+            onClick={() =>
+              exportHostingToExcel({
+                records: filteredRecords,
+                clientNameById: clientById,
+              })
+            }
+            disabled={filteredRecords.length === 0}
+          />
           {records.length > 0 ? (
             <button
               type="button"

@@ -34,6 +34,8 @@ import { SupplierQuickSelect } from '../components/SupplierQuickSelect'
 import { Modal } from '../components/shared/Modal'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
+import { exportProjectsToExcel } from '../lib/excelTableExports'
 
 const PROJECT_COLORS = [
   '#6366F1',
@@ -493,9 +495,28 @@ export function Projects() {
             מעקב לפי סטטוס פרויקט
           </p>
         </div>
-        <button type="button" onClick={openNew} className={uiButtonBrand}>
-          + פרויקט חדש
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton
+            onClick={() =>
+              exportProjectsToExcel({
+                projects: filtered,
+                clientNameById: new Map(
+                  clients.map((c) => [c.id, c.name] as const),
+                ),
+                supplierNameById: new Map(
+                  suppliers.map((s) => [s.id, s.name] as const),
+                ),
+                ownerNameById: new Map(
+                  teamMembers.map((u) => [u.id, u.name] as const),
+                ),
+              })
+            }
+            disabled={filtered.length === 0}
+          />
+          <button type="button" onClick={openNew} className={uiButtonBrand}>
+            + פרויקט חדש
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

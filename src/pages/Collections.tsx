@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { EmptyState } from '../components/shared/EmptyState'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import {
   ClientFinanceCardModal,
   type ClientFinanceTarget,
@@ -30,6 +31,7 @@ import {
 } from '../lib/financeCalc'
 import { isOpenTransactionAccount } from '../lib/financeIncomeDocument'
 import { incomeOutstandingAmount } from '../lib/financeIncomePayment'
+import { exportCollectionsToExcel } from '../lib/excelTableExports'
 
 export function Collections() {
   const { clients } = useClients()
@@ -146,13 +148,25 @@ export function Collections() {
 
   return (
     <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-5 px-4 py-6 sm:px-8">
-      <header className="flex flex-col gap-1 text-right">
-        <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
-          גבייה
-        </h1>
-        <p className="text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-          חשבונות עסקה פתוחים · יתרות לגבייה · מסונכרן מחשבונית ירוקה
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between text-right">
+        <div>
+          <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
+            גבייה
+          </h1>
+          <p className="text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
+            חשבונות עסקה פתוחים · יתרות לגבייה · מסונכרן מחשבונית ירוקה
+          </p>
+        </div>
+        <ExportExcelButton
+          onClick={() =>
+            exportCollectionsToExcel({
+              rows: filteredRows,
+              clientNameById,
+              projectNameById,
+            })
+          }
+          disabled={filteredRows.length === 0}
+        />
       </header>
 
       <FinanceTabs badges={attention} />

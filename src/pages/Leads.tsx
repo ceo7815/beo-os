@@ -15,7 +15,9 @@ import { Badge } from '../components/shared/Badge'
 import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { LeadScheduleDateEditorModal } from '../components/leads/LeadScheduleDateEditorModal'
 import { Modal } from '../components/shared/Modal'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportLeadsToExcel } from '../lib/excelTableExports'
 import { memberIsSalesAgentFlag } from '../lib/salesAgent'
 
 /** ערך נשמר ב־Firestore בשדה `source` כשבוחרים מהרשימה הקבועה */
@@ -1132,9 +1134,21 @@ export function Leads() {
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">לידים</h1>
           <p className="mt-1 text-[13px] text-[var(--text-mid)]">ניהול ומעקב לידים לצוות</p>
         </div>
-        <button type="button" className="hub-btn-orange text-sm" onClick={() => setFormOpen((v) => !v)}>
-          {formOpen ? 'סגירה' : '+ ליד חדש'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton
+            onClick={() =>
+              exportLeadsToExcel({
+                leads: filtered,
+                clientNameById,
+                ownerNameById,
+              })
+            }
+            disabled={filtered.length === 0}
+          />
+          <button type="button" className="hub-btn-orange text-sm" onClick={() => setFormOpen((v) => !v)}>
+            {formOpen ? 'סגירה' : '+ ליד חדש'}
+          </button>
+        </div>
       </header>
 
       {!clientsLoading && clients.length === 0 ? (

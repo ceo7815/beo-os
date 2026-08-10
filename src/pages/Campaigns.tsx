@@ -11,7 +11,9 @@ import { ClientQuickSelect } from '../components/ClientQuickSelect'
 import { Badge } from '../components/shared/Badge'
 import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/HubDropdownSelect'
 import { Modal } from '../components/shared/Modal'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportCampaignsToExcel } from '../lib/excelTableExports'
 
 const platformLabels: Record<CampaignPlatform, string> = {
   instagram: 'אינסטגרם',
@@ -277,13 +279,27 @@ export function Campaigns() {
             ניהול קמפיינים עם שיוך ללקוח, פרויקט וספק
           </p>
         </div>
-        <button
-          type="button"
-          className={formOpen ? uiButtonGhost : uiButtonBrand}
-          onClick={() => setFormOpen((v) => !v)}
-        >
-          {formOpen ? 'סגירה' : '+ קמפיין חדש'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton
+            onClick={() =>
+              exportCampaignsToExcel({
+                campaigns: filtered,
+                clientNameById,
+                projectNameById,
+                supplierNameById,
+                performerNameById,
+              })
+            }
+            disabled={filtered.length === 0}
+          />
+          <button
+            type="button"
+            className={formOpen ? uiButtonGhost : uiButtonBrand}
+            onClick={() => setFormOpen((v) => !v)}
+          >
+            {formOpen ? 'סגירה' : '+ קמפיין חדש'}
+          </button>
+        </div>
       </header>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">

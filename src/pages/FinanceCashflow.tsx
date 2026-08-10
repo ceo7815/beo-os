@@ -7,6 +7,7 @@ import { ExpectedCollectionCard } from '../components/finance/ExpectedCollection
 import { FinanceExpectedExpensesPanel } from '../components/finance/FinanceExpectedExpensesPanel'
 import { FinanceHeroCard, FinanceMiniStat } from '../components/finance/FinanceKpi'
 import { EmptyState } from '../components/shared/EmptyState'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { useCashflowPeriodFilter } from '../hooks/useFinancePeriodFilter'
 import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import { useFinanceCashflow } from '../hooks/useFinanceCashflow'
@@ -24,6 +25,7 @@ import { formatDateIL, todayYmd } from '../lib/dates'
 import { isOpenTransactionAccount } from '../lib/financeIncomeDocument'
 import { incomeOutstandingAmount } from '../lib/financeIncomePayment'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportCashflowLedgerToExcel } from '../lib/excelTableExports'
 import { toastFsSuccess } from '../lib/fsToast'
 
 export function FinanceCashflow() {
@@ -288,11 +290,18 @@ export function FinanceCashflow() {
               <h3 className="text-[15px] font-extrabold text-[var(--text-dark)]">
                 יומן תזרים — כל התנועות ({ledgerRows.length - 1})
               </h3>
-              {forecast.missingExpectedDates > 0 ? (
-                <span className="rounded-full bg-[#FEF3C7] px-2.5 py-1 text-[11px] font-bold text-[#92400E]">
-                  {forecast.missingExpectedDates} חשבונות גבייה ללא תאריך צפי
-                </span>
-              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <ExportExcelButton
+                  onClick={() => exportCashflowLedgerToExcel(ledgerRows)}
+                  disabled={ledgerRows.length <= 1}
+                  className="px-3 py-1.5 text-xs"
+                />
+                {forecast.missingExpectedDates > 0 ? (
+                  <span className="rounded-full bg-[#FEF3C7] px-2.5 py-1 text-[11px] font-bold text-[#92400E]">
+                    {forecast.missingExpectedDates} חשבונות גבייה ללא תאריך צפי
+                  </span>
+                ) : null}
+              </div>
             </div>
             <p className="mb-3 text-[11px] text-[var(--text-mid)]">
               צפי יומי מסודר: מה נכנס, מה יוצא, יתרה זמינה, אופן תשלום והערות — כולל

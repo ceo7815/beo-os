@@ -15,6 +15,7 @@ import { useTasks } from '../hooks/useTasks'
 import { useHubStore } from '../store/useStore'
 import type { Supplier } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportSuppliersToExcel } from '../lib/suppliersExcelExport'
 
 function isValidEmailOptional(email: string): boolean {
   const t = email.trim()
@@ -139,6 +140,50 @@ export function Suppliers() {
       return hay.includes(q)
     })
   }, [sorted, query, supplierFilter])
+
+  const projectCountBySupplierId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of projects) {
+      const sid = (p.supplierId ?? '').trim()
+      if (!sid) continue
+      map.set(sid, (map.get(sid) ?? 0) + 1)
+    }
+    return map
+  }, [projects])
+
+  const campaignCountBySupplierId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const c of campaigns) {
+      const sid = (c.supplierId ?? '').trim()
+      if (!sid) continue
+      map.set(sid, (map.get(sid) ?? 0) + 1)
+    }
+    return map
+  }, [campaigns])
+
+  const taskCountBySupplierId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const t of tasks) {
+      const sid = (t.supplierId ?? '').trim()
+      if (!sid) continue
+      map.set(sid, (map.get(sid) ?? 0) + 1)
+    }
+    return map
+  }, [tasks])
+
+  const exportExcel = () => {
+    if (suppliers.length === 0) {
+      pushToast('אין ספקים לייצוא', 'error')
+      return
+    }
+    exportSuppliersToExcel({
+      suppliers,
+      projectCountBySupplierId,
+      campaignCountBySupplierId,
+      taskCountBySupplierId,
+    })
+    pushToast(`יוצאו ${suppliers.length} ספקים לאקסל`, 'success')
+  }
 
   const openNew = () => {
     setEditingId(null)
@@ -292,13 +337,22 @@ export function Suppliers() {
             רשימת ספקי ביצוע — הוספה ועריכה במקום אחד
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openNew}
-          className={`${uiButtonBrand} w-full justify-center sm:w-auto`}
-        >
-          + הוסף ספק
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={exportExcel}
+            className={`${uiButtonGhost} w-full justify-center sm:w-auto`}
+          >
+            ייצוא לאקסל
+          </button>
+          <button
+            type="button"
+            onClick={openNew}
+            className={`${uiButtonBrand} w-full justify-center sm:w-auto`}
+          >
+            + הוסף ספק
+          </button>
+        </div>
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:gap-4">

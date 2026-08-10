@@ -23,6 +23,8 @@ import { useTasks } from '../hooks/useTasks'
 import { useUsers } from '../hooks/useUsers'
 import type { Project, Task, TaskActivity, TaskStatus } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
+import { exportTasksToExcel } from '../lib/excelTableExports'
 
 /** תצוגת לוח למנהל מערכת: משימות שלי / כל הצוות / עובד ספציפי */
 type AdminTeamScope = 'mine' | 'all' | string
@@ -918,6 +920,18 @@ export function Tasks() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton
+            onClick={() =>
+              exportTasksToExcel({
+                tasks: filtered,
+                clientNameById: clientById,
+                projectNameById: projectById,
+                assigneeNameById: memberById,
+                supplierNameById: supplierById,
+              })
+            }
+            disabled={filtered.length === 0}
+          />
           <div
             className="inline-flex rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--surface-muted)] p-0.5 shadow-sm"
             role="group"

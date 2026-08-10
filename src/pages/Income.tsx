@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { EmptyState } from '../components/shared/EmptyState'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { Modal } from '../components/shared/Modal'
 import { FinancePeriodFilter } from '../components/finance/FinancePeriodFilter'
 import { FinanceKpiCard } from '../components/finance/FinanceKpi'
@@ -33,6 +34,7 @@ import {
 } from '../lib/financeIncomeDocument'
 import { resolveIncomeVat } from '../lib/israeliVat'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportIncomesToExcel } from '../lib/excelTableExports'
 import { FinanceTabs } from '../components/finance/FinanceTabs'
 import { useFinanceAttention } from '../hooks/useFinanceAttention'
 import type { FinanceHostingType } from '../types'
@@ -127,13 +129,25 @@ export function Income() {
 
   return (
     <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
-      <header>
-        <h1 className="text-[22px] font-extrabold text-[var(--text-dark)] md:text-[26px]">
-          הכנסות
-        </h1>
-        <p className="mt-1.5 text-[12px] text-[var(--text-mid)] md:text-[13px]">
-          מסמכי הכנסה מחשבונית ירוקה · קבלה = תקבול לאותה עסקה (לא נספרת פעמיים)
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-[22px] font-extrabold text-[var(--text-dark)] md:text-[26px]">
+            הכנסות
+          </h1>
+          <p className="mt-1.5 text-[12px] text-[var(--text-mid)] md:text-[13px]">
+            מסמכי הכנסה מחשבונית ירוקה · קבלה = תקבול לאותה עסקה (לא נספרת פעמיים)
+          </p>
+        </div>
+        <ExportExcelButton
+          onClick={() =>
+            exportIncomesToExcel({
+              rows: filteredRows,
+              clientNameById,
+              projectNameById,
+            })
+          }
+          disabled={filteredRows.length === 0}
+        />
       </header>
 
       <FinanceTabs badges={attention} />

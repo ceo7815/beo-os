@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '../components/shared/EmptyState'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { Modal } from '../components/shared/Modal'
 import { Badge } from '../components/shared/Badge'
 import {
@@ -24,6 +25,7 @@ import { computeHostingFinance } from '../lib/financeHosting'
 import { computeSummary, formatNis } from '../lib/financeCalc'
 import { formatDateIL } from '../lib/dates'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { exportFinanceProjectsToExcel } from '../lib/excelTableExports'
 import type { Project, ProjectStatus } from '../types'
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -177,7 +179,26 @@ export function FinanceProjects() {
             רווח והפסד, הכנסות, הוצאות וגבייה לכל פרויקט — לחיצה פותחת פירוט מלא
           </p>
         </div>
-        <GreenInvoiceBadge />
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton
+            onClick={() =>
+              exportFinanceProjectsToExcel(
+                filteredRows.map((r) => ({
+                  projectName: r.project.name,
+                  clientName: r.clientName,
+                  status: STATUS_LABEL[r.project.status],
+                  incomeGross: r.incomeGross,
+                  expenseGross: r.expenseGross,
+                  netProfit: r.netProfit,
+                  collectionBalance: r.collectionBalance,
+                  dueDate: r.project.dueDate,
+                })),
+              )
+            }
+            disabled={filteredRows.length === 0}
+          />
+          <GreenInvoiceBadge />
+        </div>
       </header>
 
       <FinanceTabs badges={attention} />

@@ -15,6 +15,7 @@ import { hubSectionClass } from '../lib/hubSectionBorder'
 import { memberIsSalesAgentFlag } from '../lib/salesAgent'
 import { ClientActivityModal } from '../components/ClientActivityModal'
 import { ClientsSyncButton } from '../components/ClientsSyncButton'
+import { exportClientsToExcel } from '../lib/clientsExcelExport'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -212,6 +213,34 @@ export function Clients() {
       .join(' · ')
   }
 
+  const projectCountByClientId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of projects) {
+      if (!p.clientId) continue
+      map.set(p.clientId, (map.get(p.clientId) ?? 0) + 1)
+    }
+    return map
+  }, [projects])
+
+  const teamNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of teamMembers) map.set(m.id, m.name)
+    return map
+  }, [teamMembers])
+
+  const exportExcel = () => {
+    if (clients.length === 0) {
+      pushToast('אין לקוחות לייצוא', 'error')
+      return
+    }
+    exportClientsToExcel({
+      clients,
+      projectCountByClientId,
+      teamNameById,
+    })
+    pushToast(`יוצאו ${clients.length} לקוחות לאקסל`, 'success')
+  }
+
   function ClientMobileCard({ c }: { c: Client }) {
     const statusLabel = c.status === 'active' ? 'פעיל' : 'לא פעיל'
     const statusColor = c.status === 'active' ? '#16A34A' : '#64748B'
@@ -322,6 +351,13 @@ export function Clients() {
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {canSetSalesAgent ? <ClientsSyncButton /> : null}
+          <button
+            type="button"
+            onClick={exportExcel}
+            className="rounded-[10px] border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-4 py-2 text-sm font-semibold text-[var(--orange)] transition hover:bg-[var(--orange-light)]"
+          >
+            ייצוא לאקסל
+          </button>
           <button type="button" onClick={openNew} className="hub-btn-primary text-sm">
             + לקוח חדש
           </button>

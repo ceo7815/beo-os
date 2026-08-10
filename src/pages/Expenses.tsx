@@ -4,6 +4,7 @@ import { ProjectQuickSelect } from '../components/ProjectQuickSelect'
 import { SupplierQuickSelect } from '../components/SupplierQuickSelect'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
 import { EmptyState } from '../components/shared/EmptyState'
+import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { ExpenseImportWizard } from '../components/finance/ExpenseImportWizard'
 import { ExpenseReconciliationBadge } from '../components/finance/ExpenseReconciliationPanel'
 import {
@@ -48,6 +49,7 @@ import {
   parseSalaryMonthFromText,
 } from '../lib/financeSalaryMonth'
 import { deriveExpensePnlMonth } from '../lib/financeExpensePnl'
+import { exportExpensesToExcel } from '../lib/excelTableExports'
 import {
   hasAttachedDocument,
   isGiOnlyRecord,
@@ -828,6 +830,22 @@ export function Expenses() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ExportExcelButton
+            onClick={() =>
+              exportExpensesToExcel({
+                expenses: visibleExpenses,
+                expenseTypeById,
+                clientNameById,
+                projectNameById,
+                supplierNameById: new Map(
+                  suppliers.map((s) => [s.id, s.name] as const),
+                ),
+                reconciliationStatusById: reconciliationById,
+                isClosed: isRowClosed,
+              })
+            }
+            disabled={visibleExpenses.length === 0}
+          />
           <button
             type="button"
             onClick={() => setImportOpen(true)}
