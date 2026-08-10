@@ -14,6 +14,12 @@ import {
   type MappedIncome,
 } from './documentMapper.js'
 import { mapMorningClient, type MappedClient } from './clientMapper.js'
+import {
+  mapMorningRecurringPayment,
+  mapMorningRetainer,
+  type MappedGiRecurringPayment,
+  type MappedGiRetainer,
+} from './morningRecurringMapper.js'
 
 const INCOMES_COLLECTION = 'financeIncomes'
 const CLIENTS_COLLECTION = 'clients'
@@ -92,6 +98,10 @@ export type MorningSyncPayload = {
   toDate: string
   clients: MappedClient[]
   incomes: MappedIncome[]
+  recurringPayments: MappedGiRecurringPayment[]
+  retainers: MappedGiRetainer[]
+  recurringFetchError?: string
+  retainersFetchError?: string
 }
 
 export type MorningClientsPayload = {
@@ -160,6 +170,37 @@ export async function fetchMorningSyncPayload(options?: {
   // תשלומים חלקיים בחשבונות עסקה פתוחים — ממסמכים מקושרים ב-GI
   await enrichOpenTransactionPartials(api, incomes)
 
+  let recurringPayments: MappedGiRecurringPayment[] = []
+  let retainers: MappedGiRetainer[] = []
+  let recurringFetchError: string | undefined
+  let retainersFetchError: string | undefined
+  try {
+    const rawRecurring = await api.searchAllRecurringPayments()
+    recurringPayments = rawRecurring
+      .map(mapMorningRecurringPayment)
+      .filter((x): x is MappedGiRecurringPayment => x != null)
+    console.info(
+      `[morning] recurring payments: fetched=${rawRecurring.length} active=${recurringPayments.length}`,
+    )
+  } catch (e) {
+    recurringFetchError =
+      e instanceof Error ? e.message : 'recurring payments fetch failed'
+    console.warn('[morning] recurring payments fetch failed:', e)
+  }
+  try {
+    const rawRetainers = await api.searchAllRetainers()
+    retainers = rawRetainers
+      .map(mapMorningRetainer)
+      .filter((x): x is MappedGiRetainer => x != null)
+    console.info(
+      `[morning] retainers: fetched=${rawRetainers.length} active=${retainers.length}`,
+    )
+  } catch (e) {
+    retainersFetchError =
+      e instanceof Error ? e.message : 'retainers fetch failed'
+    console.warn('[morning] retainers fetch failed:', e)
+  }
+
   return {
     ok: true,
     mode: 'client_write',
@@ -167,6 +208,10 @@ export async function fetchMorningSyncPayload(options?: {
     toDate,
     clients,
     incomes,
+    recurringPayments,
+    retainers,
+    recurringFetchError,
+    retainersFetchError,
   }
 }
 

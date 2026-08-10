@@ -49,6 +49,27 @@ export function MorningSyncPanel() {
           `לקוחות: ${result.clients.created} חדשים · ${result.clients.updated} עודכנו`,
         )
       }
+      if (result.recurringImported != null) {
+        parts.push(`הוראות קבע: ${result.recurringImported}`)
+      }
+      if (result.retainersImported != null) {
+        parts.push(`ריטיינרים: ${result.retainersImported}`)
+      }
+      if (result.recurringFetchError || result.retainersFetchError) {
+        pushToast(
+          [
+            result.recurringFetchError
+              ? `הוראות קבע: ${result.recurringFetchError}`
+              : null,
+            result.retainersFetchError
+              ? `ריטיינרים: ${result.retainersFetchError}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          'error',
+        )
+      }
       toastFsSuccess(`סנכרון הושלם — ${parts.join(' · ')}`)
     }
   }
@@ -109,7 +130,7 @@ export function MorningSyncPanel() {
           </h2>
           <p className="mt-1 max-w-xl text-[12px] leading-relaxed text-[var(--text-mid)]">
             {connected
-              ? `מושך מסמכים מ־${status?.fromDate ?? '—'} עד היום · לקוחות + הכנסות בלבד`
+              ? `מושך מסמכים מ־${status?.fromDate ?? '—'} עד היום · לקוחות + הכנסות + הוראות קבע + ריטיינרים`
               : 'מקור האמת להכנסות. התחברו עם מפתח API כדי למשוך מסמכים.'}
           </p>
         </div>

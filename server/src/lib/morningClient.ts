@@ -25,6 +25,8 @@ export type SearchDocumentsResult = {
   pages: number
 }
 
+export type MorningSearchResult = SearchDocumentsResult
+
 type TokenState = {
   token: string
   expiresAtMs: number
@@ -381,6 +383,110 @@ export class MorningClient {
     } catch {
       return []
     }
+  }
+
+  /** הוראות קבע — POST search (לא ב-Apiary הרשמי) */
+  async searchRecurringPayments(params: {
+    page?: number
+    pageSize?: number
+    status?: number[]
+  } = {}): Promise<MorningSearchResult> {
+    const body: Record<string, unknown> = {
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? 100,
+    }
+    if (params.status?.length) body.status = params.status
+
+    const data = await this.authedRequest<Record<string, unknown>>(
+      '/payments/recurrings/search',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    )
+    return this.normalizePagedSearch(data, params.page ?? 1)
+  }
+
+  async searchAllRecurringPayments(): Promise<MorningDocument[]> {
+    const pageSize = 100
+    const all: MorningDocument[] = []
+    let page = 1
+    let pages = 1
+    do {
+      const result = await this.searchRecurringPayments({
+        page,
+        pageSize,
+        status: [10, 20],
+      })
+      all.push(...result.items)
+      pages = result.pages || 1
+      page += 1
+      if (page > 500) break
+    } while (page <= pages)
+    return all
+  }
+
+  /** ריטיינרים — POST search (לא ב-Apiary הרשמי) */
+  async searchRetainers(params: {
+    page?: number
+    pageSize?: number
+    status?: number[]
+  } = {}): Promise<MorningSearchResult> {
+    const body: Record<string, unknown> = {
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? 100,
+    }
+    if (params.status?.length) body.status = params.status
+
+    const data = await this.authedRequest<Record<string, unknown>>(
+      '/retainers/search',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    )
+    return this.normalizePagedSearch(data, params.page ?? 1)
+  }
+
+  async searchAllRetainers(): Promise<MorningDocument[]> {
+    const pageSize = 100
+    const all: MorningDocument[] = []
+    let page = 1
+    let pages = 1
+    do {
+      const result = await this.searchRetainers({
+        page,
+        pageSize,
+        status: [1, 2],
+      })
+      all.push(...result.items)
+      pages = result.pages || 1
+      page += 1
+      if (page > 500) break
+    } while (page <= pages)
+    return all
+  }
+
+  private normalizePagedSearch(
+    data: Record<string, unknown>,
+    fallbackPage: number,
+  ): MorningSearchResult {
+    const items = Array.isArray(data.items) ? (data.items as MorningDocument[]) : []
+    const page =
+      typeof data.page === 'number' && Number.isFinite(data.page)
+        ? data.page
+        : fallbackPage
+    const pages =
+      typeof data.pages === 'number' && data.pages > 0
+        ? data.pages
+        : typeof data.totalPages === 'number' && data.totalPages > 0
+          ? data.totalPages
+          : 1
+    const total =
+      typeof data.total === 'number' && Number.isFinite(data.total)
+        ? data.total
+        : items.length
+    return { items, page, pages, total }
   }
 }
 

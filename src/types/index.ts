@@ -15,6 +15,14 @@ export interface FinanceIncomePaymentRecord {
   createdAt?: string
 }
 
+/** תשלום צפוי בודד בגבייה — לתחזית תזרim */
+export interface FinanceExpectedCollection {
+  id: string
+  /** YYYY-MM-DD */
+  expectedDate: string
+  amount: number
+}
+
 /** סוג הכנסה ללא פרויקט — אחסון / פורטל */
 export type FinanceHostingType = 'monthly' | 'yearly' | 'portal_monthly'
 
@@ -64,6 +72,10 @@ export interface FinanceIncome {
   paymentMethod?: FinancePaymentMethod
   /** YYYY-MM-DD — מתי התקבל התשלום */
   paidDate?: string
+  /** YYYY-MM-DD — תאריך צפי לכניסת כסף (גבייה / תזרim, ידני) */
+  expectedPaymentDate?: string
+  /** לוח תשלומים צפוי — חלוקה לכמה תאריכים (תזרim) */
+  expectedPaymentSchedule?: FinanceExpectedCollection[]
   /** היסטוריית תשלומים (תשלום ראשון + תשלומים נוספים) */
   payments?: FinanceIncomePaymentRecord[]
   /** ריטיינר חודשי — חוזר בכל חודש מהתחלה ועד סוף אותה שנה */
@@ -92,6 +104,94 @@ export interface FinanceIncome {
   greenInvoiceClientName?: string
   /** ISO — מתי סונכרן לאחרונה מחשבונית ירוקה */
   syncedAt?: string
+}
+
+/** יתרת עובר ושב נוכחית — מודול תזרim */
+export interface FinanceCashflowState {
+  balance: number
+  /** YYYY-MM-DD */
+  asOfDate: string
+  updatedAt: string
+  updatedBy?: string
+}
+
+/** snapshot יומי של יתרה */
+export interface FinanceCashflowBalanceSnapshot {
+  id: string
+  balance: number
+  /** YYYY-MM-DD */
+  asOfDate: string
+  createdAt: string
+  createdBy?: string
+}
+
+/** cache הוראת קבע מ-GI */
+export interface FinanceGiRecurringPayment {
+  id: string
+  greenInvoiceId: string
+  clientName: string
+  clientId?: string
+  amount: number
+  /** 1 / 2 / 3 / 12 חודשים */
+  intervalMonths: number
+  status: string
+  /** YYYY-MM-DD */
+  nextChargeDate?: string
+  startDate?: string
+  endDate?: string
+  syncedAt?: string
+}
+
+/** cache ריטיינר מ-GI */
+export interface FinanceGiRetainer {
+  id: string
+  greenInvoiceId: string
+  clientName: string
+  clientId?: string
+  amount: number
+  /** 1m / 2m / 3m / 6m / 1y */
+  interval: string
+  status: string
+  nextJobDate?: string
+  startDate?: string
+  endDate?: string
+  syncedAt?: string
+}
+
+/** ערכי אומדן מע״מ לתזרים — סכום ניתן לעריכה ידנית */
+export interface FinanceCashflowVatEstimate {
+  /** מזהה = YYYY-MM של חודש המע״מ */
+  id: string
+  vatYm: string
+  amount: number
+  notes?: string
+  updatedAt: string
+  updatedBy?: string
+}
+
+/** הוצאה קבועה מאושרת — קטלוג עסקי לתזרים (לא תלוי ב-recurring על רשומות בנק) */
+export interface FinanceFixedExpenseCatalogItem {
+  id: string
+  type: string
+  name: string
+  amount: number
+  paymentMethod: FinancePaymentMethod
+  /** יום יציאה מהבנק בחודש החיוב — רלוונטי להעברה בנקאית */
+  dayOfMonth: number
+  amountIncludesVat?: boolean
+}
+
+/** הוצאה צפויה ידנית — מודול תזרim בלבד (לא מספר הוצאה בפיננסים) */
+export interface FinanceCashflowExpectedExpense {
+  id: string
+  name: string
+  amount: number
+  /** YYYY-MM-DD — מועד יציאה צפוי מהבנק */
+  expectedDate: string
+  paymentMethod: FinancePaymentMethod
+  notes?: string
+  createdAt: string
+  createdBy?: string
 }
 
 export type FinanceExpenseFieldMode = 'none' | 'supplier' | 'platform' | 'salary'

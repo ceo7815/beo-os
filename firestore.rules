@@ -177,6 +177,27 @@ service cloud.firestore {
     match /financeImportRules/{docId} {
       allow read, write: if isAdmin();
     }
+    match /financeCashflowState/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeCashflowBalanceSnapshots/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeGiRecurringPayments/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeGiRetainers/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeCashflowExpectedExpenses/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeCashflowVatEstimates/{docId} {
+      allow read, write: if isAdmin();
+    }
+    match /financeFixedExpenseCatalog/{docId} {
+      allow read, write: if isAdmin();
+    }
     match /hostingRecords/{docId} {
       allow read, write: if signedIn();
     }

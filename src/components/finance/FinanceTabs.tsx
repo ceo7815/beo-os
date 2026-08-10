@@ -46,6 +46,26 @@ export function FinanceTabs({ badges = {} }: { badges?: FinanceTabBadges }) {
     },
     { to: '/finance/projects', label: 'פרויקטים', hint: 'רווחיות לפי פרויקט' },
     {
+      to: '/finance/cashflow',
+      label: 'תזרים',
+      hint: 'תחזית מזומנים — כניסות ויציאות',
+    },
+    {
+      to: '/finance/fixed-expenses',
+      label: 'הוצאות קבועות',
+      hint: 'ניהול הוצאות חוזרות מאושרות לתזרים',
+    },
+    {
+      to: '/finance/standing-orders',
+      label: 'הוראות קבע',
+      hint: 'הוראות קבע פעילות מחשבונית ירוקה',
+    },
+    {
+      to: '/finance/retainers',
+      label: 'ריטיינרים',
+      hint: 'ריטיינרים פעילים מחשבונית ירוקה',
+    },
+    {
       to: '/collections',
       label: 'גבייה',
       hint: 'חשבוניות פתוחות',

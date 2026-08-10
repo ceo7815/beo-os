@@ -3,6 +3,8 @@ import { userIsAdmin } from '../components/RequireAdmin'
 import { FinanceExpenseTypesProvider } from '../hooks/useFinanceExpenseTypes'
 import { FinanceExpensesProvider } from '../hooks/useFinanceExpenses'
 import { FinanceIncomesProvider } from '../hooks/useFinanceIncomes'
+import { FinanceCashflowProvider } from '../hooks/useFinanceCashflow'
+import { FinanceFixedExpenseCatalogProvider } from '../hooks/useFinanceFixedExpenseCatalog'
 import { useHubStore } from '../store/useStore'
 import { useAuth } from './AuthContext'
 import { useUsers } from '../hooks/useUsers'
@@ -22,7 +24,13 @@ export function AdminFinanceProviders({ children }: { children: ReactNode }) {
   return (
     <FinanceIncomesProvider>
       <FinanceExpensesProvider>
-        <FinanceExpenseTypesProvider>{children}</FinanceExpenseTypesProvider>
+        <FinanceExpenseTypesProvider>
+          <FinanceCashflowProvider>
+            <FinanceFixedExpenseCatalogProvider>
+              {children}
+            </FinanceFixedExpenseCatalogProvider>
+          </FinanceCashflowProvider>
+        </FinanceExpenseTypesProvider>
       </FinanceExpensesProvider>
     </FinanceIncomesProvider>
   )

@@ -438,6 +438,10 @@ export function Layout() {
                   <NavSubLink to="/finance/reconciliation" label="התאמות בנקים" />
                   <NavSubLink to="/finance/documents" label="תיק חשבוניות" />
                   <NavSubLink to="/finance/projects" label="פרויקטים" />
+                  <NavSubLink to="/finance/cashflow" label="תזרים" />
+                  <NavSubLink to="/finance/fixed-expenses" label="הוצאות קבועות" />
+                  <NavSubLink to="/finance/standing-orders" label="הוראות קבע" />
+                  <NavSubLink to="/finance/retainers" label="ריטיינרים" />
                   <NavSubLink
                     to="/collections"
                     label="גבייה"

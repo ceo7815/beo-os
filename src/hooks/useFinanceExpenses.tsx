@@ -104,6 +104,10 @@ export type FinanceExpensePatchInput = {
   isLateDocument?: boolean
   /** הערה על השורה — null מוחק */
   expenseNote?: string | null
+  /** אופן תשלום — null מוחק */
+  paymentMethod?: FinancePaymentMethod | null
+  /** מועד ירידה מהבנק — null מוחק */
+  chargeDate?: string | null
   /** מט״ח — null מוחק את שני השדות */
   currency?: string | null
   originalAmount?: number | null
@@ -448,6 +452,22 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
           patch.expenseNote.trim()
         ) {
           next.expenseNote = patch.expenseNote.trim()
+        }
+        if (patch.paymentMethod === null) {
+          next.paymentMethod = deleteField()
+        } else if (
+          patch.paymentMethod === 'bank_transfer' ||
+          patch.paymentMethod === 'credit_card'
+        ) {
+          next.paymentMethod = patch.paymentMethod
+        }
+        if (patch.chargeDate === null || patch.chargeDate === '') {
+          next.chargeDate = deleteField()
+        } else if (
+          typeof patch.chargeDate === 'string' &&
+          patch.chargeDate.trim()
+        ) {
+          next.chargeDate = patch.chargeDate.trim().slice(0, 10)
         }
         if (patch.currency === null || patch.originalAmount === null) {
           next.currency = deleteField()

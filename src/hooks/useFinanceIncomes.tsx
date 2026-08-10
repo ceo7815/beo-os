@@ -41,6 +41,7 @@ import { withDisplayOverdueIncomes, formatNis } from '../lib/financeCalc'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type {
+  FinanceExpectedCollection,
   FinanceIncome,
   FinanceIncomeDocumentKind,
   FinanceIncomeStatus,
@@ -212,6 +213,10 @@ export type FinanceIncomePatchInput = {
   paidAmount?: number | null
   paymentMethod?: FinancePaymentMethod | null
   paidDate?: string | null
+  /** YYYY-MM-DD · null מוחק */
+  expectedPaymentDate?: string | null
+  /** לוח תשלומים צפוי · null מוחק */
+  expectedPaymentSchedule?: FinanceExpectedCollection[] | null
   payments?: FinanceIncomePaymentRecord[] | null
   sourceTransactionInvoiceId?: string | null
 }
@@ -238,7 +243,7 @@ type FinanceIncomesContextValue = {
   loading: boolean
   error: Error | null
   addIncome: (data: NewFinanceIncomeInput) => Promise<void>
-  updateIncome: (id: string, patch: FinanceIncomePatchInput) => Promise<void>
+  updateIncome: (id: string, patch: FinanceIncomePatchInput, opts?: { silent?: boolean }) => Promise<void>
   convertToTaxReceipt: (
     id: string,
     options?: ConvertToTaxReceiptInput,
@@ -359,7 +364,7 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateIncome = useCallback(
-    async (id: string, patch: FinanceIncomePatchInput) => {
+    async (id: string, patch: FinanceIncomePatchInput, opts?: { silent?: boolean }) => {
       try {
         const oldSnap = await getDoc(doc(db, 'financeIncomes', id))
         const oldInc = oldSnap.exists()
@@ -524,6 +529,21 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
           next.payments = patch.payments
         }
 
+        if (patch.expectedPaymentDate === null) {
+          next.expectedPaymentDate = deleteField()
+        } else if (
+          typeof patch.expectedPaymentDate === 'string' &&
+          patch.expectedPaymentDate.trim()
+        ) {
+          next.expectedPaymentDate = patch.expectedPaymentDate.trim().slice(0, 10)
+        }
+
+        if (patch.expectedPaymentSchedule === null) {
+          next.expectedPaymentSchedule = deleteField()
+        } else if (Array.isArray(patch.expectedPaymentSchedule)) {
+          next.expectedPaymentSchedule = patch.expectedPaymentSchedule
+        }
+
         const effectiveKind =
           (patch.documentKind ??
             (oldInc ? incomeDocumentKind(oldInc) : undefined)) ??
@@ -585,9 +605,11 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
           payments: mergedPayments,
         }
         await syncClientBalance(oldInc, mergedNext)
-        toastFsSuccess('ההכנסה עודכנה')
+        if (!opts?.silent) toastFsSuccess('ההכנסה עודכנה')
       } catch (e) {
-        toastFsError('שגיאה בעדכון ההכנסה', e, 'updateIncome')
+        if (!opts?.silent) {
+          toastFsError('שגיאה בעדכון ההכנסה', e, 'updateIncome')
+        }
       }
     },
     [],

@@ -20,6 +20,10 @@ import { Finance } from './pages/Finance'
 import { FinanceProjects } from './pages/FinanceProjects'
 import { FinanceReconciliation } from './pages/FinanceReconciliation'
 import { FinanceDocuments } from './pages/FinanceDocuments'
+import { FinanceCashflow } from './pages/FinanceCashflow'
+import { FinanceStandingOrders } from './pages/FinanceStandingOrders'
+import { FinanceRetainers } from './pages/FinanceRetainers'
+import { FinanceFixedExpenses } from './pages/FinanceFixedExpenses'
 import { Income } from './pages/Income'
 import { Hosting } from './pages/Hosting'
 import { Campaigns } from './pages/Campaigns'
@@ -117,6 +121,38 @@ export default function App() {
                     element={
                       <RequireAdmin>
                         <FinanceProjects />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/cashflow"
+                    element={
+                      <RequireAdmin>
+                        <FinanceCashflow />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/fixed-expenses"
+                    element={
+                      <RequireAdmin>
+                        <FinanceFixedExpenses />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/standing-orders"
+                    element={
+                      <RequireAdmin>
+                        <FinanceStandingOrders />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="finance/retainers"
+                    element={
+                      <RequireAdmin>
+                        <FinanceRetainers />
                       </RequireAdmin>
                     }
                   />

@@ -40,9 +40,111 @@ type FinancePeriodState = {
 }
 
 /**
- * מצב תקופה משותף לכל מסכי הפיננסים —
+ * מצב תקופה משותף לכל מסכי הפיננסים (היסטורי) —
  * בחירת חודש נשמרת במעבר בין סקירה / הכנסות / הוצאות וכו'.
  */
+
+function buildHistoricalPreset(
+  preset: 'month' | 'prev' | 'q' | 'half' | 'year' | 'all',
+  now: string,
+): Partial<FinancePeriodState> {
+  switch (preset) {
+    case 'month':
+      return {
+        monthPreset: preset,
+        periodMode: 'single',
+        filterYmFrom: now,
+        filterYmTo: now,
+      }
+    case 'prev':
+      return {
+        monthPreset: preset,
+        periodMode: 'single',
+        filterYmFrom: addMonths(now, -1),
+        filterYmTo: addMonths(now, -1),
+      }
+    case 'q':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: addMonths(now, -2),
+        filterYmTo: now,
+      }
+    case 'half':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: addMonths(now, -5),
+        filterYmTo: now,
+      }
+    case 'year':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: addMonths(now, -11),
+        filterYmTo: now,
+      }
+    case 'all':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: ACTIVITY_START_YM,
+        filterYmTo: now,
+      }
+  }
+}
+
+/** תזרim — טווחים קדימה (תחזית), לא אחורה */
+function buildForecastPreset(
+  preset: 'month' | 'prev' | 'q' | 'half' | 'year' | 'all',
+  now: string,
+): Partial<FinancePeriodState> {
+  switch (preset) {
+    case 'month':
+      return {
+        monthPreset: preset,
+        periodMode: 'single',
+        filterYmFrom: now,
+        filterYmTo: now,
+      }
+    case 'prev':
+      return {
+        monthPreset: preset,
+        periodMode: 'single',
+        filterYmFrom: addMonths(now, 1),
+        filterYmTo: addMonths(now, 1),
+      }
+    case 'q':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: now,
+        filterYmTo: addMonths(now, 2),
+      }
+    case 'half':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: now,
+        filterYmTo: addMonths(now, 5),
+      }
+    case 'year':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: now,
+        filterYmTo: addMonths(now, 11),
+      }
+    case 'all':
+      return {
+        monthPreset: preset,
+        periodMode: 'range',
+        filterYmFrom: now,
+        filterYmTo: addMonths(now, 23),
+      }
+  }
+}
+
 const useFinancePeriodStore = create<FinancePeriodState>((set) => {
   const initial = currentYm()
   return {
@@ -55,59 +157,7 @@ const useFinancePeriodStore = create<FinancePeriodState>((set) => {
     setPeriodMode: (m) => set({ periodMode: m }),
     setMonthPreset: (p) => set({ monthPreset: p }),
     applyMonthPreset: (preset) => {
-      const now = currentYm()
-      switch (preset) {
-        case 'month':
-          set({
-            monthPreset: preset,
-            periodMode: 'single',
-            filterYmFrom: now,
-            filterYmTo: now,
-          })
-          break
-        case 'prev': {
-          const prev = addMonths(now, -1)
-          set({
-            monthPreset: preset,
-            periodMode: 'single',
-            filterYmFrom: prev,
-            filterYmTo: prev,
-          })
-          break
-        }
-        case 'q':
-          set({
-            monthPreset: preset,
-            periodMode: 'range',
-            filterYmFrom: addMonths(now, -2),
-            filterYmTo: now,
-          })
-          break
-        case 'half':
-          set({
-            monthPreset: preset,
-            periodMode: 'range',
-            filterYmFrom: addMonths(now, -5),
-            filterYmTo: now,
-          })
-          break
-        case 'year':
-          set({
-            monthPreset: preset,
-            periodMode: 'range',
-            filterYmFrom: addMonths(now, -11),
-            filterYmTo: now,
-          })
-          break
-        case 'all':
-          set({
-            monthPreset: preset,
-            periodMode: 'range',
-            filterYmFrom: ACTIVITY_START_YM,
-            filterYmTo: now,
-          })
-          break
-      }
+      set(buildHistoricalPreset(preset, currentYm()))
     },
     applySingleMonth: (ym) =>
       set({
@@ -119,17 +169,100 @@ const useFinancePeriodStore = create<FinancePeriodState>((set) => {
   }
 })
 
-export function useFinancePeriodFilter(_initialYm?: string) {
-  const filterYmFrom = useFinancePeriodStore((s) => s.filterYmFrom)
-  const filterYmTo = useFinancePeriodStore((s) => s.filterYmTo)
-  const periodMode = useFinancePeriodStore((s) => s.periodMode)
-  const monthPreset = useFinancePeriodStore((s) => s.monthPreset)
-  const setFilterYmFrom = useFinancePeriodStore((s) => s.setFilterYmFrom)
-  const setFilterYmTo = useFinancePeriodStore((s) => s.setFilterYmTo)
-  const setPeriodMode = useFinancePeriodStore((s) => s.setPeriodMode)
-  const setMonthPreset = useFinancePeriodStore((s) => s.setMonthPreset)
-  const applyMonthPreset = useFinancePeriodStore((s) => s.applyMonthPreset)
-  const applySingleMonth = useFinancePeriodStore((s) => s.applySingleMonth)
+const useCashflowPeriodStore = create<FinancePeriodState>((set) => {
+  const initial = currentYm()
+  return {
+    filterYmFrom: initial,
+    filterYmTo: addMonths(initial, 2),
+    periodMode: 'range',
+    monthPreset: 'q',
+    setFilterYmFrom: (v) => set({ filterYmFrom: v }),
+    setFilterYmTo: (v) => set({ filterYmTo: v }),
+    setPeriodMode: (m) => set({ periodMode: m }),
+    setMonthPreset: (p) => set({ monthPreset: p }),
+    applyMonthPreset: (preset) => {
+      set(buildForecastPreset(preset, currentYm()))
+    },
+    applySingleMonth: (ym) =>
+      set({
+        periodMode: 'single',
+        monthPreset: 'pick',
+        filterYmFrom: ym,
+        filterYmTo: ym,
+      }),
+  }
+})
+
+export type FinancePeriodDirection = 'historical' | 'forecast'
+
+function usePeriodStoreSelectors(direction: FinancePeriodDirection) {
+  const historicalFrom = useFinancePeriodStore((s) => s.filterYmFrom)
+  const historicalTo = useFinancePeriodStore((s) => s.filterYmTo)
+  const historicalMode = useFinancePeriodStore((s) => s.periodMode)
+  const historicalPreset = useFinancePeriodStore((s) => s.monthPreset)
+  const setHistoricalFrom = useFinancePeriodStore((s) => s.setFilterYmFrom)
+  const setHistoricalTo = useFinancePeriodStore((s) => s.setFilterYmTo)
+  const setHistoricalMode = useFinancePeriodStore((s) => s.setPeriodMode)
+  const setHistoricalPreset = useFinancePeriodStore((s) => s.setMonthPreset)
+  const applyHistoricalPreset = useFinancePeriodStore((s) => s.applyMonthPreset)
+  const applyHistoricalSingle = useFinancePeriodStore((s) => s.applySingleMonth)
+
+  const forecastFrom = useCashflowPeriodStore((s) => s.filterYmFrom)
+  const forecastTo = useCashflowPeriodStore((s) => s.filterYmTo)
+  const forecastMode = useCashflowPeriodStore((s) => s.periodMode)
+  const forecastPreset = useCashflowPeriodStore((s) => s.monthPreset)
+  const setForecastFrom = useCashflowPeriodStore((s) => s.setFilterYmFrom)
+  const setForecastTo = useCashflowPeriodStore((s) => s.setFilterYmTo)
+  const setForecastMode = useCashflowPeriodStore((s) => s.setPeriodMode)
+  const setForecastPreset = useCashflowPeriodStore((s) => s.setMonthPreset)
+  const applyForecastPreset = useCashflowPeriodStore((s) => s.applyMonthPreset)
+  const applyForecastSingle = useCashflowPeriodStore((s) => s.applySingleMonth)
+
+  if (direction === 'forecast') {
+    return {
+      filterYmFrom: forecastFrom,
+      filterYmTo: forecastTo,
+      periodMode: forecastMode,
+      monthPreset: forecastPreset,
+      setFilterYmFrom: setForecastFrom,
+      setFilterYmTo: setForecastTo,
+      setPeriodMode: setForecastMode,
+      setMonthPreset: setForecastPreset,
+      applyMonthPreset: applyForecastPreset,
+      applySingleMonth: applyForecastSingle,
+    }
+  }
+
+  return {
+    filterYmFrom: historicalFrom,
+    filterYmTo: historicalTo,
+    periodMode: historicalMode,
+    monthPreset: historicalPreset,
+    setFilterYmFrom: setHistoricalFrom,
+    setFilterYmTo: setHistoricalTo,
+    setPeriodMode: setHistoricalMode,
+    setMonthPreset: setHistoricalPreset,
+    applyMonthPreset: applyHistoricalPreset,
+    applySingleMonth: applyHistoricalSingle,
+  }
+}
+
+export function useFinancePeriodFilter(options?: {
+  direction?: FinancePeriodDirection
+}) {
+  const direction = options?.direction ?? 'historical'
+  const {
+    filterYmFrom,
+    filterYmTo,
+    periodMode,
+    monthPreset,
+    setFilterYmFrom,
+    setFilterYmTo,
+    setPeriodMode,
+    setMonthPreset,
+    applyMonthPreset,
+    applySingleMonth,
+  } = usePeriodStoreSelectors(direction)
 
   const filterRangeLabel = useMemo(
     () => formatYmRangeLabel(filterYmFrom, filterYmTo),
@@ -149,5 +282,11 @@ export function useFinancePeriodFilter(_initialYm?: string) {
     applyMonthPreset,
     applySingleMonth,
     monthOptions: monthOptions(36),
+    direction,
   }
+}
+
+/** תזרim — סינון קדימה (ברירת מחדל: 3 חודשים קדימה) */
+export function useCashflowPeriodFilter() {
+  return useFinancePeriodFilter({ direction: 'forecast' })
 }

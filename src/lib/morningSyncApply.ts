@@ -50,6 +50,30 @@ export type MappedGiIncome = {
   cancelled: boolean
 }
 
+export type MappedGiRecurringPayment = {
+  greenInvoiceId: string
+  clientName: string
+  clientGreenInvoiceId: string
+  amount: number
+  intervalMonths: number
+  status: string
+  nextChargeDate?: string
+  startDate?: string
+  endDate?: string
+}
+
+export type MappedGiRetainer = {
+  greenInvoiceId: string
+  clientName: string
+  clientGreenInvoiceId: string
+  amount: number
+  interval: string
+  status: string
+  nextJobDate?: string
+  startDate?: string
+  endDate?: string
+}
+
 export type MorningSyncPayload = {
   ok: true
   mode: 'client_write'
@@ -57,6 +81,10 @@ export type MorningSyncPayload = {
   toDate: string
   clients: MappedGiClient[]
   incomes: MappedGiIncome[]
+  recurringPayments?: MappedGiRecurringPayment[]
+  retainers?: MappedGiRetainer[]
+  recurringFetchError?: string
+  retainersFetchError?: string
 }
 
 const GI_PREFIX = 'gi_'
@@ -107,6 +135,20 @@ function matchIncomeClient(index: ClientIndex, m: MappedGiIncome): string {
   const email = m.clientEmail.trim().toLowerCase()
   if (email && index.byEmail.has(email)) return index.byEmail.get(email)!
   const name = normalizeName(m.clientName)
+  if (name && index.byName.has(name)) return index.byName.get(name)!
+  return ''
+}
+
+function matchGiClient(
+  index: ClientIndex,
+  clientGreenInvoiceId: string,
+  clientName: string,
+): string {
+  const giId = clientGreenInvoiceId.trim()
+  if (giId && index.byGreenInvoiceId.has(giId)) {
+    return index.byGreenInvoiceId.get(giId)!
+  }
+  const name = normalizeName(clientName)
   if (name && index.byName.has(name)) return index.byName.get(name)!
   return ''
 }
@@ -226,6 +268,113 @@ export type ApplySyncResult = {
   unmatchedClients: number
   durationMs: number
   clients: ApplyClientsResult & { ok: true; durationMs: number }
+  recurringImported: number
+  recurringRemoved: number
+  retainersImported: number
+  retainersRemoved: number
+  recurringFetchError?: string
+  retainersFetchError?: string
+}
+
+const GI_RECURRING_COLLECTION = 'financeGiRecurringPayments'
+const GI_RETAINER_COLLECTION = 'financeGiRetainers'
+
+async function applyMorningGiRecurring(
+  index: ClientIndex,
+  rows: MappedGiRecurringPayment[],
+): Promise<{ imported: number; removed: number }> {
+  const snap = await getDocs(collection(db, GI_RECURRING_COLLECTION))
+  const syncedIds = new Set(rows.map((r) => r.greenInvoiceId))
+  const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = []
+  let removed = 0
+
+  for (const d of snap.docs) {
+    const giId = String(d.data().greenInvoiceId ?? d.id.replace(/^gi_/, ''))
+    if (!syncedIds.has(giId)) {
+      ops.push((batch) => {
+        batch.delete(d.ref)
+      })
+      removed += 1
+    }
+  }
+
+  const syncedAt = new Date().toISOString()
+  for (const m of rows) {
+    const matchedClientId = matchGiClient(
+      index,
+      m.clientGreenInvoiceId,
+      m.clientName,
+    )
+    const ref = doc(db, GI_RECURRING_COLLECTION, GI_PREFIX + m.greenInvoiceId)
+    const row: Record<string, unknown> = {
+      greenInvoiceId: m.greenInvoiceId,
+      clientName: m.clientName,
+      amount: m.amount,
+      intervalMonths: m.intervalMonths,
+      status: m.status,
+      source: 'green_invoice',
+      syncedAt,
+    }
+    if (matchedClientId) row.clientId = matchedClientId
+    if (m.nextChargeDate) row.nextChargeDate = m.nextChargeDate
+    if (m.startDate) row.startDate = m.startDate
+    if (m.endDate) row.endDate = m.endDate
+    ops.push((batch) => {
+      batch.set(ref, row, { merge: true })
+    })
+  }
+
+  await commitChunks(ops)
+  return { imported: rows.length, removed }
+}
+
+async function applyMorningGiRetainers(
+  index: ClientIndex,
+  rows: MappedGiRetainer[],
+): Promise<{ imported: number; removed: number }> {
+  const snap = await getDocs(collection(db, GI_RETAINER_COLLECTION))
+  const syncedIds = new Set(rows.map((r) => r.greenInvoiceId))
+  const ops: Array<(batch: ReturnType<typeof writeBatch>) => void> = []
+  let removed = 0
+
+  for (const d of snap.docs) {
+    const giId = String(d.data().greenInvoiceId ?? d.id.replace(/^gi_/, ''))
+    if (!syncedIds.has(giId)) {
+      ops.push((batch) => {
+        batch.delete(d.ref)
+      })
+      removed += 1
+    }
+  }
+
+  const syncedAt = new Date().toISOString()
+  for (const m of rows) {
+    const matchedClientId = matchGiClient(
+      index,
+      m.clientGreenInvoiceId,
+      m.clientName,
+    )
+    const ref = doc(db, GI_RETAINER_COLLECTION, GI_PREFIX + m.greenInvoiceId)
+    const row: Record<string, unknown> = {
+      greenInvoiceId: m.greenInvoiceId,
+      clientName: m.clientName,
+      amount: m.amount,
+      interval: m.interval,
+      status: m.status,
+      source: 'green_invoice',
+      syncedAt,
+    }
+    if (matchedClientId) row.clientId = matchedClientId
+    if (m.nextJobDate) row.nextJobDate = m.nextJobDate
+    if (m.startDate) row.startDate = m.startDate
+    if (m.endDate) row.endDate = m.endDate
+    ops.push((batch) => {
+      batch.set(ref, row, { merge: true })
+    })
+  }
+
+  await commitChunks(ops)
+  return { imported: rows.length, removed }
 }
 
 /** שמירת לקוחות + הכנסות — כתיבה מהדפדפן, בלי Admin SDK */
@@ -300,6 +449,13 @@ export async function applyMorningSyncPayload(
 
   await commitChunks(ops)
 
+  const recurringResult = Array.isArray(payload.recurringPayments)
+    ? await applyMorningGiRecurring(index, payload.recurringPayments)
+    : { imported: 0, removed: 0 }
+  const retainersResult = Array.isArray(payload.retainers)
+    ? await applyMorningGiRetainers(index, payload.retainers)
+    : { imported: 0, removed: 0 }
+
   return {
     ok: true,
     fromDate: payload.fromDate,
@@ -315,6 +471,12 @@ export async function applyMorningSyncPayload(
       ...clientsResult,
       durationMs: clientsDuration,
     },
+    recurringImported: recurringResult.imported,
+    recurringRemoved: recurringResult.removed,
+    retainersImported: retainersResult.imported,
+    retainersRemoved: retainersResult.removed,
+    recurringFetchError: payload.recurringFetchError,
+    retainersFetchError: payload.retainersFetchError,
   }
 }
 

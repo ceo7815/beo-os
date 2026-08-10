@@ -13,11 +13,11 @@ const FINANCE_DOCS_TARGET =
   process.env.VITE_FINANCE_DOCS_TARGET || 'https://pos.hub.co.il'
 
 /**
- * סנכרון חשבונית ירוקה רץ בשרת — בפיתוח מפנים לפרודקשן כמו מסמכי הוצאות,
- * כדי שהפאנל העליון לא ייפול ב-502 כשאין שרת מקומי על 8787.
+ * סנכרון חשבונית ירוקה (כולל הוראות קבע וריטיינרים) רץ בשרת המקומי בפיתוח.
+ * לבדיקה מול פרודקשן: VITE_INTEGRATIONS_TARGET=https://pos.hub.co.il
  */
 const INTEGRATIONS_TARGET =
-  process.env.VITE_INTEGRATIONS_TARGET || 'https://pos.hub.co.il'
+  process.env.VITE_INTEGRATIONS_TARGET || 'http://127.0.0.1:8787'
 
 // https://vite.dev/config/
 export default defineConfig({

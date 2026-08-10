@@ -63,6 +63,12 @@ export type MorningSyncResult = {
   unmatchedClients: number
   durationMs: number
   clients?: ClientSyncResult
+  recurringImported?: number
+  recurringRemoved?: number
+  retainersImported?: number
+  retainersRemoved?: number
+  recurringFetchError?: string
+  retainersFetchError?: string
 }
 
 export type MorningExpenseSyncResult = {

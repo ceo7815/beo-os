@@ -27,6 +27,8 @@ type Props = {
     onChange: (v: string) => void
     options: { value: string; label: string }[]
   }
+  /** תזרim = טווחים קדימה; שאר המסכים = אחורה */
+  variant?: 'historical' | 'forecast'
 }
 
 export function FinancePeriodFilter({
@@ -44,6 +46,7 @@ export function FinancePeriodFilter({
   monthOptions,
   projectFilter,
   clientFilter,
+  variant = 'historical',
 }: Props) {
   const chipActive =
     'inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-[var(--orange)] bg-[var(--orange)] px-2.5 text-[11px] font-bold text-white'
@@ -84,17 +87,23 @@ export function FinancePeriodFilter({
           {(
             [
               ['month', 'חודש נוכחי'],
-              ['prev', 'חודש קודם'],
-              ['q', '3 חודשים'],
-              ['half', '6 חודשים'],
-              ['year', '12 חודשים'],
-              ['all', 'הכל'],
+              ['prev', variant === 'forecast' ? 'חודש הבא' : 'חודש קודם'],
+              ['q', variant === 'forecast' ? '3 חודשים קדימה' : '3 חודשים'],
+              ['half', variant === 'forecast' ? '6 חודשים קדימה' : '6 חודשים'],
+              ['year', variant === 'forecast' ? '12 חודשים קדימה' : '12 חודשים'],
+              ['all', variant === 'forecast' ? '24 חודשים קדימה' : 'הכל'],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               type="button"
-              title={id === 'all' ? 'מתחילת הפעילות' : undefined}
+              title={
+                id === 'all'
+                  ? variant === 'forecast'
+                    ? '24 חודשים קדימה מהיום'
+                    : 'מתחילת הפעילות'
+                  : undefined
+              }
               onClick={() => applyMonthPreset(id)}
               className={monthPreset === id ? chipActive : chipIdle}
             >

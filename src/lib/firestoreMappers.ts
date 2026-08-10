@@ -1,6 +1,7 @@
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore'
 import { Timestamp } from 'firebase/firestore'
 import { parseIncomePaymentRecords } from './financeIncomePayment'
+import { parseExpectedCollectionSchedule } from './expectedCollectionSchedule'
 import { isFinanceHostingType } from './financeHostingTypes'
 import type {
   Client,
@@ -203,6 +204,13 @@ export function docToFinanceIncome(
     typeof x.paidDate === 'string' && x.paidDate.trim()
       ? x.paidDate.slice(0, 10)
       : undefined
+  const expectedPaymentDate =
+    typeof x.expectedPaymentDate === 'string' && x.expectedPaymentDate.trim()
+      ? x.expectedPaymentDate.slice(0, 10)
+      : undefined
+  const expectedPaymentSchedule = parseExpectedCollectionSchedule(
+    x.expectedPaymentSchedule,
+  )
   const payments = parseIncomePaymentRecords(x.payments)
   const documentKind = normalizeFinanceIncomeDocumentKind(x.documentKind)
   const sourceTransactionInvoiceId =
@@ -254,6 +262,10 @@ export function docToFinanceIncome(
     ...(paidAmount !== undefined ? { paidAmount } : {}),
     ...(paymentMethod ? { paymentMethod } : {}),
     ...(paidDate ? { paidDate } : {}),
+    ...(expectedPaymentDate ? { expectedPaymentDate } : {}),
+    ...(expectedPaymentSchedule.length
+      ? { expectedPaymentSchedule }
+      : {}),
     ...(payments.length ? { payments } : {}),
     monthlyRetainer: x.monthlyRetainer === true,
     hostingClient: x.hostingClient === true,
