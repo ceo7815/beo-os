@@ -59,9 +59,23 @@ export const env = {
   morningDataDir: readString('MORNING_DATA_DIR', './data/morning'),
 } as const
 
+/**
+ * Resource API host — מסמכים / לקוחות / הוצאות.
+ * החל מיוני 2026: רק api.greeninvoice.co.il (לא www.greeninvoice.co.il).
+ * @see https://www.greeninvoice.co.il/help-center/api-updates-26/
+ */
 export const MORNING_BASE_URLS = {
   sandbox: 'https://sandbox.d.greeninvoice.co.il/api/v1',
   production: 'https://api.greeninvoice.co.il/api/v1',
+} as const
+
+/**
+ * OAuth 2.0 IdP host — קבלת access token (נפרד מ-Resource API).
+ * לפי דוקומנטציית Morning / מפתחים מעודכנת (API 2.0).
+ */
+export const MORNING_AUTH_URLS = {
+  sandbox: 'https://api.sandbox.morning.dev/idp/v1/oauth/token',
+  production: 'https://api.morning.co/idp/v1/oauth/token',
 } as const
 
 /** האם הוגדרו מפתחות Morning במשתני סביבה (fallback ל-Firestore) */

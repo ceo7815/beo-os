@@ -86,6 +86,11 @@ const BASE = {
   production: 'https://api.greeninvoice.co.il/api/v1',
 }
 
+const AUTH = {
+  sandbox: 'https://api.sandbox.morning.dev/idp/v1/oauth/token',
+  production: 'https://api.morning.co/idp/v1/oauth/token',
+}
+
 function round2(n) {
   return Math.round(n * 100) / 100
 }
@@ -125,15 +130,39 @@ function mapExpense(doc) {
 }
 
 async function getToken(env) {
-  const base = BASE[env.MORNING_ENV === 'sandbox' ? 'sandbox' : 'production']
+  const envKey = env.MORNING_ENV === 'sandbox' ? 'sandbox' : 'production'
+  const base = BASE[envKey]
+  const authUrl = AUTH[envKey]
+
+  // API 2.0 — OAuth IdP תחילה
+  const idpRes = await fetch(authUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: env.MORNING_KEY_ID,
+      client_secret: env.MORNING_KEY_SECRET,
+    }),
+  })
+  const idpData = await idpRes.json().catch(() => ({}))
+  const idpToken = idpData.accessToken || idpData.access_token || idpData.token
+  if (idpRes.ok && idpToken) return { token: idpToken, base }
+
+  // נפילה חזרה — /account/token עם grant_type (עדכון יוני 2026)
   const res = await fetch(`${base}/account/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: env.MORNING_KEY_ID, secret: env.MORNING_KEY_SECRET }),
+    body: JSON.stringify({
+      id: env.MORNING_KEY_ID,
+      secret: env.MORNING_KEY_SECRET,
+      grant_type: 'client_credentials',
+    }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(`Auth failed: ${JSON.stringify(data)}`)
-  return { token: data.token, base }
+  const token = data.token || data.accessToken || data.access_token
+  if (!token) throw new Error(`Auth failed: no token in ${JSON.stringify(data)}`)
+  return { token, base }
 }
 
 async function searchAll(token, base, fromDate, toDate) {

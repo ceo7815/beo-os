@@ -268,7 +268,8 @@ export function MorningSyncPanel() {
               חיבור לחשבונית ירוקה
             </h3>
             <p className="mt-1 text-[12px] text-[var(--text-mid)]">
-              הזינו מזהה מפתח וסוד מהגדרות ← API בחשבונית ירוקה.
+              מזהה מפתח וסוד מ־אזור אישי ← כלי מפתחים ← מפתחות API בחשבונית
+              ירוקה (Morning). האימות עובר ב־OAuth לפי עדכון API יוני 2026.
             </p>
 
             <label className="mt-4 block text-[12px] font-semibold text-[var(--text-mid)]">

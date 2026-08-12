@@ -1,11 +1,16 @@
-import { MORNING_BASE_URLS } from '../config/env.js'
+import { MORNING_AUTH_URLS, MORNING_BASE_URLS } from '../config/env.js'
 import type { MorningCredentials } from './morningCredentials.js'
 
 /**
  * לקוח API לחשבונית ירוקה (Morning).
- * - אימות JWT דרך POST /account/token, עם cache ורענון אוטומטי (~30 דק׳).
- * - rate limiting ~3 בקשות לשנייה.
- * - retry פעם אחת על 401 (טוקן פג).
+ * אימות (API 2.0 / יוני 2026):
+ * 1. OAuth IdP — POST api.morning.co/idp/v1/oauth/token עם grant_type=client_credentials
+ * 2. נפילה חזרה — POST /account/token על api.greeninvoice.co.il עם id+secret+grant_type
+ * @see https://www.greeninvoice.co.il/help-center/api-updates-26/
+ *
+ * - cache טוקן + רענון אוטומטי
+ * - rate limiting ~3 בקשות לשנייה
+ * - retry פעם אחת על 401 (טוקן פג)
  */
 
 export type MorningDocument = Record<string, unknown>
@@ -36,6 +41,7 @@ const RATE_LIMIT_MS = 350 // ~3 בקשות לשנייה
 
 export class MorningClient {
   private readonly baseUrl: string
+  private readonly authUrl: string
   private readonly creds: MorningCredentials
   private tokenState: TokenState | null = null
   private lastRequestAt = 0
@@ -43,6 +49,7 @@ export class MorningClient {
   constructor(creds: MorningCredentials) {
     this.creds = creds
     this.baseUrl = MORNING_BASE_URLS[creds.env]
+    this.authUrl = MORNING_AUTH_URLS[creds.env]
   }
 
   private async throttle(): Promise<void> {
@@ -52,41 +59,114 @@ export class MorningClient {
     this.lastRequestAt = Date.now()
   }
 
-  /** מבקש טוקן JWT חדש מ-Morning */
-  private async fetchToken(): Promise<TokenState> {
-    await this.throttle()
+  /** מפרק תשובת טוקן מ-IdP או מ-/account/token */
+  private parseTokenResponse(
+    data: Record<string, unknown>,
+    source: string,
+  ): TokenState | null {
+    const token =
+      (typeof data.accessToken === 'string' && data.accessToken) ||
+      (typeof data.access_token === 'string' && data.access_token) ||
+      (typeof data.token === 'string' && data.token) ||
+      ''
+    if (!token) return null
+
+    // IdP: expiresAt (unix). Legacy: expires (unix). OAuth: expires_in (שניות).
+    let expiresAtMs = Date.now() + 25 * 60 * 1000
+    if (typeof data.expiresAt === 'number' && data.expiresAt > 0) {
+      expiresAtMs = data.expiresAt * 1000
+    } else if (typeof data.expires_at === 'number' && data.expires_at > 0) {
+      expiresAtMs = data.expires_at * 1000
+    } else if (typeof data.expires === 'number' && data.expires > 0) {
+      expiresAtMs = data.expires * 1000
+    } else if (typeof data.expires_in === 'number' && data.expires_in > 0) {
+      expiresAtMs = Date.now() + data.expires_in * 1000
+    } else if (source === 'idp') {
+      // IdP בדרך כלל ~שעה
+      expiresAtMs = Date.now() + 55 * 60 * 1000
+    }
+
+    return { token, expiresAtMs }
+  }
+
+  /** OAuth 2.0 client_credentials מול IdP של Morning */
+  private async fetchTokenFromIdp(): Promise<TokenState | null> {
+    const res = await fetch(this.authUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credentials',
+        client_id: this.creds.keyId,
+        client_secret: this.creds.keySecret,
+      }),
+    })
+    const text = await res.text().catch(() => '')
+    let data: Record<string, unknown> = {}
+    try {
+      data = text ? (JSON.parse(text) as Record<string, unknown>) : {}
+    } catch {
+      data = { raw: text }
+    }
+    if (!res.ok) return null
+    return this.parseTokenResponse(data, 'idp')
+  }
+
+  /**
+   * נפילה חזרה — POST /account/token על Resource API
+   * (מבנה מעודכן: id + secret + grant_type לפי עדכון יוני 2026)
+   */
+  private async fetchTokenFromAccountEndpoint(): Promise<TokenState> {
     const res = await fetch(`${this.baseUrl}/account/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: this.creds.keyId,
         secret: this.creds.keySecret,
-        // API 2.0 (יוני 2026) דורש grant_type מפורש
         grant_type: 'client_credentials',
       }),
     })
 
+    const text = await res.text().catch(() => '')
+    let data: Record<string, unknown> = {}
+    try {
+      data = text ? (JSON.parse(text) as Record<string, unknown>) : {}
+    } catch {
+      data = { raw: text }
+    }
+
     if (!res.ok) {
-      const text = await res.text().catch(() => '')
       throw new MorningError(
         res.status === 401
-          ? 'מפתח API לא תקין — בדקו מזהה/סוד בחשבונית ירוקה'
+          ? 'מפתח API לא תקין — בדקו מזהה/סוד בחשבונית ירוקה (או צרו מפתח חדש בכלי מפתחים)'
           : `שגיאת אימות מול חשבונית ירוקה (${res.status})`,
         res.status,
         text,
       )
     }
 
-    const data = (await res.json()) as { token?: string; expires?: number }
-    if (!data.token) {
-      throw new MorningError('לא התקבל טוקן מחשבונית ירוקה', 500, JSON.stringify(data))
+    const parsed = this.parseTokenResponse(data, 'account')
+    if (!parsed) {
+      throw new MorningError(
+        'לא התקבל טוקן מחשבונית ירוקה',
+        500,
+        JSON.stringify(data),
+      )
     }
-    // expires הוא unix שניות; אם חסר — 25 דקות ברירת מחדל
-    const expiresAtMs =
-      typeof data.expires === 'number' && data.expires > 0
-        ? data.expires * 1000
-        : Date.now() + 25 * 60 * 1000
-    return { token: data.token, expiresAtMs }
+    return parsed
+  }
+
+  /** מבקש טוקן JWT חדש מ-Morning (IdP תחילה, אחר כך /account/token) */
+  private async fetchToken(): Promise<TokenState> {
+    await this.throttle()
+
+    try {
+      const idpToken = await this.fetchTokenFromIdp()
+      if (idpToken) return idpToken
+    } catch {
+      // ממשיכים לנפילה חזרה
+    }
+
+    return this.fetchTokenFromAccountEndpoint()
   }
 
   /** טוקן תקף (עם מרווח ביטחון של דקה) */
