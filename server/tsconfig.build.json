@@ -4,6 +4,7 @@
     "node_modules",
     "dist",
     "src/**/__tests__/**",
-    "src/**/*.test.ts"
+    "src/**/*.test.ts",
+    "src/scripts/**"
   ]
 }
