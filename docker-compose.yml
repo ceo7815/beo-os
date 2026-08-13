@@ -1,6 +1,5 @@
-# Hub POS — React static + Nginx + API server
-# Domain: pos.hub.co.il → host Nginx → 127.0.0.1:3002
-# xCloud Environment: VITE_* (frontend build) + FIREBASE_SERVICE_ACCOUNT_B64 (API)
+# Beo OS — React (Nginx) + API (Fastify)
+# xCloud Environment: VITE_SUPABASE_* (frontend build) + SUPABASE_* / ADMIN_EMAILS (API)
 
 services:
   hub-pos-api:
@@ -12,32 +11,23 @@ services:
       NODE_ENV: production
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8787
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://pos.hub.co.il}
-      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-}
-      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
-      FIREBASE_SERVICE_ACCOUNT_B64: ${FIREBASE_SERVICE_ACCOUNT_B64:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://os.beosystem.co.il}
+      SUPABASE_URL: ${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-${VITE_SUPABASE_ANON_KEY:-}}
       SYNC_FROM_DATE: ${SYNC_FROM_DATE:-2026-03-01}
       SYNC_OVERLAP_DAYS: ${SYNC_OVERLAP_DAYS:-7}
       MORNING_ENV: ${MORNING_ENV:-production}
       MORNING_KEY_ID: ${MORNING_KEY_ID:-}
       MORNING_KEY_SECRET: ${MORNING_KEY_SECRET:-}
       BOT_API_KEY: ${BOT_API_KEY:-}
-      # Keeps admin routes reachable when the server-side Firestore users lookup
-      # fails; without it a credentials outage locks every admin endpoint out.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       FINANCE_DOCS_DIR: /data/finance-documents
-      # Green Invoice credentials + last sync summary on disk (not Firestore)
       MORNING_DATA_DIR: /data/morning
-    # Exposed on the host so the server's reverse proxy (nginx, outside Docker) can route
-    # pos.hub.co.il/api/... to this container - previously only reachable from other containers
-    # on bakrayot-proxy, which is exactly why /api/bot-data 404'd when called from the internet.
     ports:
       - "127.0.0.1:8787:8787"
-    # Supplier invoice files. A named volume (not a container path) so the documents
-    # survive image rebuilds - losing them would break the accountant package.
     volumes:
-      - hub-pos-finance-docs:/data/finance-documents
-      - hub-pos-morning:/data/morning
+      - beo-os-finance-docs:/data/finance-documents
+      - beo-os-morning:/data/morning
     restart: unless-stopped
     networks:
       - bakrayot-proxy
@@ -50,16 +40,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY}
-        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN}
-        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID}
-        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET}
-        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID}
-        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
-        VITE_FUNCTIONS_REGION: ${VITE_FUNCTIONS_REGION:-us-central1}
-        VITE_CLOCKIFY_PROXY_URL: ${VITE_CLOCKIFY_PROXY_URL:-}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
         VITE_GREEN_INVOICE_URL: ${VITE_GREEN_INVOICE_URL:-}
-        VITE_ENABLE_FIRESTORE_SEED: ${VITE_ENABLE_FIRESTORE_SEED:-false}
     ports:
       - "127.0.0.1:3002:80"
     restart: unless-stopped
@@ -67,8 +50,8 @@ services:
       - bakrayot-proxy
 
 volumes:
-  hub-pos-finance-docs:
-  hub-pos-morning:
+  beo-os-finance-docs:
+  beo-os-morning:
 
 networks:
   bakrayot-proxy:
