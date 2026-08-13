@@ -2,8 +2,8 @@
 # xCloud Environment: VITE_SUPABASE_* (frontend build) + SUPABASE_* / ADMIN_EMAILS (API)
 
 services:
-  hub-pos-api:
-    container_name: hub-pos-api
+  beo-os-api:
+    container_name: beo-os-api
     build:
       context: .
       dockerfile: server/Dockerfile
@@ -30,10 +30,10 @@ services:
       - beo-os-morning:/data/morning
     restart: unless-stopped
 
-  hub-pos:
-    container_name: hub-pos-web
+  beo-os-web:
+    container_name: beo-os-web
     depends_on:
-      - hub-pos-api
+      - beo-os-api
     build:
       context: .
       dockerfile: Dockerfile
