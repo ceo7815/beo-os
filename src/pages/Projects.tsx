@@ -55,7 +55,7 @@ const statusLabels: Record<ProjectStatus, string> = {
 }
 
 const projectStatusBadgeColor: Record<ProjectStatus, string> = {
-  active: '#F97316',
+  active: '#5828A0',
   paused: '#64748B',
   done: '#16A34A',
 }
@@ -71,9 +71,9 @@ const uiButtonBase =
 /** פילטר / משנה — מסגרת כתומה רכה */
 const uiFilterInactive = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
 /** פילטר נבחר */
-const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[var(--brand-hover)]`
 /** כפתור ראשי מותג */
-const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[var(--brand-hover)]`
 /** כפתור משנה — כתום על אפור */
 const uiButtonBrandOutline = `${uiButtonBase} border border-[var(--orange)] bg-[var(--surface-muted)] text-[var(--orange)] hover:bg-[var(--orange-light)]`
 const uiButtonGhost = uiFilterInactive
@@ -485,7 +485,7 @@ export function Projects() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
+    <div className="beo-page space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">

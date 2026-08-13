@@ -169,7 +169,7 @@ export function FinanceProjects() {
   ]
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
+    <div className="beo-page space-y-6">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[22px] font-extrabold text-[var(--text-dark)] md:text-[26px]">

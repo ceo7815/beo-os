@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { DocumentData, QuerySnapshot } from 'firebase/firestore'
 import { collection, onSnapshot } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { HUB_SUPPLIER_ID } from '../lib/hubSupplier'
 import {
   notifyHubBackground,
@@ -59,11 +59,13 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
+    if (!canUseLegacyFirestore()) return
     requestHubNotificationPermissionLater()
   }, [uid])
 
   useEffect(() => {
     if (!uid) return
+    if (!canUseLegacyFirestore()) return
     let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'leads'),
@@ -100,6 +102,7 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
+    if (!canUseLegacyFirestore()) return
     let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'clients'),
@@ -138,6 +141,7 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
+    if (!canUseLegacyFirestore()) return
     let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'tasks'),
@@ -218,6 +222,7 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
+    if (!canUseLegacyFirestore()) return
     let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'collectionTracking'),
@@ -246,6 +251,7 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
+    if (!canUseLegacyFirestore()) return
     let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'campaigns'),
@@ -282,6 +288,7 @@ export function HubRealtimeNotifications() {
 
   useEffect(() => {
     if (!uid) return
+    if (!canUseLegacyFirestore()) return
     let serverBaselineDone = false
     const unsub = onSnapshot(
       collection(db, 'suppliers'),

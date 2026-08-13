@@ -5,8 +5,9 @@ import { useUsers } from '../hooks/useUsers'
 import { memberIsSalesAgentFlag } from '../lib/salesAgent'
 import type { TeamMember } from '../types'
 import { ToastHost } from './shared/Toast'
+import { brandLogoAlt, brandLogoSrc } from '../lib/brand'
 
-const LAYOUT_LOGO_SRC = `${import.meta.env.BASE_URL}logo-hub-pos.png?v=3`
+const LAYOUT_LOGO_SRC = `${brandLogoSrc()}?v=3`
 
 const navBase =
   'flex items-center gap-2.5 rounded-none px-5 py-3 text-base transition'
@@ -98,8 +99,8 @@ export function AgentPortalPreviewShell() {
   const navClass = (isActive: boolean) =>
     `${navBase} ${
       isActive
-        ? 'border-r-[3px] border-[var(--orange)] bg-black/25 font-bold text-[#F97316]'
-        : 'border-r-[3px] border-transparent text-white/55 hover:bg-white/[0.06] hover:text-white'
+        ? 'border-r-[3px] border-[var(--orange)] bg-[var(--brand-muted)] font-bold text-[var(--orange)]'
+        : 'border-r-[3px] border-transparent text-slate-600 hover:bg-[var(--brand-muted)] hover:text-slate-900'
     }`
 
   return (
@@ -109,13 +110,13 @@ export function AgentPortalPreviewShell() {
         className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-[100dvh] md:flex-row md:overflow-hidden"
       >
         <header
-          className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-[rgba(255,255,255,0.12)] bg-[#454545] px-3 py-2.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)] md:hidden"
+          className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-white px-3 py-2.5 shadow-sm md:hidden"
           style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
         >
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white transition hover:bg-white/10"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-slate-50 text-slate-700 transition hover:bg-[var(--brand-muted)]"
             aria-label="פתח תפריט ניווט"
             aria-expanded={mobileNavOpen}
           >
@@ -124,7 +125,7 @@ export function AgentPortalPreviewShell() {
             </svg>
           </button>
           <img src={LAYOUT_LOGO_SRC} alt="" className="h-9 w-auto max-w-[140px] object-contain opacity-95" />
-          <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-white/70">
+          <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-slate-500">
             תצוגת סוכן
           </span>
         </header>
@@ -139,19 +140,19 @@ export function AgentPortalPreviewShell() {
         ) : null}
 
         <aside
-          className={`flex flex-col bg-[#454545] transition-transform duration-200 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto md:static md:h-full md:w-[220px] md:shrink-0 md:overflow-y-auto ${
+          className={`flex flex-col bg-white transition-transform duration-200 max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto md:static md:h-full md:w-[220px] md:shrink-0 md:overflow-y-auto md:border-l md:border-[var(--border)] ${
             mobileNavOpen ? 'max-md:translate-x-0' : 'max-md:pointer-events-none max-md:translate-x-full'
           }`}
         >
           <div className="flex flex-1 flex-col gap-5 p-4">
-            <div className="border-b border-white/10 pb-4">
+            <div className="border-b border-[var(--border)] pb-4">
               <img
                 src={LAYOUT_LOGO_SRC}
-                alt="Hub-Pos"
+                alt={brandLogoAlt()}
                 className="mx-auto h-auto w-full max-w-[196px] object-contain"
               />
-              <p className="mt-3 text-center text-[11px] font-semibold text-white/55">פורטל סוכן — תצוגת מנהל</p>
-              <p className="mt-1 text-center text-[14px] font-bold text-[#F97316]">{displayUser.name}</p>
+              <p className="mt-3 text-center text-[11px] font-semibold text-slate-400">פורטל סוכן — תצוגת מנהל</p>
+              <p className="mt-1 text-center text-[14px] font-bold text-[var(--orange)]">{displayUser.name}</p>
             </div>
 
             <nav className="flex flex-col gap-0.5">
@@ -188,7 +189,7 @@ export function AgentPortalPreviewShell() {
             </nav>
           </div>
 
-          <div className="flex flex-col gap-2 border-t border-white/10 p-4">
+          <div className="flex flex-col gap-2 border-t border-[var(--border)] p-4">
             <div className="flex items-center gap-2">
               <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -200,14 +201,14 @@ export function AgentPortalPreviewShell() {
                 {displayUser.avatar}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-white">{displayUser.name}</div>
-                <div className="truncate text-[11px] text-white/40">סוכן מכירות</div>
+                <div className="truncate text-sm font-semibold text-slate-900">{displayUser.name}</div>
+                <div className="truncate text-[11px] text-slate-500">סוכן מכירות</div>
               </div>
             </div>
             <button
               type="button"
               onClick={() => navigate('/agents', { replace: false })}
-              className="w-full rounded-lg border border-[#F97316]/50 bg-[#F97316]/15 py-1.5 text-center text-xs font-bold text-[#FDBA74] transition hover:bg-[#F97316]/25"
+              className="w-full rounded-lg border border-[var(--orange)]/40 bg-[var(--orange)]/10 py-1.5 text-center text-xs font-bold text-[var(--orange)] transition hover:bg-[var(--orange)]/20"
             >
               חזרה לדשבורד מנהל
             </button>
@@ -215,7 +216,7 @@ export function AgentPortalPreviewShell() {
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="sticky top-0 z-40 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border-orange-soft)] bg-[#FFFBF7] px-4 py-2.5 shadow-sm">
+          <div className="sticky top-0 z-40 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border-orange-soft)] bg-[var(--brand-light)] px-4 py-2.5 shadow-sm">
             <p className="text-[12px] font-semibold text-[var(--text-dark)]">
               תצוגת מנהל — רואים את הפורטל בדיוק כמו{' '}
               <strong className="text-[var(--orange)]">{displayUser.name}</strong>

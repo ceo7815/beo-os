@@ -1,6 +1,6 @@
 export type TasksBoardViewMode = 'kanban' | 'table'
 
-const STORAGE_KEY = 'hub-pos-tasks-board-view'
+const STORAGE_KEY = 'beo-os-tasks-board-view'
 
 export function loadTasksBoardViewMode(): TasksBoardViewMode {
   try {

@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToCollectionTracking } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { todayYmd } from '../lib/dates'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { CollectionTracking } from '../types'
@@ -75,6 +75,10 @@ export function CollectionTrackingProvider({
       setEntries([])
       setLoading(false)
       setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
+      setLoading(false)
       return
     }
     setLoading(true)

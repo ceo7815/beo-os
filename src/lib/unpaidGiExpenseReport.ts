@@ -1,3 +1,4 @@
+import { BRAND } from './brand'
 import { formatDateIL } from './dates'
 import { monthLabelHe } from './financeCalc'
 import {
@@ -211,7 +212,7 @@ export function unpaidGiReportHtml(data: UnpaidGiReportData): string {
       padding-bottom: 14px;
       margin-bottom: 18px;
     }
-    .brand { font-size: 22px; font-weight: 800; color: #1d4ed8; }
+    .brand { font-size: 22px; font-weight: 800; color: #5828a0; }
     .title { font-size: 18px; font-weight: 800; margin-top: 4px; }
     .subtitle { color: #64748b; margin-top: 6px; font-size: 12px; }
     .meta { text-align: left; color: #64748b; font-size: 11px; }
@@ -287,7 +288,7 @@ export function unpaidGiReportHtml(data: UnpaidGiReportData): string {
 <body>
   <header class="header">
     <div>
-      <div class="brand">HUB POS</div>
+      <div class="brand">${BRAND.productName}</div>
       <div class="title">דוח מסמכי חשבונית ירוקה ללא תשלום בנק</div>
       <div class="subtitle">תקופה: ${escapeHtml(data.periodLabel)} · לאותר חיובים חסרים / כפילויות</div>
     </div>
@@ -321,7 +322,7 @@ export function unpaidGiReportHtml(data: UnpaidGiReportData): string {
   ${monthBlocks || '<p>אין מסמכי GI ללא בנק בתקופה שנבחרה.</p>'}
 
   <footer class="footer">
-    <span>HUB ADVANCED · דוח פנימי</span>
+    <span>${BRAND.reportFooter}</span>
     <span>${data.rows.length} שורות · ${escapeHtml(data.periodLabel)}</span>
   </footer>
 </body>

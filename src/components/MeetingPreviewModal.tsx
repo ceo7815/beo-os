@@ -280,7 +280,7 @@ export function MeetingPreviewModal(props: {
             <button
               type="button"
               onClick={() => props.onEdit(m.id)}
-              className="rounded-xl border border-[var(--orange)] bg-[var(--orange-light)] px-4 py-2 text-sm font-bold text-[var(--orange)] transition hover:bg-[#ffeadc]"
+              className="rounded-xl border border-[var(--orange)] bg-[var(--orange-light)] px-4 py-2 text-sm font-bold text-[var(--orange)] transition hover:bg-[#e7def8]"
             >
               עריכה
             </button>

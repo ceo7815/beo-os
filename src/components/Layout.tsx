@@ -8,11 +8,10 @@ import type { TeamMember } from '../types'
 import { HubRealtimeBubbleHost } from './HubRealtimeBubbleHost'
 import { ToastHost } from './shared/Toast'
 import { QuickActionsFloat } from './QuickActionsFloat'
-import { QuickCalendarSlider } from './QuickCalendarSlider'
 import { QuickTasksSlider } from './QuickTasksSlider'
-import { MeetingDrawer } from './MeetingDrawer'
 import { TaskDrawer } from './TaskDrawer'
 import { userIsAdmin } from './RequireAdmin'
+import { BRAND, brandLogoAlt, brandLogoSrc } from '../lib/brand'
 
 const workspaceLinks = [
   { label: 'Drive', href: 'https://drive.google.com', dot: '#FCD34D' },
@@ -22,10 +21,9 @@ const workspaceLinks = [
   { label: 'Docs', href: 'https://docs.google.com', dot: '#A78BFA' },
 ] as const
 
-const LAYOUT_LOGO_SRC = `${import.meta.env.BASE_URL}logo-hub-pos.png?v=3`
+const LAYOUT_LOGO_SRC = `${brandLogoSrc()}?v=4`
 
-const navBase =
-  'flex items-center gap-2.5 rounded-lg px-4 py-2.5 text-[15px] transition'
+const navBase = 'beo-nav-item'
 
 const navIconClass =
   'h-[17px] w-[17px] shrink-0 text-current opacity-90 [&>svg]:h-full [&>svg]:w-full'
@@ -50,17 +48,17 @@ function NavGlyph({ children }: { children: ReactNode }) {
 
 function navSubLinkClass(isActive: boolean, nested = false): string {
   return [
-    'flex min-h-[34px] w-full items-center rounded-md text-[13px] leading-snug transition',
-    nested ? 'pe-2 ps-5' : 'px-3 py-1.5',
-    isActive
-      ? 'bg-white/10 font-semibold text-[#F97316]'
-      : 'font-medium text-white/65 hover:bg-white/[0.06] hover:text-white/90',
-  ].join(' ')
+    'beo-nav-sub',
+    nested ? 'pe-2 ps-5' : '',
+    isActive ? 'is-active' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function NavSubSectionLabel({ children }: { children: ReactNode }) {
   return (
-    <p className="px-2 pb-0.5 pt-2 text-[10px] font-semibold tracking-wide text-white/35 first:pt-1">
+    <p className="beo-nav-label first:pt-1">
       {children}
     </p>
   )
@@ -68,10 +66,8 @@ function NavSubSectionLabel({ children }: { children: ReactNode }) {
 
 function NavSubPanel({ children }: { children: ReactNode }) {
   return (
-    <div className="border-t border-white/[0.08] px-2 pb-2 pt-2">
-      <div className="rounded-lg bg-black/20 p-1.5">
-        {children}
-      </div>
+    <div className="beo-nav-subpanel">
+      <div className="beo-nav-subpanel-inner">{children}</div>
     </div>
   )
 }
@@ -79,7 +75,7 @@ function NavSubPanel({ children }: { children: ReactNode }) {
 function NavExpandChevron({ open }: { open: boolean }) {
   return (
     <span
-      className={`ms-auto shrink-0 text-white/45 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+      className={`ms-auto shrink-0 text-current opacity-70 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
       aria-hidden
     >
       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -104,22 +100,17 @@ function NavExpandableGroup({
   onToggle: () => void
   children: ReactNode
 }) {
-  const highlighted = open || isSectionActive
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-lg transition-[background] duration-200 ${
-        highlighted ? 'bg-white/[0.07]' : ''
+      className={`beo-nav-group flex flex-col overflow-hidden ${
+        open || isSectionActive ? 'is-open' : ''
       }`}
     >
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={`${navBase} w-full text-right ${
-          highlighted
-            ? 'bg-white/10 font-semibold text-[#F97316]'
-            : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-        }`}
+        className={`${navBase} w-full text-right ${isSectionActive ? 'is-active' : ''}`}
       >
         {icon}
         <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -174,9 +165,7 @@ export function Layout() {
     location.pathname.startsWith('/leads') ||
     location.pathname.startsWith('/tasks') ||
     location.pathname.startsWith('/hourly-services') ||
-    location.pathname.startsWith('/calendar') ||
-    location.pathname.startsWith('/prompts') ||
-    location.pathname.startsWith('/hosting')
+    location.pathname.startsWith('/prompts')
 
   const [operationsOpen, setOperationsOpen] = useState(operationsNavActive)
   const [financeOpen, setFinanceOpen] = useState(financeNavActive)
@@ -249,13 +238,13 @@ export function Layout() {
         className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-[100dvh] md:flex-row md:overflow-hidden"
       >
         <header
-          className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-white/10 bg-[var(--bg-sidebar)] px-3 py-2.5 shadow-sm md:hidden"
+          className="beo-sidebar sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b px-3 py-2.5 md:hidden"
           style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
         >
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white transition hover:bg-white/10 active:scale-[0.98]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--sidebar-border)] bg-[var(--surface-muted)] text-[var(--text-dark)] transition hover:bg-[var(--sidebar-hover)] active:scale-[0.98]"
             aria-label="פתח תפריט ניווט"
             aria-expanded={mobileNavOpen}
             aria-controls="app-sidebar"
@@ -276,13 +265,13 @@ export function Layout() {
           <img
             src={LAYOUT_LOGO_SRC}
             alt=""
-            className="h-9 w-auto max-w-[140px] select-none object-contain opacity-95"
-            width={140}
-            height={36}
+            className="h-8 w-auto max-w-[120px] select-none object-contain"
+            width={120}
+            height={32}
             decoding="async"
           />
-          <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-white/50">
-            האב מערכות מתקדמות
+          <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-[var(--sidebar-muted)]">
+            {BRAND.companyName}
           </span>
         </header>
 
@@ -299,7 +288,7 @@ export function Layout() {
           id="app-sidebar"
           role="navigation"
           aria-label="ניווט ראשי"
-          className={`flex flex-col bg-[var(--bg-sidebar)] transition-transform duration-200 ease-out max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto max-md:border-l max-md:border-white/[0.08] max-md:shadow-[-8px_0_32px_rgba(0,0,0,0.25)] md:static md:z-auto md:h-full md:w-[220px] md:shrink-0 md:translate-x-0 md:overflow-y-auto md:border-b-0 md:border-l md:border-white/[0.08] md:shadow-[-4px_0_24px_rgba(0,0,0,0.06)] ${
+          className={`beo-sidebar flex flex-col border-[var(--sidebar-border)] transition-transform duration-200 ease-out max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto max-md:border-l max-md:shadow-[-12px_0_32px_rgba(20,18,24,0.12)] md:static md:z-auto md:h-full md:w-[248px] md:shrink-0 md:translate-x-0 md:overflow-y-auto md:border-b-0 md:border-l ${
             mobileNavOpen ? 'max-md:translate-x-0' : 'max-md:pointer-events-none max-md:translate-x-full'
           }`}
           style={{
@@ -312,28 +301,25 @@ export function Layout() {
           }}
         >
           <div className="flex flex-1 flex-col gap-5 p-4">
-            <div className="relative border-b border-white/10 pb-4">
+            <div className="relative border-b border-[var(--sidebar-border)] pb-4">
               <button
                 type="button"
                 onClick={closeMobileNav}
-                className="absolute left-0 top-0 flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 text-lg font-light leading-none text-white/80 transition hover:bg-white/10 md:hidden"
+                className="absolute left-0 top-0 flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--sidebar-border)] text-lg font-light leading-none text-[var(--sidebar-text)] transition hover:bg-[var(--sidebar-hover)] md:hidden"
                 aria-label="סגור תפריט"
               >
                 ×
               </button>
               <img
                 src={LAYOUT_LOGO_SRC}
-                alt="Hub-Pos"
-                className="mx-auto h-auto w-full max-w-[196px] select-none object-contain max-md:pt-1"
-                width={196}
-                height={72}
+                alt={brandLogoAlt()}
+                className="mx-auto h-auto w-full max-w-[168px] select-none object-contain"
+                width={168}
+                height={62}
                 decoding="async"
               />
-              <p className="mt-3 text-center text-[11px] font-semibold text-white/55">
-                שם ארגון:
-              </p>
-              <p className="mt-1 text-center text-[14px] font-bold leading-snug text-[#F97316]">
-                האב מערכות מתקדמות
+              <p className="mt-2 text-center text-[11px] font-semibold tracking-wide text-[var(--sidebar-muted)]">
+                {BRAND.tagline}
               </p>
             </div>
 
@@ -342,11 +328,7 @@ export function Layout() {
                 to="/"
                 end
                 className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'bg-white/10 font-semibold text-[#F97316]'
-                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                  }`
+                  `${navBase} ${isActive ? 'is-active' : ''}`
                 }
               >
                 <NavGlyph>
@@ -382,21 +364,14 @@ export function Layout() {
                 />
                 <NavSubLink to="/tasks" label="משימות" />
                 <NavSubLink to="/hourly-services" label="שירותי שעות" />
-                <NavSubLink to="/hosting" label="אחסון ודומיינים" />
 
-                <NavSubSectionLabel>יומן וכלים</NavSubSectionLabel>
-                <NavSubLink to="/calendar" label="יומן" end />
-                <NavSubLink to="/calendar/summaries" label="סיכומי פגישות" />
+                <NavSubSectionLabel>כלים</NavSubSectionLabel>
                 <NavSubLink to="/prompts" label="ספריית פרומפטים" />
               </NavExpandableGroup>
               <NavLink
                 to="/clients"
                 className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'bg-white/10 font-semibold text-[#F97316]'
-                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                  }`
+                  `${navBase} ${isActive ? 'is-active' : ''}`
                 }
               >
                 <NavGlyph>
@@ -407,11 +382,7 @@ export function Layout() {
               <NavLink
                 to="/suppliers"
                 className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'bg-white/10 font-semibold text-[#F97316]'
-                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                  }`
+                  `${navBase} ${isActive ? 'is-active' : ''}`
                 }
               >
                 <NavGlyph>
@@ -440,7 +411,6 @@ export function Layout() {
                   <NavSubLink to="/finance/projects" label="פרויקטים" />
                   <NavSubLink to="/finance/cashflow" label="תזרים" />
                   <NavSubLink to="/finance/fixed-expenses" label="הוצאות קבועות" />
-                  <NavSubLink to="/finance/standing-orders" label="הוראות קבע" />
                   <NavSubLink to="/finance/retainers" label="ריטיינרים" />
                   <NavSubLink
                     to="/collections"
@@ -458,11 +428,7 @@ export function Layout() {
                 <NavLink
                   to="/collections"
                   className={({ isActive }) =>
-                    `${navBase} ${
-                      isActive
-                        ? 'bg-white/10 font-semibold text-[#F97316]'
-                        : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                    }`
+                    `${navBase} ${isActive ? 'is-active' : ''}`
                   }
                 >
                   <NavGlyph>
@@ -480,30 +446,9 @@ export function Layout() {
                 </NavLink>
               )}
               <NavLink
-                to="/attendance"
-                className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'bg-white/10 font-semibold text-[#F97316]'
-                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                  }`
-                }
-              >
-                <NavGlyph>
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 7v6l4 2" />
-                </NavGlyph>
-                נוכחות
-              </NavLink>
-
-              <NavLink
                 to="/vault"
                 className={({ isActive }) =>
-                  `${navBase} ${
-                    isActive
-                      ? 'bg-white/10 font-semibold text-[#F97316]'
-                      : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                  }`
+                  `${navBase} ${isActive ? 'is-active' : ''}`
                 }
               >
                 <NavGlyph>
@@ -515,16 +460,12 @@ export function Layout() {
 
               {showAdminNav ? (
                 <>
-                  <div className="my-2 border-t border-[rgba(255,255,255,0.1)]" />
+                  <div className="beo-sidebar-divider my-2 border-t" />
 
                   <NavLink
                     to="/users"
                     className={({ isActive }) =>
-                      `${navBase} ${
-                        isActive
-                          ? 'bg-white/10 font-semibold text-[#F97316]'
-                          : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                      }`
+                      `${navBase} ${isActive ? 'is-active' : ''}`
                     }
                   >
                     <NavGlyph>
@@ -534,29 +475,12 @@ export function Layout() {
                     </NavGlyph>
                     משתמשים
                   </NavLink>
-                  <NavLink
-                    to="/agents"
-                    className={({ isActive }) =>
-                      `${navBase} ${
-                        isActive
-                          ? 'bg-white/10 font-semibold text-[#F97316]'
-                          : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
-                      }`
-                    }
-                  >
-                    <NavGlyph>
-                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 00-3-3.87" />
-                    </NavGlyph>
-                    סוכני מכירות
-                  </NavLink>
                 </>
               ) : null}
             </nav>
 
-            <div className="mt-auto space-y-2 border-t border-[rgba(255,255,255,0.1)] pt-4">
-              <p className="text-[9px] font-semibold uppercase tracking-[2px] text-[rgba(255,255,255,0.3)]">
+            <div className="mt-auto space-y-2 border-t border-[var(--sidebar-border)] pt-4">
+              <p className="text-[9px] font-semibold uppercase tracking-[2px] text-[var(--sidebar-muted)]">
                 GOOGLE WORKSPACE
               </p>
               <ul className="space-y-2">
@@ -566,11 +490,11 @@ export function Layout() {
                       href={l.href}
                       target="_blank"
                       rel="noreferrer"
-                      className="group flex items-center gap-2 text-[12px] text-[rgba(255,255,255,0.55)] transition hover:text-white"
+                      className="group flex items-center gap-2 text-[12px] text-[var(--sidebar-text)] transition hover:text-[var(--sidebar-text-strong)]"
                     >
                       <span
-                        className="h-1.5 w-1.5 shrink-0 rounded-full transition group-hover:brightness-125 group-hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.9)]"
-                        style={{ backgroundColor: l.dot }}
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: l.dot }}
                       />
                       {l.label}
                     </a>
@@ -580,22 +504,21 @@ export function Layout() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 border-t border-[rgba(255,255,255,0.1)] p-4">
+          <div className="flex flex-col gap-2 border-t border-[var(--sidebar-border)] p-4">
             <div className="flex items-center gap-2">
               <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
                 style={{
-                  backgroundColor: `${mainUser.color}44`,
-                  border: `1.5px solid ${mainUser.color}`,
+                  backgroundColor: BRAND.color.purple,
                 }}
               >
                 {mainUser.avatar}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-white">
+                <div className="truncate text-sm font-semibold text-[var(--sidebar-text-strong)]">
                   {mainUser.name}
                 </div>
-                <div className="truncate text-[11px] text-[rgba(255,255,255,0.4)]">
+                <div className="truncate text-[11px] text-[var(--sidebar-muted)]">
                   {mainUser.role === 'admin' || mainUser.role === 'superadmin'
                     ? 'מנהל מערכת'
                     : mainUser.role === 'employee'
@@ -607,7 +530,7 @@ export function Layout() {
             <button
               type="button"
               onClick={() => void signOutUser()}
-              className="w-full rounded-lg border border-white/20 py-1.5 text-center text-xs font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+              className="w-full rounded-lg border border-[var(--sidebar-border)] py-1.5 text-center text-xs font-semibold text-[var(--sidebar-text)] transition hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text-strong)]"
             >
               התנתק
             </button>
@@ -617,9 +540,7 @@ export function Layout() {
         <main className="relative min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-[var(--bg-main)]">
           <QuickActionsFloat />
           <QuickTasksSlider />
-          <QuickCalendarSlider />
           <TaskDrawer />
-          <MeetingDrawer />
           <Outlet />
         </main>
       </div>

@@ -11,7 +11,7 @@ export function leadScheduleUrgency(
   const next = scheduleYmd.slice(0, 10)
   if (!YMD.test(next)) return null
   if (next < today) return { label: 'דחוף מאוד', color: '#DC2626' }
-  if (next === today) return { label: 'דחוף היום', color: '#EA580C' }
+  if (next === today) return { label: 'דחוף היום', color: '#F59E0B' }
   if (next <= addDaysYmd(today, 2)) return { label: 'לטיפול בקרוב', color: '#D97706' }
   return { label: 'מתוכנן', color: '#64748B' }
 }

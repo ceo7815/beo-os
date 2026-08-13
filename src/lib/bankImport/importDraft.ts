@@ -1,6 +1,6 @@
 import type { BankImportSource, ParsedTransaction, SkipReason } from './types'
 
-const DRAFT_KEY = 'hub-pos:expense-import-draft'
+const DRAFT_KEY = 'beo-os:expense-import-draft'
 
 export type ImportDraftRow = {
   tx: ParsedTransaction

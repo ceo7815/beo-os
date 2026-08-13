@@ -7,164 +7,165 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { type User, onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth'
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useNavigate, useLocation } from 'react-router-dom'
-import {
-  auth,
-  db,
-  ensureFirestoreReady,
-  isFirebaseConfigured,
-} from '../lib/firebase'
-import { isFirestoreAutoSeedEnabled } from '../lib/firestoreSeedFlags'
-import { seedClients } from '../lib/seedClients'
-import { seedFirestore } from '../lib/seedData'
-import { useHubStore } from '../store/useStore'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
+import { isSupabaseConfigured } from '../lib/backend'
+import { supabase } from '../lib/supabase'
+import type { AppUser } from '../lib/appUser'
 import { isPublicAppPath } from '../lib/publicRoutes'
-
-/**
- * Seed (CSV + דמו) רק אם VITE_ENABLE_FIRESTORE_SEED=true — לא נוגע בנתונים אמיתיים בפרודקשן.
- */
-let csvSeedDoneForUid: string | null = null
-
-function runSeedsAfterLogin(uid: string): void {
-  if (!isFirestoreAutoSeedEnabled()) return
-
-  void (async () => {
-    try {
-      await ensureFirestoreReady()
-    } catch {
-      /* המשך גם אם enableNetwork נכשל */
-    }
-    if (csvSeedDoneForUid !== uid) {
-      csvSeedDoneForUid = uid
-      try {
-        await seedClients()
-      } catch (e) {
-        console.error('seedClients', e)
-      }
-    }
-    try {
-      await seedFirestore()
-    } catch (e) {
-      console.error('seedFirestore', e)
-    }
-  })()
-}
-
-async function ensureUserProfile(user: User): Promise<void> {
-  const ref = doc(db, 'users', user.uid)
-  const snap = await getDoc(ref)
-  if (snap.exists()) return
-  const name =
-    user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
-  const avatar = name.slice(0, 2)
-  await setDoc(ref, {
-    name,
-    email: user.email ?? '',
-    role: 'employee',
-    avatar,
-    color: '#2563EB',
-    active: true,
-    createdAt: serverTimestamp(),
-  })
-}
-
-function hubUserFromFirebaseUser(u: User): {
-  uid: string
-  name: string
-  email: string
-  role: string
-  avatar: string
-  color: string
-  active: boolean
-} {
-  const name = u.displayName?.trim() || u.email?.split('@')[0] || 'משתמש'
-  return {
-    uid: u.uid,
-    name,
-    email: u.email ?? '',
-    role: 'employee',
-    avatar: name.slice(0, 2),
-    color: '#2563EB',
-    active: true,
-  }
-}
+import { useHubStore } from '../store/useStore'
 
 export interface AuthContextValue {
-  user: User | null
+  user: AppUser | null
   loading: boolean
   firebaseReady: boolean
+  authReady: boolean
   signInWithEmail: (email: string, password: string) => Promise<void>
   signOutUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function toAppUser(u: SupabaseUser, accessToken: string): AppUser {
+  const meta = u.user_metadata as Record<string, unknown> | undefined
+  const displayName =
+    (typeof meta?.name === 'string' && meta.name.trim()) ||
+    (typeof meta?.full_name === 'string' && meta.full_name.trim()) ||
+    u.email?.split('@')[0] ||
+    null
+  return {
+    uid: u.id,
+    email: u.email ?? null,
+    displayName,
+    getIdToken: async () => accessToken,
+  }
+}
+
+async function loadProfileIntoStore(uid: string, email: string | null, displayName: string | null) {
+  const setCurrentUser = useHubStore.getState().setCurrentUser
+  const fallback = {
+    uid,
+    name: displayName || email?.split('@')[0] || 'משתמש',
+    email: email ?? '',
+    role: 'employee',
+    avatar: (displayName || email || 'מש').slice(0, 2),
+    color: '#5828A0',
+    active: true,
+  }
+
+  if (!supabase) {
+    setCurrentUser(fallback)
+    return
+  }
+
+  const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
+  if (data) {
+    setCurrentUser({
+      uid,
+      name: data.name ?? fallback.name,
+      email: data.email ?? fallback.email,
+      role: data.role ?? 'employee',
+      avatar: data.avatar ?? fallback.avatar,
+      color: data.color ?? fallback.color,
+      active: data.active !== false,
+      isAgent: Boolean(data.is_agent),
+    })
+    return
+  }
+  setCurrentUser(fallback)
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
-  const firebaseReady = isFirebaseConfigured()
+  const authReady = isSupabaseConfigured()
 
   useEffect(() => {
-    if (!firebaseReady) {
+    if (!authReady || !supabase) {
       queueMicrotask(() => setLoading(false))
       return
     }
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u)
+
+    const applySession = async (sessionUser: SupabaseUser | null, accessToken: string) => {
       const setCurrentUser = useHubStore.getState().setCurrentUser
-      try {
-        if (u) {
-          try {
-            await ensureUserProfile(u)
-          } catch {
-            /* נכשל יצירת פרופיל — המשתמש עדיין מחובר */
-          }
-          try {
-            const snap = await getDoc(doc(db, 'users', u.uid))
-            if (snap.exists()) {
-              setCurrentUser({ uid: u.uid, ...snap.data() })
-            } else {
-              setCurrentUser(hubUserFromFirebaseUser(u))
-            }
-          } catch {
-            setCurrentUser(hubUserFromFirebaseUser(u))
-          }
-          runSeedsAfterLogin(u.uid)
-        } else {
-          csvSeedDoneForUid = null
-          setCurrentUser(null)
-          if (!isPublicAppPath(location.pathname)) {
-            navigate('/login', { replace: true })
-          }
+      if (!sessionUser) {
+        setUser(null)
+        setCurrentUser(null)
+        if (!isPublicAppPath(location.pathname)) {
+          navigate('/login', { replace: true })
         }
-      } finally {
-        setLoading(false)
+        return
       }
+      const mapped = toAppUser(sessionUser, accessToken)
+      setUser(mapped)
+      try {
+        await loadProfileIntoStore(mapped.uid, mapped.email, mapped.displayName)
+      } catch {
+        setCurrentUser({
+          uid: mapped.uid,
+          name: mapped.displayName || mapped.email?.split('@')[0] || 'משתמש',
+          email: mapped.email ?? '',
+          role: 'employee',
+          avatar: (mapped.displayName || mapped.email || 'מש').slice(0, 2),
+          color: '#5828A0',
+          active: true,
+        })
+      }
+    }
+
+    void supabase.auth.getSession().then(({ data }) => {
+      void applySession(data.session?.user ?? null, data.session?.access_token ?? '').finally(() => {
+        setLoading(false)
+      })
     })
-    return () => unsub()
-  }, [firebaseReady, navigate, location.pathname])
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      void applySession(session?.user ?? null, session?.access_token ?? '').finally(() => {
+        setLoading(false)
+      })
+    })
+
+    return () => {
+      sub.subscription.unsubscribe()
+    }
+  }, [authReady, navigate, location.pathname])
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email.trim(), password)
+    if (!supabase) {
+      throw new Error('Supabase אינו מוגדר')
+    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+    if (error) {
+      const err = error as Error & { code?: string }
+      err.code = error.message.toLowerCase().includes('invalid')
+        ? 'auth/invalid-credential'
+        : error.message
+      throw err
+    }
   }, [])
 
   const signOutUser = useCallback(async () => {
-    await firebaseSignOut(auth)
+    if (supabase) {
+      await supabase.auth.signOut()
+    }
+    useHubStore.getState().setCurrentUser(null)
   }, [])
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       loading,
-      firebaseReady,
+      firebaseReady: authReady,
+      authReady,
       signInWithEmail,
       signOutUser,
     }),
-    [user, loading, firebaseReady, signInWithEmail, signOutUser],
+    [user, loading, authReady, signInWithEmail, signOutUser],
   )
 
   return (
@@ -172,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {loading ? (
         <div
           dir="rtl"
-          className="flex min-h-[100dvh] items-center justify-center bg-[#F0F4FF] text-base font-semibold text-[#1A2B5E]"
+          className="flex min-h-[100dvh] items-center justify-center bg-[#F7F5FB] text-base font-semibold text-[#141416]"
         >
           טוען...
         </div>

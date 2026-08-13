@@ -49,7 +49,7 @@ const TIME_COLUMNS: {
   badgeColor: string
 }[] = [
   { key: 'overdue', label: 'באיחור', badgeColor: '#EF4444' },
-  { key: 'today', label: 'היום', badgeColor: '#F97316' },
+  { key: 'today', label: 'היום', badgeColor: '#5828A0' },
   { key: 'tomorrow', label: 'מחר', badgeColor: '#2563EB' },
   { key: 'dayAfterTomorrow', label: 'מחרתיים', badgeColor: '#0EA5E9' },
   { key: 'weekRest', label: 'המשך השבוע', badgeColor: '#64748B' },
@@ -140,7 +140,7 @@ function TaskCard({
     task.priority === 'high'
       ? '#EF4444'
       : task.priority === 'medium'
-        ? '#F97316'
+        ? '#5828A0'
         : '#94A3B8'
 
   const due = dueYmd(task)
@@ -909,7 +909,7 @@ export function Tasks() {
   )
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 px-6 py-8 md:px-8">
+    <div className="beo-page space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">

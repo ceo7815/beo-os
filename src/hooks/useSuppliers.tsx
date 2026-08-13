@@ -7,23 +7,30 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  deleteField,
-  doc,
-  onSnapshot,
-  serverTimestamp,
-  updateDoc,
-} from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
-import { docToSupplier } from '../lib/firestoreMappers'
-import { ensureHubSupplierExists } from '../lib/hubSupplier'
-import { db } from '../lib/firebase'
+import { isSupabaseConfigured } from '../lib/backend'
+import { requireSupabase } from '../lib/supabase'
+import { subscribeTable } from '../lib/sbLive'
 import { normalizeSupplierTypesForSave } from '../lib/supplierTypes'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { Supplier } from '../types'
+
+function rowToSupplier(row: Record<string, unknown>): Supplier {
+  const types = Array.isArray(row.supplier_types)
+    ? row.supplier_types.map((t) => String(t)).filter(Boolean)
+    : []
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    phone: String(row.phone ?? ''),
+    email: String(row.email ?? ''),
+    ...(types.length ? { supplierTypes: types } : {}),
+    active: row.active !== false,
+    createdAt: row.created_at
+      ? new Date(String(row.created_at)).toISOString()
+      : new Date().toISOString(),
+  }
+}
 
 type SuppliersContextValue = {
   suppliers: Supplier[]
@@ -42,11 +49,6 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const displayName = useCallback(() => {
-    if (!user) return 'משתמש'
-    return user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
-  }, [user])
-
   useEffect(() => {
     if (!user) {
       setSuppliers([])
@@ -54,26 +56,27 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
       setError(null)
       return
     }
-    void ensureHubSupplierExists().catch((e) => {
-      console.error('ensureHubSupplierExists', e)
-    })
+    if (!isSupabaseConfigured()) {
+      setSuppliers([])
+      setLoading(false)
+      setError(null)
+      return
+    }
     setLoading(true)
-    const unsub = onSnapshot(
-      collection(db, 'suppliers'),
-      (snap) => {
-        setSuppliers(snap.docs.map((d) => docToSupplier(d)))
+    return subscribeTable(
+      'suppliers',
+      (rows) => {
+        setSuppliers(rows.map(rowToSupplier))
         setLoading(false)
         setError(null)
       },
       (err) => {
-        console.error('suppliers snapshot', err)
-        toastFsError('שגיאה בטעינת ספקים', err, 'suppliers snapshot')
-        setError(err instanceof Error ? err : new Error(String(err)))
+        console.error('suppliers', err)
+        toastFsError('שגיאה בטעינת ספקים', err, 'suppliers')
+        setError(err)
         setLoading(false)
       },
     )
-
-    return () => unsub()
   }, [user])
 
   const addSupplier = useCallback(
@@ -83,41 +86,32 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
         return null
       }
       try {
+        const sb = requireSupabase()
         const types = normalizeSupplierTypesForSave(data.supplierTypes)
-        const uname = displayName()
-        const ref = await addDoc(collection(db, 'suppliers'), {
-          name: data.name,
-          phone: data.phone,
-          email: data.email,
-          ...(types.length ? { supplierTypes: types } : {}),
-          active: data.active !== false,
-          createdAt: serverTimestamp(),
-          createdByUserId: user.uid,
-          createdByUserName: uname,
-          lastActorUserId: user.uid,
-          lastActorUserName: uname,
-        })
-        const optimistic: Supplier = {
-          id: ref.id,
-          name: data.name,
-          phone: data.phone,
-          email: data.email,
-          ...(types.length ? { supplierTypes: types } : {}),
-          ...(data.active === false ? { active: false } : {}),
-          createdAt: new Date().toISOString(),
-        }
-        setSuppliers((prev) => {
-          if (prev.some((s) => s.id === optimistic.id)) return prev
-          return [...prev, optimistic]
-        })
+        const { data: created, error: qErr } = await sb
+          .from('suppliers')
+          .insert({
+            name: data.name,
+            phone: data.phone ?? '',
+            email: data.email ?? '',
+            supplier_types: types,
+            active: data.active !== false,
+          })
+          .select('*')
+          .single()
+        if (qErr) throw qErr
+        const optimistic = rowToSupplier(created as Record<string, unknown>)
+        setSuppliers((prev) =>
+          prev.some((s) => s.id === optimistic.id) ? prev : [...prev, optimistic],
+        )
         toastFsSuccess('הספק נוסף')
-        return ref.id
+        return optimistic.id
       } catch (e) {
         toastFsError('שגיאה בשמירת ספק', e, 'addSupplier')
         return null
       }
     },
-    [user, displayName],
+    [user],
   )
 
   const updateSupplier = useCallback(
@@ -127,20 +121,18 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
         return
       }
       try {
+        const sb = requireSupabase()
         const patch: Record<string, unknown> = {}
         if (data.name !== undefined) patch.name = data.name
         if (data.phone !== undefined) patch.phone = data.phone
         if (data.email !== undefined) patch.email = data.email
         if (data.supplierTypes !== undefined) {
-          const types = normalizeSupplierTypesForSave(data.supplierTypes)
-          patch.supplierTypes = types.length ? types : deleteField()
-          patch.supplierType = deleteField()
+          patch.supplier_types = normalizeSupplierTypesForSave(data.supplierTypes)
         }
         if (data.active !== undefined) patch.active = data.active
-        const uname = displayName()
-        patch.lastActorUserId = user.uid
-        patch.lastActorUserName = uname
-        await updateDoc(doc(db, 'suppliers', id), patch)
+        if (Object.keys(patch).length === 0) return
+        const { error: qErr } = await sb.from('suppliers').update(patch).eq('id', id)
+        if (qErr) throw qErr
         setSuppliers((prev) =>
           prev.map((s) => {
             if (s.id !== id) return s
@@ -161,12 +153,14 @@ export function SuppliersProvider({ children }: { children: ReactNode }) {
         toastFsError('שגיאה בעדכון ספק', e, 'updateSupplier')
       }
     },
-    [user, displayName],
+    [user],
   )
 
   const deleteSupplier = useCallback(async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'suppliers', id))
+      const sb = requireSupabase()
+      const { error: qErr } = await sb.from('suppliers').delete().eq('id', id)
+      if (qErr) throw qErr
       setSuppliers((prev) => prev.filter((s) => s.id !== id))
       toastFsSuccess('הספק נמחק')
     } catch (e) {

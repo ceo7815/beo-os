@@ -67,14 +67,14 @@ const projectStatusBadgeColor: Record<ProjectStatus, string> = {
 
 const taskStatusAccent: Record<TaskStatus, string> = {
   todo: '#2563EB',
-  doing: '#F97316',
+  doing: '#5828A0',
   blocked: '#EF4444',
   done: '#10B981',
 }
 
 const taskStatusBadgeColor: Record<TaskStatus, string> = {
   todo: '#2563EB',
-  doing: '#F97316',
+  doing: '#5828A0',
   blocked: '#EF4444',
   done: '#16A34A',
 }
@@ -244,7 +244,7 @@ export function ProjectDetail() {
 
   if (!project || !id) {
     return (
-      <div className="mx-auto max-w-[1400px] space-y-4 px-8 py-8">
+      <div className="beo-page space-y-4">
         <p className="text-[var(--text-mid)]">הפרויקט לא נמצא</p>
         <Link
           to="/projects"
@@ -325,7 +325,7 @@ export function ProjectDetail() {
   ]
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8">
+    <div className="beo-page space-y-6">
       <header className="space-y-3 border-b border-[var(--border)] pb-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-3">

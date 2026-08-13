@@ -34,10 +34,10 @@ function leadActivityMonthYm(l: Lead): string | null {
 }
 
 const statusColors: Record<LeadStatus, string> = {
-  new: '#F97316',
+  new: '#5828A0',
   specification: '#7C3AED',
   quote_sent: '#D97706',
-  follow_up: '#EA580C',
+  follow_up: '#F59E0B',
   no_answer: '#64748B',
   not_relevant: '#DC2626',
   closed: '#16A34A',

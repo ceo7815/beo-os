@@ -45,8 +45,8 @@ export function AgentRevenueChart({
       >
         <defs>
           <linearGradient id="agentBarGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#FB923C" />
-            <stop offset="100%" stopColor="#EA580C" />
+            <stop offset="0%" stopColor="#9B6DD4" />
+            <stop offset="100%" stopColor="#5828A0" />
           </linearGradient>
           <filter id="agentBarShadow" x="-20%" y="-20%" width="140%" height="140%">
             <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.18" />

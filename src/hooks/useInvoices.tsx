@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToInvoice } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { todayYmd } from '../lib/dates'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
@@ -91,6 +91,10 @@ export function InvoicesProvider({ children }: { children: ReactNode }) {
       setInvoices([])
       setLoading(false)
       setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
+      setLoading(false)
       return
     }
     setLoading(true)

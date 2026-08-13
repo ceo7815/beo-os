@@ -41,7 +41,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby="modal-title"
       >
-        <div className="mb-4 flex shrink-0 items-start justify-between gap-3 border-b border-[rgba(249,115,22,0.25)] pb-4">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] pb-4">
           <h2
             id="modal-title"
             className="min-w-0 flex-1 text-start text-[17px] font-bold leading-snug text-[var(--text-dark)]"
@@ -51,7 +51,7 @@ export function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-light)] transition hover:bg-[var(--orange-light)] hover:text-[var(--text-dark)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--text-light)] transition hover:bg-[var(--brand-light)] hover:text-[var(--text-dark)]"
             aria-label="סגור"
           >
             ✕

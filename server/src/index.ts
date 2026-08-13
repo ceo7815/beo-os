@@ -8,7 +8,7 @@ async function main() {
   try {
     await app.listen({ host: env.host, port: env.port })
     app.log.info(
-      `Hub POS server — http://${env.host}:${env.port}  (health: /api/health)`,
+      `Beo OS server — http://${env.host}:${env.port}  (health: /api/health)`,
     )
   } catch (err) {
     app.log.error(err)

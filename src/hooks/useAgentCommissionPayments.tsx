@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToAgentCommissionPayment } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { todayYmd } from '../lib/dates'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
@@ -55,6 +55,10 @@ export function AgentCommissionPaymentsProvider({ children }: { children: ReactN
       setPayments([])
       setLoading(false)
       setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
+      setLoading(false)
       return
     }
     setLoading(true)

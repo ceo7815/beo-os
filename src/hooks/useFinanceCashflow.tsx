@@ -25,7 +25,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type {
   FinanceCashflowBalanceSnapshot,
@@ -233,6 +233,17 @@ export function FinanceCashflowProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) {
+      setState(null)
+      setSnapshots([])
+      setGiRecurring([])
+      setGiRetainers([])
+      setExpectedExpenses([])
+      setVatEstimates([])
+      setLoading(false)
+      setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
       setState(null)
       setSnapshots([])
       setGiRecurring([])

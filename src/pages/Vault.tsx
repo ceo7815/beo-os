@@ -207,7 +207,7 @@ export function Vault() {
         : 'נסה לשנות את החיפוש או הסינון.'
 
   return (
-    <div className="mx-auto max-w-[1100px] space-y-4 px-4 py-5 md:space-y-6 md:px-8 md:py-8">
+    <div className="beo-page space-y-4 md:space-y-6">
       <header className="space-y-1">
         <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
           כספת סיסמאות

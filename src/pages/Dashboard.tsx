@@ -44,6 +44,7 @@ function KpiCard(props: {
   navigateTo?: string
   /** תיאור לקורא מסך (כשהכרטיס הוא כפתור) */
   navLabel?: string
+  tone?: 'default' | 'danger' | 'brand' | 'warn'
   /** שני מספרים בכרטיס — למשל משימות עליך לעומת משימות שיצרת לאחרים */
   split?: {
     secondaryValue: number
@@ -53,7 +54,23 @@ function KpiCard(props: {
 }) {
   const navigate = useNavigate()
   const clickable = Boolean(props.navigateTo)
-  const surfaceClass = `min-w-0 w-full text-right ${hubSectionClass()} rounded-xl p-3 transition sm:p-5 ${
+  const toneClass =
+    props.tone === 'danger'
+      ? 'beo-kpi--danger'
+      : props.tone === 'brand'
+        ? 'beo-kpi--brand'
+        : props.tone === 'warn'
+          ? 'beo-kpi--warn'
+          : ''
+  const valueColor =
+    props.tone === 'danger'
+      ? 'text-[var(--danger)]'
+      : props.tone === 'brand'
+        ? 'text-[var(--brand)]'
+        : props.tone === 'warn'
+          ? 'text-[var(--warning)]'
+          : 'text-[var(--text-dark)]'
+  const surfaceClass = `min-w-0 w-full text-right ${hubSectionClass()} ${toneClass} rounded-xl p-3 transition sm:p-5 ${
     clickable
       ? 'cursor-pointer hover:border-[var(--border-dark)] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--blue-mid)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-main)]'
       : 'hover:border-[var(--border-dark)] hover:shadow-md'
@@ -81,7 +98,7 @@ function KpiCard(props: {
           </div>
         </div>
       ) : (
-        <div className="text-[22px] font-bold tabular-nums text-[var(--text-dark)] sm:text-[26px] md:text-[28px]">
+        <div className={`text-[22px] font-bold tabular-nums sm:text-[26px] md:text-[28px] ${valueColor}`}>
           {props.value}
         </div>
       )}
@@ -168,10 +185,10 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 }
 
 const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
-  new: '#2563EB',
+  new: '#5828A0',
   specification: '#7C3AED',
   quote_sent: '#D97706',
-  follow_up: '#EA580C',
+  follow_up: '#F59E0B',
   no_answer: '#64748B',
   not_relevant: '#DC2626',
   closed: '#16A34A',
@@ -472,7 +489,7 @@ export function Dashboard() {
       : '')
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 md:px-8 md:py-7">
+    <div className="beo-page space-y-5">
       {(topOverdueTask || leadsDueUrgent > 0) ? (
         <section className="space-y-2">
           {topOverdueTask ? (
@@ -514,16 +531,16 @@ export function Dashboard() {
         </section>
       ) : null}
 
-      <header className={`${hubSectionElevatedClass()} rounded-xl p-5 md:p-6`}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <header className={`${hubSectionElevatedClass()} rounded-2xl p-5 md:p-6`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold tracking-wide text-[var(--text-light)]">
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-[var(--brand)]">
               {formatDateIL(todayDash)}
             </p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-[var(--text-dark)] md:text-3xl">
+            <h1 className="mt-1 text-[26px] font-extrabold tracking-tight text-[var(--text-dark)] md:text-[32px]">
               {myDisplayName ? `שלום, ${myDisplayName}` : 'דשבורד'}
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--text-mid)]">
+            <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--text-mid)]">
               {privileged
                 ? 'סיכום צוותי: משימות, פרויקטים, לידים, קמפיינים וגבייה — לפי סדר דחיפות.'
                 : 'המיקוד שלך: משימות, לידים בטיפולך וקמפיינים שאתה מבצע.'}
@@ -558,6 +575,7 @@ export function Dashboard() {
           value={kpis.overdue}
           label="משימות באיחור"
           hint="מוקצות אליך · עדיפות ראשונה"
+          tone={kpis.overdue > 0 ? 'danger' : 'default'}
           navigateTo="/tasks?focus=overdue"
           navLabel="מעבר למשימות באיחור"
         />
@@ -581,6 +599,7 @@ export function Dashboard() {
           value={kpis.activeProjects}
           label="פרויקטים פעילים"
           hint="במצב «פעיל» בלבד"
+          tone="brand"
           navigateTo="/projects?status=active"
           navLabel="מעבר לפרויקטים פעילים"
         />
@@ -588,6 +607,7 @@ export function Dashboard() {
           value={openLeadsPool.length}
           label={privileged ? 'לידים בצינור' : 'הלידים שלי'}
           hint="ללא סטטוס «נסגר»"
+          tone="brand"
           navigateTo="/leads?filter=open"
           navLabel="מעבר ללידים בצינור"
         />
@@ -633,10 +653,18 @@ export function Dashboard() {
                 title="אין לידים פתוחים להצגה"
                 description={
                   privileged
-                    ? 'הוסיפו לידים או עדכנו סטטוס — כאן יופיע מה שדורש מעקב.'
+                    ? 'הוסיפו ליד ראשון — כאן יופיע מה שדורש מעקב.'
                     : employeeShowOrgWideLeadsCampaigns
                       ? 'אין כרגע לידים פתוחות במערכת.'
                       : 'כשיוקצו אליך לידים פתוחים, הם יופיעו כאן.'
+                }
+                action={
+                  privileged
+                    ? {
+                        label: '+ ליד חדש',
+                        onClick: () => navigate('/leads', { state: { openAdd: true } }),
+                      }
+                    : undefined
                 }
               />
             ) : (
@@ -753,6 +781,14 @@ export function Dashboard() {
                     : employeeShowOrgWideLeadsCampaigns
                       ? 'אין כרגע קמפיינים פעילים במערכת.'
                       : 'כשתשויך אליך קמפיין כמבצע, הוא יופיע כאן.'
+                }
+                action={
+                  privileged
+                    ? {
+                        label: '+ קמפיין חדש',
+                        onClick: () => navigate('/campaigns', { state: { openAdd: true } }),
+                      }
+                    : undefined
                 }
               />
             ) : (
@@ -930,7 +966,11 @@ export function Dashboard() {
             {openOneTimeList.length === 0 ? (
               <EmptyState
                 title="אין פרויקטים חד-פעמיים פעילים כרגע"
-                description="רק פרויקטים במצב «פעיל» מוצגים כאן."
+                description="פתחו פרויקט חדש — רק פרויקטים במצב «פעיל» מוצגים כאן."
+                action={{
+                  label: '+ פרויקט חדש',
+                  onClick: () => navigate('/projects', { state: { openAdd: true } }),
+                }}
               />
             ) : null}
           </div>

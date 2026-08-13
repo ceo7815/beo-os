@@ -1,5 +1,5 @@
 {
-  "name": "hub-pos-server",
+  "name": "beo-os-server",
   "private": true,
   "type": "module",
   "engines": {

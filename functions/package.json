@@ -1,5 +1,5 @@
 {
-  "name": "hub-pos-functions",
+  "name": "beo-os-functions",
   "private": true,
   "engines": {
     "node": "20"

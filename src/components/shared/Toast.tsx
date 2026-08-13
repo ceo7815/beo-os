@@ -14,7 +14,7 @@ export function ToastHost() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="hub-toast-animate pointer-events-auto flex items-start justify-between gap-3 rounded-[10px] border-r-4 border-[var(--orange)] bg-[var(--bg-sidebar)] px-5 py-3 text-[13px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.15)]"
+          className="hub-toast-animate pointer-events-auto flex items-start justify-between gap-3 rounded-[10px] border-r-4 border-[var(--brand)] bg-[#181818] px-5 py-3 text-[13px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.22)]"
         >
           <p className="whitespace-pre-line break-words leading-snug">
             {t.message}

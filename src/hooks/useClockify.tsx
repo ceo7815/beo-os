@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { isAdminRole } from '../components/RequireAdmin'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import {
   parseClockifyConfig,
   parseClockifyPublicSettings,
@@ -25,7 +25,7 @@ export function useClockify() {
   const [settingsLoading, setSettingsLoading] = useState(true)
 
   useEffect(() => {
-    if (!user || !isAdmin) {
+    if (!user || !isAdmin || !canUseLegacyFirestore()) {
       setConfig(null)
       setConfigLoading(false)
       return
@@ -48,7 +48,7 @@ export function useClockify() {
   }, [user, isAdmin])
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !canUseLegacyFirestore()) {
       setPublicSettings(null)
       setSettingsLoading(false)
       return

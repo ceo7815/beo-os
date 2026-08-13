@@ -16,7 +16,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { FinanceFixedExpenseCatalogItem } from '../types'
 
@@ -79,6 +79,12 @@ export function FinanceFixedExpenseCatalogProvider({
 
   useEffect(() => {
     if (!user) {
+      setItems([])
+      setUpdatedAt(null)
+      setLoading(false)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
       setItems([])
       setUpdatedAt(null)
       setLoading(false)

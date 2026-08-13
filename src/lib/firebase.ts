@@ -1,53 +1,57 @@
-import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
-import { getFunctions } from 'firebase/functions'
+import { initializeApp, type FirebaseApp } from 'firebase/app'
+import { getAuth, type Auth } from 'firebase/auth'
+import { getFunctions, type Functions } from 'firebase/functions'
 import {
   initializeFirestore,
   memoryLocalCache,
+  type Firestore,
 } from 'firebase/firestore'
-import { getStorage } from 'firebase/storage'
+import { getStorage, type FirebaseStorage } from 'firebase/storage'
+import { isSupabaseConfigured } from './backend'
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyAjMt8jq1b25AjXV6oRsK1uzlRpkjv-ADk',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'hub-pos-f399c.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'hub-pos-f399c',
-  storageBucket:
-    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'hub-pos-f399c.firebasestorage.app',
-  messagingSenderId:
-    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '961483294937',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:961483294937:web:765583ea55dc05cfa416c8',
+const apiKey = String(import.meta.env.VITE_FIREBASE_API_KEY ?? '').trim()
+
+export function isFirebaseConfigured(): boolean {
+  if (isSupabaseConfigured()) return false
+  return apiKey.length > 0
 }
 
-const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
+/** חיבור Firestore של החברה הישנה — כבוי לגמרי כש-Supabase מוגדר או שאין מפתחות Firebase. */
+export function canUseLegacyFirestore(): boolean {
+  return isFirebaseConfigured()
+}
+
+const firebaseConfig = isFirebaseConfigured()
+  ? {
+      apiKey,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    }
+  : null
+
+const app: FirebaseApp | null = firebaseConfig ? initializeApp(firebaseConfig) : null
+
+export const auth = (app ? getAuth(app) : null) as Auth
 const fnRegionRaw = import.meta.env.VITE_FUNCTIONS_REGION
 const functionsRegion =
   (typeof fnRegionRaw === 'string' && fnRegionRaw.trim()) || 'us-central1'
-export const functionsClient = getFunctions(app, functionsRegion)
+export const functionsClient = (app ? getFunctions(app, functionsRegion) : null) as Functions
 
-/**
- * זיכרון בלבד — נמנע ממצבי IndexedDB ששוברים את ה־SDK ("INTERNAL ASSERTION FAILED").
- * לא קוראים ל־enableNetwork כאן: קריאות מקבילות אחרי התחברות גרמו ל־Unexpected state ב־10.14.
- */
-export const db = initializeFirestore(app, {
-  localCache: memoryLocalCache(),
-})
+export const db = (
+  app
+    ? initializeFirestore(app, {
+        localCache: memoryLocalCache(),
+      })
+    : null
+) as Firestore
 
-/**
- * הבאקט נלקח מההגדרות ואינו נבנה משם הפרויקט.
- *
- * פרויקטים חדשים מקבלים באקט בדומיין firebasestorage.app; הנחת appspot.com
- * הפנתה לבאקט שאינו קיים, וההעלאה נתקעה על 0% בלי שגיאה במקום להיכשל מיד.
- */
-export const storage = getStorage(app)
+export const storage = (app ? getStorage(app) : null) as FirebaseStorage
 
-/** מקום לריצה אסינכרונית אחרי התחברות — ללא enableNetwork (מסוכן במקביל). */
 export async function ensureFirestoreReady(): Promise<void> {
   await Promise.resolve()
-}
-
-export function isFirebaseConfigured(): boolean {
-  return true
 }
 
 export default app

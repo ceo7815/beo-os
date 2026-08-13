@@ -56,11 +56,6 @@ export function FinanceTabs({ badges = {} }: { badges?: FinanceTabBadges }) {
       hint: 'ניהול הוצאות חוזרות מאושרות לתזרים',
     },
     {
-      to: '/finance/standing-orders',
-      label: 'הוראות קבע',
-      hint: 'הוראות קבע פעילות מחשבונית ירוקה',
-    },
-    {
       to: '/finance/retainers',
       label: 'ריטיינרים',
       hint: 'ריטיינרים פעילים מחשבונית ירוקה',
@@ -77,7 +72,7 @@ export function FinanceTabs({ badges = {} }: { badges?: FinanceTabBadges }) {
   return (
     <nav
       aria-label="ניווט פיננסים"
-      className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/50 p-1.5"
+      className="flex w-full min-w-0 flex-wrap items-center gap-1 rounded-2xl border border-[var(--border)] bg-white p-1.5 shadow-[var(--shadow-sm)]"
     >
       {tabs.map((tab) => (
         <NavLink

@@ -20,7 +20,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { docToDeal } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { useAuth } from '../contexts/AuthContext'
@@ -82,6 +82,10 @@ export function DealsProvider({ children }: { children: ReactNode }) {
       setDeals([])
       setLoading(false)
       setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
+      setLoading(false)
       return
     }
     setLoading(true)

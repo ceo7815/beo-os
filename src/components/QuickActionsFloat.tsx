@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMeetings } from '../hooks/useMeetings'
 import { useTasks } from '../hooks/useTasks'
 
 const dockBtn =
@@ -9,7 +8,6 @@ const dockBtn =
 export function QuickActionsFloat() {
   const navigate = useNavigate()
   const { setQuickSliderOpen } = useTasks()
-  const { setQuickCalendarSliderOpen } = useMeetings()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -44,7 +42,7 @@ export function QuickActionsFloat() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--orange)] text-xl font-bold text-white shadow-[0_4px_16px_rgba(249,115,22,0.3)] transition hover:brightness-105 active:scale-95"
+          className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand)] text-xl font-bold text-white shadow-[0_8px_22px_rgba(88,40,160,0.38)] transition hover:bg-[var(--brand-hover)] active:scale-95"
           aria-label="פתח פעולות מהירות"
           aria-expanded={false}
         >
@@ -86,25 +84,6 @@ export function QuickActionsFloat() {
             <span className="min-w-0 flex-1">
               <span className="block text-xs font-extrabold leading-tight">הוסף משימה</span>
               <span className="block text-[10px] font-medium text-[var(--text-light)]">רשימה מהירה</span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setQuickCalendarSliderOpen(true)
-              close()
-            }}
-            className={`${dockBtn} text-[var(--text-dark)] hover:bg-[var(--surface-muted)]`}
-          >
-            <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E0F2FE] text-base font-black text-[#0EA5E9]"
-              aria-hidden
-            >
-              +
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-extrabold leading-tight">יומן מהיר</span>
-              <span className="block text-[10px] font-medium text-[var(--text-light)]">פגישות היום והשבוע</span>
             </span>
           </button>
           <button

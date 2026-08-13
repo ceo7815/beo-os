@@ -21,7 +21,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { docToMeeting } from '../lib/firestoreMappers'
 import { buildAttendeeUserIds } from '../lib/meetingAttendees'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { requestMeetingInviteEmails } from '../lib/meetingInviteEmail'
 import { NEW_MEETING_DRAWER_ID, type NewMeetingDraftSeed } from '../lib/meetingDrawerIds'
 import { normalizeDueTimeHm } from '../lib/dates'
@@ -118,6 +118,10 @@ export function MeetingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    if (!canUseLegacyFirestore()) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     let cancelled = false
     const uid = user?.uid ?? ''

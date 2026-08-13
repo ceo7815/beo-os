@@ -8,7 +8,6 @@ import { hubSectionClass } from '../lib/hubSectionBorder'
 import { isAdminRole } from './RequireAdmin'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useCollectionTracking } from '../hooks/useCollectionTracking'
-import { useHosting } from '../hooks/useHosting'
 import { useInvoices } from '../hooks/useInvoices'
 import { useLeads } from '../hooks/useLeads'
 import { usePasswordVault } from '../hooks/usePasswordVault'
@@ -80,7 +79,6 @@ export function ClientActivityModal(props: Props) {
   const { campaigns } = useCampaigns()
   const { entries: collectionEntries } = useCollectionTracking()
   const { invoices } = useInvoices()
-  const { records: hostingRecords } = useHosting()
 
   const vaultRole = users.find((m) => m.id === user?.uid)?.role ?? ''
   const vaultAdmin = isAdminRole(vaultRole)
@@ -105,7 +103,6 @@ export function ClientActivityModal(props: Props) {
         campaigns: [] as typeof campaigns,
         collections: [] as typeof collectionEntries,
         invoices: [] as typeof invoices,
-        hosting: [] as typeof hostingRecords,
         vault: [] as typeof vaultEntries,
       }
     }
@@ -137,9 +134,6 @@ export function ClientActivityModal(props: Props) {
     const sortedInvoices = invoices
       .filter((inv) => inv.clientId === cid)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    const sortedHosting = hostingRecords
-      .filter((h) => h.clientId === cid)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     const sortedVault = vaultEntries
       .filter((v) => v.clientId === cid)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -151,7 +145,6 @@ export function ClientActivityModal(props: Props) {
       campaigns: sortedCampaigns,
       collections: sortedCollections,
       invoices: sortedInvoices,
-      hosting: sortedHosting,
       vault: sortedVault,
     }
   }, [
@@ -162,7 +155,6 @@ export function ClientActivityModal(props: Props) {
     campaigns,
     collectionEntries,
     invoices,
-    hostingRecords,
     vaultEntries,
   ])
 
@@ -186,7 +178,7 @@ export function ClientActivityModal(props: Props) {
     >
       <p className="mb-4 text-[13px] leading-relaxed text-[var(--text-mid)]">
         סיכום כל הרשומות במערכת המקושרות ללקוח — פרויקטים, משימות, לידים, קמפיינים, גבייה, חשבוניות,
-        אחסון ודומיינים, וכספת סיסמאות (ללא חשיפת סיסמאות). נתוני נוכחות ושעות מוצגים בעמוד הנוכחות (Clockify).
+        וכספת סיסמאות (ללא חשיפת סיסמאות).
       </p>
 
       <div className="space-y-4">
@@ -455,48 +447,6 @@ export function ClientActivityModal(props: Props) {
                   {inv.note?.trim() ? (
                     <p className="mt-1 text-[11px] text-[var(--text-mid)]">{inv.note.trim()}</p>
                   ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className={`rounded-2xl ${hubSectionClass(3)} p-4 shadow-none`}>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-bold text-[var(--text-dark)]">אחסון ודומיינים</h3>
-            <button
-              type="button"
-              className="text-[11px] font-semibold text-[var(--orange)] hover:underline"
-              onClick={() => {
-                onClose()
-                navigate('/hosting')
-              }}
-            >
-              לעמוד אחסון
-            </button>
-          </div>
-          {aggregated.hosting.length === 0 ? (
-            <p className="text-sm text-[var(--text-mid)]">אין רשומות אחסון ללקוח.</p>
-          ) : (
-            <ul className="space-y-2">
-              {aggregated.hosting.map((h) => (
-                <li
-                  key={h.id}
-                  className="rounded-[10px] border border-[var(--border)] bg-[var(--bg-input)] px-3 py-2 text-[12px]"
-                >
-                  <p className="font-semibold text-[var(--text-dark)]" dir="ltr">
-                    {h.domain}
-                  </p>
-                  <p className="mt-1 text-[11px] text-[var(--text-mid)]">
-                    {h.serverType === 'private' ? 'שרת פרטי' : 'אחסון שיתופי'} ·{' '}
-                    {h.serverProvider || '—'}
-                    {h.registrar ? ` · רשם: ${h.registrar}` : ''}
-                  </p>
-                  <p className="mt-1 text-[10px] text-[var(--text-light)]">
-                    חידוש דומיין {formatDateIL(h.domainRenewalDate) || '—'} · תשלום
-                    אחסון {formatDateIL(h.hostingRenewalDate) || '—'}
-                    {h.greenInvoiceRetainer ? ' · רטיינר חשבונית ירוקה' : ''}
-                  </p>
                 </li>
               ))}
             </ul>

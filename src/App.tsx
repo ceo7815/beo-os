@@ -1,17 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { FirestoreProviders } from './contexts/FirestoreProviders'
-import { AgentPortalPreviewShell } from './components/AgentPortalPreviewShell'
-import { AgentShell } from './components/AgentShell'
 import { Layout } from './components/Layout'
 import { RequireAuth } from './components/RequireAuth'
 import { RequireAdmin } from './components/RequireAdmin'
 import { StaffRoutesGuard } from './components/StaffRoutesGuard'
-import { AgentDashboard } from './pages/AgentDashboard'
-import { AgentLeadsPage } from './pages/agent/AgentLeadsPage'
-import { AgentBusinessPage } from './pages/agent/AgentBusinessPage'
-import { AgentFinancePage } from './pages/agent/AgentFinancePage'
-import { AgentsAdmin } from './pages/AgentsAdmin'
 import { Clients } from './pages/Clients'
 import { Collections } from './pages/Collections'
 import { Dashboard } from './pages/Dashboard'
@@ -21,11 +14,9 @@ import { FinanceProjects } from './pages/FinanceProjects'
 import { FinanceReconciliation } from './pages/FinanceReconciliation'
 import { FinanceDocuments } from './pages/FinanceDocuments'
 import { FinanceCashflow } from './pages/FinanceCashflow'
-import { FinanceStandingOrders } from './pages/FinanceStandingOrders'
 import { FinanceRetainers } from './pages/FinanceRetainers'
 import { FinanceFixedExpenses } from './pages/FinanceFixedExpenses'
 import { Income } from './pages/Income'
-import { Hosting } from './pages/Hosting'
 import { Campaigns } from './pages/Campaigns'
 import { Leads } from './pages/Leads'
 import { Login } from './pages/Login'
@@ -33,14 +24,11 @@ import { ProjectDetail } from './pages/ProjectDetail'
 import { Projects } from './pages/Projects'
 import { PromptLibrary } from './pages/PromptLibrary'
 import { Suppliers } from './pages/Suppliers'
-import { Calendar } from './pages/Calendar'
-import { MeetingSummaries } from './pages/MeetingSummaries'
 import { Tasks } from './pages/Tasks'
 import { Users } from './pages/Users'
 import { HourlyServices } from './pages/HourlyServices'
 import { HourlyServiceDetail } from './pages/HourlyServiceDetail'
 import { HourlyServiceShare } from './pages/HourlyServiceShare'
-import { Attendance } from './pages/Attendance'
 import { Vault } from './pages/Vault'
 
 export default function App() {
@@ -52,25 +40,6 @@ export default function App() {
           <Route path="/share/hours/:token" element={<HourlyServiceShare />} />
           <Route element={<RequireAuth />}>
             <Route element={<FirestoreProviders />}>
-              <Route path="agent" element={<AgentShell />}>
-                <Route index element={<AgentDashboard />} />
-                <Route path="leads" element={<AgentLeadsPage />} />
-                <Route path="business" element={<AgentBusinessPage />} />
-                <Route path="finance" element={<AgentFinancePage />} />
-              </Route>
-              <Route
-                path="agents/preview/:agentUserId"
-                element={
-                  <RequireAdmin>
-                    <AgentPortalPreviewShell />
-                  </RequireAdmin>
-                }
-              >
-                <Route index element={<AgentDashboard />} />
-                <Route path="leads" element={<AgentLeadsPage />} />
-                <Route path="business" element={<AgentBusinessPage />} />
-                <Route path="finance" element={<AgentFinancePage />} />
-              </Route>
               <Route element={<StaffRoutesGuard />}>
                 <Route element={<Layout />}>
                   <Route index element={<Dashboard />} />
@@ -141,14 +110,6 @@ export default function App() {
                     }
                   />
                   <Route
-                    path="finance/standing-orders"
-                    element={
-                      <RequireAdmin>
-                        <FinanceStandingOrders />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route
                     path="finance/retainers"
                     element={
                       <RequireAdmin>
@@ -157,7 +118,6 @@ export default function App() {
                     }
                   />
                   <Route path="suppliers" element={<Suppliers />} />
-                  <Route path="hosting" element={<Hosting />} />
                   <Route path="campaigns" element={<Campaigns />} />
                   <Route path="leads" element={<Leads />} />
                   <Route path="projects" element={<Projects />} />
@@ -168,11 +128,6 @@ export default function App() {
                     path="hourly-services/:id"
                     element={<HourlyServiceDetail />}
                   />
-                  <Route path="calendar" element={<Calendar />} />
-                  <Route
-                    path="calendar/summaries"
-                    element={<MeetingSummaries />}
-                  />
                   <Route path="prompts" element={<PromptLibrary />} />
                   <Route
                     path="users"
@@ -182,15 +137,6 @@ export default function App() {
                       </RequireAdmin>
                     }
                   />
-                  <Route
-                    path="agents"
-                    element={
-                      <RequireAdmin>
-                        <AgentsAdmin />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route path="attendance" element={<Attendance />} />
                   <Route path="vault" element={<Vault />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>

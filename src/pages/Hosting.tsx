@@ -43,7 +43,7 @@ const SERVER_TYPE_LABEL: Record<HostingServerType, string> = {
 }
 
 const DOMAIN_MANAGER_LABEL: Record<DomainManager, string> = {
-  agency: 'האב מערכות',
+  agency: 'Beo Systems',
   client: 'הלקוח',
   external: 'גורם חיצוני',
 }
@@ -1341,7 +1341,7 @@ export function Hosting() {
                 }
                 className={dateClass}
               >
-                <option value="agency">האב מערכות</option>
+                <option value="agency">Beo Systems</option>
                 <option value="client">הלקוח</option>
                 <option value="external">גורם חיצוני</option>
               </select>

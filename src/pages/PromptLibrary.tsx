@@ -17,7 +17,7 @@ import type { PromptLibraryEntry, PromptTargetModel } from '../types/promptLibra
 
 const uiButtonBase =
   'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
-const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[var(--brand-hover)]`
 const uiButtonGhost =
   `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
 const uiButtonDangerOutline = `${uiButtonBase} border border-[#EF4444] bg-[var(--dash-panel-bg)] text-[#DC2626] hover:bg-[#FEF2F2]`
@@ -170,7 +170,7 @@ export function PromptLibrary() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-8 py-8" dir="rtl">
+    <div className="beo-page space-y-6" dir="rtl">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">

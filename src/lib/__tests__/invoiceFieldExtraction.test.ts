@@ -46,7 +46,7 @@ describe('איתור סכומים בשורה', () => {
 })
 
 const INVOICE = [
-  'HUB ADVANCED בע"מ',
+  'Acme Digital Ltd',
   'ע.מ 516123456',
   'חשבונית מס 10432',
   'תאריך הפקה: 31/07/2026',
@@ -77,7 +77,7 @@ describe('חוק: השדות נקראים מהחשבונית ומוצעים למ
   })
 
   it('שם הספק נלקח מראש המסמך', () => {
-    expect(fields.supplierName?.value).toContain('HUB ADVANCED')
+    expect(fields.supplierName?.value).toContain('Acme Digital')
   })
 })
 

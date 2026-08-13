@@ -7,21 +7,87 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  serverTimestamp,
-  updateDoc,
-} from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
-import { docToLead } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
-import { stripUndefined, stripUndefinedDeep } from '../lib/stripUndefined'
+import { isSupabaseConfigured } from '../lib/backend'
+import { requireSupabase } from '../lib/supabase'
+import { isDeleteSentinel, subscribeTable, uuidOrNull } from '../lib/sbLive'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { Lead, LeadStatus } from '../types'
+
+function rowToLead(row: Record<string, unknown>): Lead {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    company: typeof row.company === 'string' ? row.company : undefined,
+    phone: typeof row.phone === 'string' ? row.phone : undefined,
+    email: typeof row.email === 'string' ? row.email : undefined,
+    clientId: row.client_id ? String(row.client_id) : undefined,
+    source: typeof row.source === 'string' ? row.source : undefined,
+    status: (row.status as LeadStatus) || 'new',
+    ownerId: row.owner_id ? String(row.owner_id) : '',
+    clientNeeds: typeof row.client_needs === 'string' ? row.client_needs : undefined,
+    lastActivityText:
+      typeof row.last_activity_text === 'string' ? row.last_activity_text : undefined,
+    lastActivityAt: row.last_activity_at ? String(row.last_activity_at) : undefined,
+    nextFollowUpDate: row.next_follow_up_date ? String(row.next_follow_up_date) : undefined,
+    activityLog: Array.isArray(row.activity_log)
+      ? (row.activity_log as Lead['activityLog'])
+      : [],
+    quoteChannel: (row.quote_channel as Lead['quoteChannel']) || undefined,
+    quotePdfUrl: typeof row.quote_pdf_url === 'string' ? row.quote_pdf_url : undefined,
+    quotePdfFileName:
+      typeof row.quote_pdf_file_name === 'string' ? row.quote_pdf_file_name : undefined,
+    quoteVisualUrl:
+      typeof row.quote_visual_url === 'string' ? row.quote_visual_url : undefined,
+    quoteReturnByDate: row.quote_return_by_date
+      ? String(row.quote_return_by_date)
+      : undefined,
+    notRelevantReason:
+      typeof row.not_relevant_reason === 'string' ? row.not_relevant_reason : undefined,
+    createdAt: row.created_at
+      ? new Date(String(row.created_at)).toISOString()
+      : new Date().toISOString(),
+  }
+}
+
+const LEAD_KEYS: Record<string, string> = {
+  name: 'name',
+  company: 'company',
+  phone: 'phone',
+  email: 'email',
+  clientId: 'client_id',
+  source: 'source',
+  status: 'status',
+  ownerId: 'owner_id',
+  clientNeeds: 'client_needs',
+  lastActivityText: 'last_activity_text',
+  lastActivityAt: 'last_activity_at',
+  nextFollowUpDate: 'next_follow_up_date',
+  activityLog: 'activity_log',
+  quoteChannel: 'quote_channel',
+  quotePdfUrl: 'quote_pdf_url',
+  quotePdfFileName: 'quote_pdf_file_name',
+  quoteVisualUrl: 'quote_visual_url',
+  quoteReturnByDate: 'quote_return_by_date',
+  notRelevantReason: 'not_relevant_reason',
+}
+
+function leadToRow(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(data)) {
+    const col = LEAD_KEYS[k]
+    if (!col) continue
+    if (v === undefined) continue
+    if (isDeleteSentinel(v) || v === '') {
+      out[col] = null
+      continue
+    }
+    out[col] = v
+  }
+  if (typeof out.client_id === 'string') out.client_id = uuidOrNull(out.client_id as string)
+  if (typeof out.owner_id === 'string') out.owner_id = uuidOrNull(out.owner_id as string)
+  return out
+}
 
 type LeadsContextValue = {
   leads: Lead[]
@@ -41,11 +107,6 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const displayName = useCallback(() => {
-    if (!user) return 'משתמש'
-    return user.displayName?.trim() || user.email?.split('@')[0] || 'משתמש'
-  }, [user])
-
   useEffect(() => {
     if (!user) {
       setLeads([])
@@ -53,22 +114,25 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
       setError(null)
       return
     }
+    if (!isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
-    const unsub = onSnapshot(
-      collection(db, 'leads'),
-      (snap) => {
-        setLeads(snap.docs.map((d) => docToLead(d)))
+    return subscribeTable(
+      'leads',
+      (rows) => {
+        setLeads(rows.map(rowToLead))
         setLoading(false)
         setError(null)
       },
       (err) => {
-        console.error('leads snapshot', err)
-        toastFsError('שגיאה בטעינת לידים', err, 'leads snapshot')
-        setError(err instanceof Error ? err : new Error(String(err)))
+        console.error('leads', err)
+        toastFsError('שגיאה בטעינת לידים', err, 'leads')
+        setError(err)
         setLoading(false)
       },
     )
-    return () => unsub()
   }, [user])
 
   const addLead = useCallback(
@@ -78,25 +142,20 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
         return
       }
       try {
-        const uname = displayName()
-        await addDoc(
-          collection(db, 'leads'),
-          stripUndefined({
-            ...data,
-            name: data.name.trim(),
-            createdAt: serverTimestamp(),
-            createdByUserId: user.uid,
-            createdByUserName: uname,
-            lastActorUserId: user.uid,
-            lastActorUserName: uname,
-          } as Record<string, unknown>),
-        )
+        const sb = requireSupabase()
+        const row = leadToRow({
+          ...data,
+          name: data.name.trim(),
+          ownerId: data.ownerId || user.uid,
+        })
+        const { error: qErr } = await sb.from('leads').insert(row)
+        if (qErr) throw qErr
         toastFsSuccess('הליד נוסף בהצלחה')
       } catch (e) {
         toastFsError('שגיאה בהוספת ליד', e, 'addLead')
       }
     },
-    [user, displayName],
+    [user],
   )
 
   const updateLead = useCallback(
@@ -106,35 +165,25 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
         throw new Error('no user')
       }
       try {
-        const payload = Object.fromEntries(
-          Object.entries(data).filter(([, v]) => v !== undefined),
-        )
-        const cleaned = stripUndefinedDeep(payload)
-        if (
-          cleaned === null ||
-          typeof cleaned !== 'object' ||
-          Array.isArray(cleaned)
-        ) {
-          throw new Error('נתוני עדכון לא תקינים')
-        }
-        const uname = displayName()
-        await updateDoc(doc(db, 'leads', id), {
-          ...(cleaned as Record<string, unknown>),
-          lastActorUserId: user.uid,
-          lastActorUserName: uname,
-        })
+        const sb = requireSupabase()
+        const row = leadToRow(data)
+        if (Object.keys(row).length === 0) return
+        const { error: qErr } = await sb.from('leads').update(row).eq('id', id)
+        if (qErr) throw qErr
         toastFsSuccess('הליד עודכן')
       } catch (e) {
         toastFsError('שגיאה בעדכון ליד', e, 'updateLead')
         throw e
       }
     },
-    [user, displayName],
+    [user],
   )
 
   const deleteLead = useCallback(async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'leads', id))
+      const sb = requireSupabase()
+      const { error: qErr } = await sb.from('leads').delete().eq('id', id)
+      if (qErr) throw qErr
       toastFsSuccess('הליד נמחק')
     } catch (e) {
       toastFsError('שגיאה במחיקת ליד', e, 'deleteLead')
@@ -143,26 +192,9 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
 
   const updateLeadStatus = useCallback(
     async (id: string, status: LeadStatus) => {
-      if (!user) {
-        toastFsError(
-          'יש להתחבר לעדכון סטטוס',
-          new Error('no user'),
-          'updateLeadStatus',
-        )
-        return
-      }
-      try {
-        await updateDoc(doc(db, 'leads', id), {
-          status,
-          lastActorUserId: user.uid,
-          lastActorUserName: displayName(),
-        })
-        toastFsSuccess('סטטוס הליד עודכן')
-      } catch (e) {
-        toastFsError('שגיאה בעדכון סטטוס ליד', e, 'updateLeadStatus')
-      }
+      await updateLead(id, { status })
     },
-    [user, displayName],
+    [updateLead],
   )
 
   const value = useMemo(

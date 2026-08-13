@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { getAdminAuth } from '../lib/firebaseAdmin.js'
+import { env } from '../config/env.js'
 
 export type AuthUser = {
   uid: string
@@ -19,14 +19,32 @@ function readBearerToken(req: FastifyRequest): string | null {
   return token || null
 }
 
-/** דורש Firebase ID token — מחזיר 503 אם Admin SDK לא מוגדר */
+type SupabaseUserResponse = {
+  id?: string
+  email?: string
+}
+
+async function verifySupabaseAccessToken(token: string): Promise<AuthUser | null> {
+  if (!env.supabaseUrl || !env.supabaseAnonKey) return null
+  const res = await fetch(`${env.supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: env.supabaseAnonKey,
+    },
+  })
+  if (!res.ok) return null
+  const body = (await res.json()) as SupabaseUserResponse
+  if (!body.id) return null
+  return { uid: body.id, email: body.email }
+}
+
+/** דורש JWT של Supabase Auth */
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const auth = getAdminAuth()
-  if (!auth) {
+  if (!env.supabaseUrl || !env.supabaseAnonKey) {
     reply.code(503).send({
       ok: false,
-      error: 'firebase_not_configured',
-      message: 'Firebase Admin לא מוגדר — הוסף FIREBASE_SERVICE_ACCOUNT_PATH',
+      error: 'supabase_not_configured',
+      message: 'חסרים SUPABASE_URL / SUPABASE_ANON_KEY בשרת',
     })
     return
   }
@@ -36,22 +54,27 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
     reply.code(401).send({
       ok: false,
       error: 'unauthenticated',
-      message: 'חסר Authorization: Bearer <Firebase ID token>',
+      message: 'חסר Authorization: Bearer <Supabase access token>',
     })
     return
   }
 
   try {
-    const decoded = await auth.verifyIdToken(token)
-    req.authUser = {
-      uid: decoded.uid,
-      email: decoded.email,
+    const user = await verifySupabaseAccessToken(token)
+    if (!user) {
+      reply.code(401).send({
+        ok: false,
+        error: 'invalid_token',
+        message: 'טוקן Supabase לא תקין או שפג תוקף',
+      })
+      return
     }
+    req.authUser = user
   } catch {
     reply.code(401).send({
       ok: false,
       error: 'invalid_token',
-      message: 'טוקן Firebase לא תקין או שפג תוקף',
+      message: 'טוקן Supabase לא תקין או שפג תוקף',
     })
   }
 }

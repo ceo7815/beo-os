@@ -3,18 +3,14 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 /**
- * חשבוניות הספק נשמרות תמיד על שרת הפרודקשן, גם בפיתוח.
- *
- * הפיתוח כבר עובד מול בסיס הנתונים האמיתי, ולכן שמירת הקבצים מקומית הייתה
- * יוצרת הוצאות שהמסמך שלהן קיים רק על מחשב אחד. הכתובת ניתנת לעקיפה
- * למי שרוצה לפתח מול שרת מקומי.
+ * שמירת מסמכי הוצאות בשרת הפיתוח המקומי.
+ * אפשר לעקוף עם VITE_FINANCE_DOCS_TARGET.
  */
 const FINANCE_DOCS_TARGET =
-  process.env.VITE_FINANCE_DOCS_TARGET || 'https://pos.hub.co.il'
+  process.env.VITE_FINANCE_DOCS_TARGET || 'http://127.0.0.1:8787'
 
 /**
  * סנכרון חשבונית ירוקה (כולל הוראות קבע וריטיינרים) רץ בשרת המקומי בפיתוח.
- * לבדיקה מול פרודקשן: VITE_INTEGRATIONS_TARGET=https://pos.hub.co.il
  */
 const INTEGRATIONS_TARGET =
   process.env.VITE_INTEGRATIONS_TARGET || 'http://127.0.0.1:8787'

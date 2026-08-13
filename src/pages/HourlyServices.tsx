@@ -50,7 +50,7 @@ function emptyForm(): ServiceForm {
 
 const uiBtn =
   'inline-flex h-9 items-center justify-center rounded-[10px] px-4 text-xs font-semibold transition'
-const uiBtnBrand = `${uiBtn} bg-[var(--orange)] text-white hover:bg-[#ea6c0a]`
+const uiBtnBrand = `${uiBtn} bg-[var(--orange)] text-white hover:bg-[var(--brand-hover)]`
 const uiBtnGhost = `${uiBtn} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
 
 export function HourlyServices() {
@@ -120,7 +120,7 @@ export function HourlyServices() {
 
   return (
     <div
-      className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-6 pb-24 sm:px-8"
+      className="beo-page space-y-6 pb-24"
       dir="rtl"
     >
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

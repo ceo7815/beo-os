@@ -64,7 +64,7 @@ const FULL_DEMO_PROJECTS: readonly {
     name: 'מיתוג ואסטרטגיה',
     status: 'active',
     priority: 'medium',
-    color: '#EA580C',
+    color: '#5828A0',
   },
 ]
 
@@ -215,7 +215,7 @@ async function seedBaseFirestoreDemoIfNeeded(db: Firestore): Promise<void> {
       priority: 'medium',
       dueDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       ownerId: '',
-      color: '#F97316',
+      color: '#5828A0',
       taskCount: 0,
       doneCount: 0,
       createdAt: serverTimestamp(),
@@ -228,7 +228,7 @@ async function seedBaseFirestoreDemoIfNeeded(db: Firestore): Promise<void> {
     {
       name: HUB_SUPPLIER_NAME,
       phone: '',
-      email: 'admin@hub.co.il',
+      email: '',
       createdAt: serverTimestamp(),
     },
     MERGE,
@@ -315,7 +315,7 @@ async function seedRichSingleClientPackIfNeeded(db: Firestore): Promise<void> {
     {
       name: HUB_SUPPLIER_NAME,
       phone: '',
-      email: 'admin@hub.co.il',
+      email: '',
       createdAt: serverTimestamp(),
     },
     MERGE,

@@ -12,12 +12,10 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "storage:cors": "gsutil cors set storage-cors.json gs://hub-pos-f399c.firebasestorage.app",
-    "firebase:login": "firebase login --reauth",
-    "firebase:deploy:rules": "firebase deploy --only firestore:rules --project hub-pos-f399c",
     "grant-admin": "node functions/scripts/grant-admin.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "firebase": "^12.12.0",
     "jszip": "^3.10.1",
     "pdfjs-dist": "^6.2.108",

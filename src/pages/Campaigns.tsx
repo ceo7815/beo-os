@@ -13,6 +13,7 @@ import { HubDropdownSelect, type HubDropdownOption } from '../components/shared/
 import { Modal } from '../components/shared/Modal'
 import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { HUB_SUPPLIER_ID } from '../lib/hubSupplier'
 import { exportCampaignsToExcel } from '../lib/excelTableExports'
 
 const platformLabels: Record<CampaignPlatform, string> = {
@@ -33,7 +34,7 @@ const statusLabels: Record<CampaignStatus, string> = {
 
 const statusColors: Record<CampaignStatus, string> = {
   planning: '#94A3B8',
-  active: '#F97316',
+  active: '#5828A0',
   paused: '#64748B',
   completed: '#15803D',
 }
@@ -41,8 +42,8 @@ const statusColors: Record<CampaignStatus, string> = {
 const uiButtonBase =
   'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
 const uiFilterInactive = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
-const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
-const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[var(--brand-hover)]`
+const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[var(--brand-hover)]`
 const uiButtonBrandOutline = `${uiButtonBase} border border-[var(--orange)] bg-[var(--surface-muted)] text-[var(--orange)] hover:bg-[var(--orange-light)]`
 const uiButtonGhost = uiFilterInactive
 const uiCardAction = `${uiButtonBase} min-w-0 px-2.5 py-1 text-[11px]`
@@ -126,12 +127,8 @@ export function Campaigns() {
     () => projects.filter((p) => p.clientId === editClientId),
     [projects, editClientId],
   )
-  const selectedSupplierName = supplierNameById.get(supplierId) ?? ''
-  const shouldPickPerformerFromUsers =
-    selectedSupplierName.trim().includes('האב מערכות')
-  const selectedEditSupplierName = supplierNameById.get(editSupplierId) ?? ''
-  const shouldPickPerformerForEdit =
-    selectedEditSupplierName.trim().includes('האב מערכות')
+  const shouldPickPerformerFromUsers = supplierId === HUB_SUPPLIER_ID
+  const shouldPickPerformerForEdit = editSupplierId === HUB_SUPPLIER_ID
   const performerNameById = useMemo(() => {
     const m = new Map<string, string>()
     users.forEach((u) => m.set(u.id, u.name))
@@ -271,7 +268,7 @@ export function Campaigns() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-5 px-8 py-8">
+    <div className="beo-page space-y-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">קמפיינים במעקב</h1>
@@ -403,8 +400,7 @@ export function Campaigns() {
             onChange={(e) => {
               const nextSupplierId = e.target.value
               setSupplierId(nextSupplierId)
-              const nextSupplierName = supplierNameById.get(nextSupplierId) ?? ''
-              if (!nextSupplierName.trim().includes('האב מערכות')) {
+              if (nextSupplierId !== HUB_SUPPLIER_ID) {
                 setPerformerUserId('')
               }
             }}
@@ -640,8 +636,7 @@ export function Campaigns() {
             value={editSupplierId}
             onChange={(v) => {
               setEditSupplierId(v)
-              const nm = supplierNameById.get(v) ?? ''
-              if (!nm.trim().includes('האב מערכות')) {
+              if (v !== HUB_SUPPLIER_ID) {
                 setEditPerformerUserId('')
               }
             }}

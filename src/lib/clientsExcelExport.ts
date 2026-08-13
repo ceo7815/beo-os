@@ -19,7 +19,6 @@ const HEADERS = [
   'סטטוס',
   'תאריך כניסה',
   'עובדים משויכים',
-  'סוכן מכירות',
   'פרויקטים',
   'ח.פ / עוסק',
   'כתובת',
@@ -63,9 +62,6 @@ function clientToRow(
     clientStatusLabel(client.status),
     formatDateIL(client.createdAt),
     assignedNames(client, ctx.teamNameById),
-    client.salesAgentUserId
-      ? ctx.teamNameById.get(client.salesAgentUserId) ?? client.salesAgentUserId
-      : '',
     String(ctx.projectCountByClientId.get(client.id) ?? 0),
     client.taxId?.trim() ?? '',
     client.addressLine?.trim() ?? '',

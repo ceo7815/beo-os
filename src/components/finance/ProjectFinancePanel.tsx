@@ -141,7 +141,7 @@ export function ProjectFinancePanel({
             <ProgressBar
               done={usedPercent}
               total={100}
-              color={usedPercent > 90 ? '#EF4444' : '#F97316'}
+              color={usedPercent > 90 ? '#EF4444' : '#5828A0'}
               manualPercent={usedPercent}
             />
           </div>

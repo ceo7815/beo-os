@@ -7,83 +7,99 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { isSupabaseConfigured } from '../lib/backend'
+import { requireSupabase } from '../lib/supabase'
 import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  serverTimestamp,
-  updateDoc,
-} from 'firebase/firestore'
-import { docToProject } from '../lib/firestoreMappers'
-import { deleteTasksAndDocsForProject } from '../lib/firestoreCascades'
-import { db, ensureFirestoreReady } from '../lib/firebase'
-import { stripUndefined } from '../lib/stripUndefined'
+  emptyToNull,
+  isDeleteSentinel,
+  subscribeTable,
+  uuidOrNull,
+} from '../lib/sbLive'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { useHubStore } from '../store/useStore'
 import { useTasks } from './useTasks'
-import type { Project, Task } from '../types'
+import type { Priority, Project, ProjectBillingType, ProjectKind, ProjectStatus, Task } from '../types'
 
-/** ב-Firestore נשמר `projectKind` (לא `type`) — מתאים לממשק Project.type */
-function mapProjectUpdateForFirestore(
-  data: Partial<Project>,
-): Record<string, unknown> {
-  const { type, ...rest } = data
-  const cleaned = stripUndefined(rest as Record<string, unknown>)
-  if (type !== undefined) {
-    cleaned.projectKind = type
+function rowToProject(row: Record<string, unknown>): Project {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    description: typeof row.description === 'string' ? row.description : undefined,
+    type: (row.type as ProjectKind) || 'client',
+    projectType: (row.project_type as ProjectBillingType) || undefined,
+    retainerAmount:
+      typeof row.retainer_amount === 'number'
+        ? row.retainer_amount
+        : row.retainer_amount != null
+          ? Number(row.retainer_amount)
+          : undefined,
+    subContractor:
+      typeof row.sub_contractor === 'string' ? row.sub_contractor : undefined,
+    startDate: row.start_date ? String(row.start_date) : undefined,
+    retainerLog: Array.isArray(row.retainer_log)
+      ? (row.retainer_log as Project['retainerLog'])
+      : [],
+    clientId: row.client_id ? String(row.client_id) : undefined,
+    supplierId: row.supplier_id ? String(row.supplier_id) : undefined,
+    status: (row.status as ProjectStatus) || 'active',
+    priority: (row.priority as Priority) || 'medium',
+    dueDate: row.due_date ? String(row.due_date) : '',
+    ownerId: row.owner_id ? String(row.owner_id) : '',
+    color: typeof row.color === 'string' && row.color ? row.color : '#5828A0',
+    taskCount: Number(row.task_count ?? 0),
+    doneCount: Number(row.done_count ?? 0),
+    manualProgressPercent:
+      row.manual_progress_percent == null
+        ? undefined
+        : Number(row.manual_progress_percent),
+    budgetTotal: row.budget_total == null ? undefined : Number(row.budget_total),
+    budgetUsedPercent:
+      row.budget_used_percent == null ? undefined : Number(row.budget_used_percent),
+    createdAt: row.created_at
+      ? new Date(String(row.created_at)).toISOString()
+      : new Date().toISOString(),
   }
-  return cleaned
 }
 
-/** מסמך create בלבד — ללא spread של אובייקט טופס (מונע ערכים לא נתמכים ב-Firestore) */
-function buildProjectCreateDoc(
-  data: Omit<Project, 'id' | 'createdAt' | 'taskCount' | 'doneCount'>,
-): Record<string, unknown> {
-  const docData: Record<string, unknown> = {
-    name: data.name,
-    projectKind: data.type,
-    status: data.status,
-    priority: data.priority,
-    ownerId: data.ownerId,
-    color: data.color,
-    taskCount: 0,
-    doneCount: 0,
-    createdAt: serverTimestamp(),
+const PROJECT_KEYS: Record<string, string> = {
+  name: 'name',
+  description: 'description',
+  type: 'type',
+  projectKind: 'type',
+  projectType: 'project_type',
+  retainerAmount: 'retainer_amount',
+  subContractor: 'sub_contractor',
+  startDate: 'start_date',
+  retainerLog: 'retainer_log',
+  clientId: 'client_id',
+  supplierId: 'supplier_id',
+  status: 'status',
+  priority: 'priority',
+  dueDate: 'due_date',
+  ownerId: 'owner_id',
+  color: 'color',
+  manualProgressPercent: 'manual_progress_percent',
+  budgetTotal: 'budget_total',
+  budgetUsedPercent: 'budget_used_percent',
+}
+
+function projectToRow(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(data)) {
+    const col = PROJECT_KEYS[k]
+    if (!col) continue
+    if (v === undefined) continue
+    if (isDeleteSentinel(v) || v === '') {
+      out[col] = null
+      continue
+    }
+    out[col] = v
   }
-  const billing = data.projectType ?? 'one-time'
-  docData.projectType = billing
-  if (billing === 'retainer') {
-    const sd = data.startDate?.slice(0, 10) ?? ''
-    docData.startDate = sd
-    docData.dueDate = sd || data.dueDate
-    docData.retainerLog = Array.isArray(data.retainerLog) ? data.retainerLog : []
-  } else {
-    docData.dueDate = data.dueDate
-  }
-  const trimmedClient = data.clientId?.trim()
-  if (trimmedClient) {
-    docData.clientId = trimmedClient
-  }
-  const trimmedSupplier = data.supplierId?.trim()
-  if (trimmedSupplier) {
-    docData.supplierId = trimmedSupplier
-  }
-  if (
-    data.manualProgressPercent != null &&
-    typeof data.manualProgressPercent === 'number' &&
-    !Number.isNaN(data.manualProgressPercent)
-  ) {
-    docData.manualProgressPercent = Math.min(
-      100,
-      Math.max(0, Math.round(data.manualProgressPercent)),
-    )
-  }
-  const desc = data.description?.trim()
-  if (desc) docData.description = desc
-  return docData
+  if ('client_id' in out) out.client_id = uuidOrNull(String(out.client_id ?? ''))
+  if ('supplier_id' in out) out.supplier_id = uuidOrNull(String(out.supplier_id ?? ''))
+  if ('owner_id' in out) out.owner_id = uuidOrNull(String(out.owner_id ?? ''))
+  if (typeof out.description === 'string') out.description = emptyToNull(out.description)
+  return out
 }
 
 function recomputeProjects(projects: Project[], tasks: Task[]): Project[] {
@@ -122,58 +138,62 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
-    const q = query(collection(db, 'projects'))
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setRawProjects(snap.docs.map((d) => docToProject(d)))
+    return subscribeTable(
+      'projects',
+      (rows) => {
+        setRawProjects(rows.map(rowToProject))
         setLoading(false)
         setError(null)
       },
       (err) => {
-        console.error('projects snapshot', err)
-        toastFsError('שגיאה בטעינת פרויקטים', err, 'projects snapshot')
-        setError(err instanceof Error ? err : new Error(String(err)))
+        console.error('projects', err)
+        toastFsError('שגיאה בטעינת פרויקטים', err, 'projects')
+        setError(err)
         setLoading(false)
       },
     )
-    return () => unsub()
   }, [])
 
   const addProject = useCallback(
     async (data: Omit<Project, 'id' | 'createdAt' | 'taskCount' | 'doneCount'>) => {
       try {
-        await ensureFirestoreReady()
-        const ref = await addDoc(collection(db, 'projects'), buildProjectCreateDoc(data))
-        const optimistic: Project = {
-          id: ref.id,
+        const sb = requireSupabase()
+        const billing = data.projectType ?? 'one-time'
+        const row = projectToRow({
           name: data.name,
           description: data.description,
           type: data.type,
-          projectType: data.projectType ?? 'one-time',
+          projectType: billing,
           retainerAmount: data.retainerAmount,
           subContractor: data.subContractor,
-          startDate: data.startDate,
-          retainerLog: data.retainerLog,
+          startDate: billing === 'retainer' ? data.startDate?.slice(0, 10) : data.startDate,
+          retainerLog: billing === 'retainer' ? (data.retainerLog ?? []) : [],
           clientId: data.clientId,
           supplierId: data.supplierId,
           status: data.status,
           priority: data.priority,
-          dueDate: data.dueDate,
+          dueDate: billing === 'retainer' ? (data.startDate?.slice(0, 10) || data.dueDate) : data.dueDate,
           ownerId: data.ownerId,
           color: data.color,
-          taskCount: 0,
-          doneCount: 0,
           manualProgressPercent: data.manualProgressPercent,
-          createdAt: new Date().toISOString(),
-        }
-        setRawProjects((prev) => {
-          if (prev.some((p) => p.id === optimistic.id)) return prev
-          return [...prev, optimistic]
         })
+        const { data: created, error: qErr } = await sb
+          .from('projects')
+          .insert(row)
+          .select('*')
+          .single()
+        if (qErr) throw qErr
+        const optimistic = rowToProject(created as Record<string, unknown>)
+        setRawProjects((prev) =>
+          prev.some((p) => p.id === optimistic.id) ? prev : [...prev, optimistic],
+        )
         toastFsSuccess('הפרויקט נוסף בהצלחה')
-        return ref.id
+        return optimistic.id
       } catch (e) {
         toastFsError('שגיאה בשמירת הפרויקט', e, 'addProject')
         return null
@@ -184,16 +204,13 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
   const updateProject = useCallback(async (id: string, data: Partial<Project>) => {
     try {
-      await updateDoc(doc(db, 'projects', id), mapProjectUpdateForFirestore(data))
+      const sb = requireSupabase()
+      const row = projectToRow(data as Record<string, unknown>)
+      if (Object.keys(row).length === 0) return true
+      const { error: qErr } = await sb.from('projects').update(row).eq('id', id)
+      if (qErr) throw qErr
       setRawProjects((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? {
-                ...p,
-                ...data,
-              }
-            : p,
-        ),
+        prev.map((p) => (p.id === id ? { ...p, ...data } : p)),
       )
       toastFsSuccess('הפרויקט עודכן')
       return true
@@ -205,9 +222,11 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
 
   const deleteProject = useCallback(async (id: string) => {
     try {
-      await ensureFirestoreReady()
-      await deleteTasksAndDocsForProject(id)
-      await deleteDoc(doc(db, 'projects', id))
+      const sb = requireSupabase()
+      const { error: tasksErr } = await sb.from('tasks').delete().eq('project_id', id)
+      if (tasksErr) throw tasksErr
+      const { error: qErr } = await sb.from('projects').delete().eq('id', id)
+      if (qErr) throw qErr
       setRawProjects((prev) => prev.filter((p) => p.id !== id))
       const sel = useHubStore.getState().selectedProjectId
       if (sel === id) useHubStore.getState().setSelectedProject(null)

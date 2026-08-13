@@ -1,3 +1,4 @@
+import { BRAND } from './brand'
 import { formatDateIL } from './dates'
 import { monthLabelHe } from './financeCalc'
 import { resolveExpenseType } from './financeExpenseTypes'
@@ -214,11 +215,11 @@ export function missingGiReportHtml(data: MissingGiReportData): string {
       justify-content: space-between;
       align-items: flex-start;
       gap: 16px;
-      border-bottom: 3px solid #f97316;
+      border-bottom: 3px solid #5828a0;
       padding-bottom: 14px;
       margin-bottom: 18px;
     }
-    .brand { font-size: 22px; font-weight: 800; color: #ea580c; }
+    .brand { font-size: 22px; font-weight: 800; color: #5828a0; }
     .title { font-size: 18px; font-weight: 800; margin-top: 4px; }
     .subtitle { color: #64748b; margin-top: 6px; font-size: 12px; }
     .meta { text-align: left; color: #64748b; font-size: 11px; }
@@ -294,7 +295,7 @@ export function missingGiReportHtml(data: MissingGiReportData): string {
 <body>
   <header class="header">
     <div>
-      <div class="brand">HUB POS</div>
+      <div class="brand">${BRAND.productName}</div>
       <div class="title">דוח תשלומי בנק חסרים בחשבונית ירוקה</div>
       <div class="subtitle">תקופה: ${escapeHtml(data.periodLabel)} · לטיפול והזנה ב-GI</div>
     </div>
@@ -322,13 +323,13 @@ export function missingGiReportHtml(data: MissingGiReportData): string {
   <div class="instructions">
     <strong>הנחיות להשלמה בחשבונית ירוקה:</strong>
     עבור כל שורה — הזינו חשבונית מס / קבלה על שם הספק, בסכום ובתאריך המופיעים,
-    וסווגו לפי סוג ההוצאה. לאחר מכן במערכת HUB לחצו «סנכרן הוצאות מ-GI» ואז «התאם מחדש».
+    וסווגו לפי סוג ההוצאה. לאחר מכן במערכת Beo OS לחצו «סנכרן הוצאות מ-GI» ואז «התאם מחדש».
   </div>
 
   ${monthBlocks || '<p>אין תשלומי בנק חסרים בתקופה שנבחרה.</p>'}
 
   <footer class="footer">
-    <span>HUB ADVANCED · דוח פנימי</span>
+    <span>${BRAND.reportFooter}</span>
     <span>${data.rows.length} שורות · ${escapeHtml(data.periodLabel)}</span>
   </footer>
 </body>

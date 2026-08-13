@@ -74,14 +74,14 @@ export function AgentEstimatedRevenueLineChart({
         <path
           d={lineD}
           fill="none"
-          stroke="#EA580C"
+          stroke="#5828A0"
           strokeWidth={2.25}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         {pts.map(({ x, y, b, i }) => (
           <g key={b.ymd}>
-            <circle cx={x} cy={y} r={3.5} fill="#FFF7ED" stroke="#EA580C" strokeWidth={1.5} />
+            <circle cx={x} cy={y} r={3.5} fill="#F3EEFC" stroke="#5828A0" strokeWidth={1.5} />
             {(i % labelEvery === 0 || i === n - 1) && (
               <text
                 x={x}

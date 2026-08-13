@@ -5,21 +5,18 @@ import { useUsers } from '../hooks/useUsers'
 import { functionsClient } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { TeamMember } from '../types'
-import { AGENT_COMMISSION_PERCENT_FALLBACK } from '../lib/agentRevenue'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import { Modal } from './shared/Modal'
 
 type TeamRole = 'admin' | 'employee'
 
-/** תפקיד כפי שמוצג בממשק — סוכן = עובד + isAgent ב-Firestore */
-type UiUserRole = 'admin' | 'employee' | 'sales_agent'
+type UiUserRole = 'admin' | 'employee'
 
-type RoleFilter = 'all' | 'admin' | 'sales_agent' | 'employee'
+type RoleFilter = 'all' | 'admin' | 'employee'
 
 const roleLabels: Record<UiUserRole, string> = {
   admin: 'מנהל מערכת',
   employee: 'עובד',
-  sales_agent: 'סוכן מכירות',
 }
 
 function baseStoredRole(role: string): TeamRole {
@@ -27,9 +24,7 @@ function baseStoredRole(role: string): TeamRole {
 }
 
 function memberUiRole(u: TeamMember): UiUserRole {
-  if (baseStoredRole(u.role) === 'admin') return 'admin'
-  if (u.isAgent === true) return 'sales_agent'
-  return 'employee'
+  return baseStoredRole(u.role) === 'admin' ? 'admin' : 'employee'
 }
 
 function scheduleCaption(u: TeamMember): string {
@@ -88,7 +83,7 @@ function UserDayScheduleModal({
         }}
       >
         <p className="text-[12px] leading-relaxed text-[var(--text-mid)]">
-          בדוח נוכחות יוצג האם העובד נכנס עד שעת ההתחלה (עם סבלנות קצרה) ויצא לא לפני שעת הסיום.
+          שעות יום העבודה של העובד — התחלה, סיום והפסקה.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-[var(--text-mid)]">מ־</span>
@@ -155,7 +150,6 @@ export function UserManagementContent() {
     updateUserMonthlyWorkHours,
     updateUserDaySchedule,
     setUserRoleAndAgent,
-    updateUserAgentCommissionPercent,
   } = useUsers()
   const myRole =
     teamMembers.find((m) => m.id === (user?.uid ?? ''))?.role ?? 'employee'
@@ -176,18 +170,15 @@ export function UserManagementContent() {
 
   const roleStats = useMemo(() => {
     let admins = 0
-    let salesAgents = 0
     let employees = 0
     for (const m of teamMembers) {
       const r = memberUiRole(m)
       if (r === 'admin') admins += 1
-      else if (r === 'sales_agent') salesAgents += 1
       else employees += 1
     }
     return {
       total: teamMembers.length,
       admins,
-      salesAgents,
       employees,
     }
   }, [teamMembers])
@@ -200,8 +191,6 @@ export function UserManagementContent() {
   const applyUiRole = async (u: TeamMember, ui: UiUserRole) => {
     if (ui === 'admin') {
       await setUserRoleAndAgent(u.id, 'admin', false)
-    } else if (ui === 'sales_agent') {
-      await setUserRoleAndAgent(u.id, 'employee', true)
     } else {
       await setUserRoleAndAgent(u.id, 'employee', false)
     }
@@ -261,7 +250,7 @@ export function UserManagementContent() {
         password,
         name,
         role: newRole === 'admin' ? 'admin' : 'employee',
-        isAgent: newRole === 'sales_agent',
+        isAgent: false,
       })
       toastFsSuccess('משתמש חדש נוצר בהצלחה')
       setNewEmail('')
@@ -307,8 +296,7 @@ export function UserManagementContent() {
         roleLabels[memberUiRole(u)].toLowerCase().includes(q)
       )
     })
-    const rankByRole = (ui: UiUserRole) =>
-      ui === 'admin' ? 0 : ui === 'sales_agent' ? 1 : 2
+    const rankByRole = (ui: UiUserRole) => (ui === 'admin' ? 0 : 1)
     return filtered.sort((a, b) => {
       const ar = memberUiRole(a)
       const br = memberUiRole(b)
@@ -338,7 +326,7 @@ export function UserManagementContent() {
     <div className="space-y-5" style={{ fontFamily: 'Rubik, sans-serif' }}>
       {teamMembers.length > 0 ? (
         <section
-          className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3"
           aria-label="סיכום משתמשים לפי תפקיד"
         >
           <button
@@ -359,16 +347,6 @@ export function UserManagementContent() {
             <span className="text-[11px] font-semibold text-[var(--text-mid)]">מנהלי מערכת</span>
             <span className="text-[22px] font-extrabold tabular-nums text-[#2563EB]">
               {roleStats.admins}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={kpiBtn(roleFilter === 'sales_agent')}
-            onClick={() => setRoleFilter('sales_agent')}
-          >
-            <span className="text-[11px] font-semibold text-[var(--text-mid)]">סוכני מכירות</span>
-            <span className="text-[22px] font-extrabold tabular-nums text-[var(--orange)]">
-              {roleStats.salesAgents}
             </span>
           </button>
           <button
@@ -430,7 +408,6 @@ export function UserManagementContent() {
             >
               <option value="admin">{roleLabels.admin}</option>
               <option value="employee">{roleLabels.employee}</option>
-              <option value="sales_agent">{roleLabels.sales_agent}</option>
             </select>
             <button
               type="button"
@@ -498,14 +475,6 @@ export function UserManagementContent() {
                   <th className="px-3 py-3">משתמש</th>
                   <th className="w-[190px] px-3 py-3">אימייל</th>
                   <th className="w-[132px] px-3 py-3">תפקיד</th>
-                  {canManageAuth ? (
-                    <th
-                      className="w-[104px] px-2 py-3"
-                      title="אחוז מסכום ששולם ללקוחות — לחישובי עמלה בפורטל «כספים». ריק = ברירת מחדל מהמערכת."
-                    >
-                      עמלה % (כספים)
-                    </th>
-                  ) : null}
                   <th className="w-[108px] px-3 py-3">סטטוס</th>
                   {canManageAuth ? (
                     <th className="w-[88px] px-3 py-3">יעד ש׳/חודש</th>
@@ -585,56 +554,8 @@ export function UserManagementContent() {
                         >
                           <option value="admin">{roleLabels.admin}</option>
                           <option value="employee">{roleLabels.employee}</option>
-                          <option value="sales_agent">{roleLabels.sales_agent}</option>
                         </select>
                       </td>
-                      {canManageAuth ? (
-                        <td className="px-2 py-3 align-top">
-                          {u.isAgent === true ? (
-                            <div className="space-y-0.5">
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={1}
-                                dir="ltr"
-                                title="שמירה ביציאה מהשדה · ריק = ברירת מחדל"
-                                placeholder={String(AGENT_COMMISSION_PERCENT_FALLBACK)}
-                                className="w-full rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-1.5 py-1 text-center text-xs font-semibold text-[var(--text-dark)]"
-                                defaultValue={
-                                  typeof u.agentCommissionPercent === 'number' &&
-                                  Number.isFinite(u.agentCommissionPercent)
-                                    ? u.agentCommissionPercent
-                                    : ''
-                                }
-                                key={`ac-${u.id}-${String(u.agentCommissionPercent ?? '')}-${String(u.isAgent)}`}
-                                onBlur={(e) => {
-                                  const raw = e.target.value.trim().replace(',', '.')
-                                  const prev =
-                                    typeof u.agentCommissionPercent === 'number' &&
-                                    Number.isFinite(u.agentCommissionPercent)
-                                      ? Math.round(u.agentCommissionPercent)
-                                      : null
-                                  if (raw === '') {
-                                    if (prev !== null)
-                                      void updateUserAgentCommissionPercent(u.id, null)
-                                    return
-                                  }
-                                  const n = Math.round(Number(raw))
-                                  if (!Number.isFinite(n) || n < 0 || n > 100) return
-                                  if (prev !== null && prev === n) return
-                                  void updateUserAgentCommissionPercent(u.id, n)
-                                }}
-                              />
-                              <p className="text-[9px] leading-tight text-[var(--text-mid)]">
-                                פורטל סוכן
-                              </p>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-[var(--text-mid)]">—</span>
-                          )}
-                        </td>
-                      ) : null}
                       <td className="px-3 py-3">
                         <div className="flex flex-col items-end gap-1" dir="ltr">
                           <button
@@ -816,7 +737,6 @@ export function UserManagementContent() {
                     >
                       <option value="admin">{roleLabels.admin}</option>
                       <option value="employee">{roleLabels.employee}</option>
-                      <option value="sales_agent">{roleLabels.sales_agent}</option>
                     </select>
                     <button
                       type="button"
@@ -833,44 +753,6 @@ export function UserManagementContent() {
                       />
                     </button>
                   </div>
-                  {canManageAuth && u.isAgent === true ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-semibold text-[var(--text-mid)]">עמלה % (כספים):</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={1}
-                        dir="ltr"
-                        title="שמירה ביציאה · ריק = ברירת מחדל"
-                        placeholder={String(AGENT_COMMISSION_PERCENT_FALLBACK)}
-                        className="w-20 rounded border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-2 py-1 text-xs"
-                        defaultValue={
-                          typeof u.agentCommissionPercent === 'number' &&
-                          Number.isFinite(u.agentCommissionPercent)
-                            ? u.agentCommissionPercent
-                            : ''
-                        }
-                        key={`ac-m-${u.id}-${String(u.agentCommissionPercent ?? '')}`}
-                        onBlur={(e) => {
-                          const raw = e.target.value.trim().replace(',', '.')
-                          const prev =
-                            typeof u.agentCommissionPercent === 'number' &&
-                            Number.isFinite(u.agentCommissionPercent)
-                              ? Math.round(u.agentCommissionPercent)
-                              : null
-                          if (raw === '') {
-                            if (prev !== null) void updateUserAgentCommissionPercent(u.id, null)
-                            return
-                          }
-                          const n = Math.round(Number(raw))
-                          if (!Number.isFinite(n) || n < 0 || n > 100) return
-                          if (prev !== null && prev === n) return
-                          void updateUserAgentCommissionPercent(u.id, n)
-                        }}
-                      />
-                    </div>
-                  ) : null}
                   {canManageAuth ? (
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                       <span className="font-semibold text-[var(--text-mid)]">יעד ש׳/חודש:</span>

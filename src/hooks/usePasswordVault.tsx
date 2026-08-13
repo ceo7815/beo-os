@@ -13,7 +13,7 @@ import {
   type Timestamp,
 } from 'firebase/firestore'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { auth, db } from '../lib/firebase'
+import { auth, db, canUseLegacyFirestore } from '../lib/firebase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { PasswordVaultEntry, PasswordVaultWrite } from '../types'
 
@@ -92,7 +92,7 @@ export function usePasswordVault({ uid, usersReady, isVaultAdmin }: UsePasswordV
   })
 
   useEffect(() => {
-    if (!uid) {
+    if (!uid || !canUseLegacyFirestore()) {
       setEntries([])
       setLoading(false)
       return

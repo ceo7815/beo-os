@@ -13,7 +13,15 @@ function readPort(key: string, fallback: number): number {
 }
 
 function readOrigins(raw: string): string[] {
-  if (!raw) return ['http://localhost:5173', 'http://127.0.0.1:5173']
+  if (!raw)
+    return [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:5174',
+      'http://127.0.0.1:5174',
+      'http://localhost:5175',
+      'http://127.0.0.1:5175',
+    ]
   return raw
     .split(',')
     .map((s) => s.trim())
@@ -26,6 +34,8 @@ export const env = {
   host: readString('SERVER_HOST', '127.0.0.1'),
   port: readPort('SERVER_PORT', 8787),
   corsOrigins: readOrigins(readString('CORS_ORIGINS')),
+  supabaseUrl: readString('SUPABASE_URL') || readString('VITE_SUPABASE_URL'),
+  supabaseAnonKey: readString('SUPABASE_ANON_KEY') || readString('VITE_SUPABASE_ANON_KEY'),
   firebaseServiceAccountPath: readString('FIREBASE_SERVICE_ACCOUNT_PATH'),
   /** JSON גולמי — לפרודקשן ב-xCloud (משתנה סביבה אחד) */
   firebaseServiceAccountJson: readString('FIREBASE_SERVICE_ACCOUNT_JSON'),
@@ -40,8 +50,8 @@ export const env = {
     fromDate: readString('SYNC_FROM_DATE', '2026-03-01'),
     overlapDays: Math.max(1, readPort('SYNC_OVERLAP_DAYS', 7)),
   },
-  /** מיילים שמורשים כמנהל כשקריאת Firestore users נכשלת (מופרד בפסיקים) */
-  adminEmails: readString('ADMIN_EMAILS')
+  /** מיילים שמורשים כמנהל (מופרד בפסיקים) */
+  adminEmails: (readString('ADMIN_EMAILS') || 'ceo@beosystem.co.il')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),

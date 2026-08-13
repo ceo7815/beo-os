@@ -134,7 +134,7 @@ export function docToFinanceExpenseType(
   return {
     id: d.id,
     label: String(x.label ?? '').trim() || 'סוג הוצאה',
-    color: String(x.color ?? '#F97316'),
+    color: String(x.color ?? '#5828A0'),
     fieldMode: normalizeExpenseFieldMode(x.fieldMode),
     autoRecurring: x.autoRecurring === true,
     pnlCategory: normalizeExpensePnlCategory(x.pnlCategory),

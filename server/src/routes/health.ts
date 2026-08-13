@@ -11,7 +11,7 @@ export async function registerHealthRoutes(app: FastifyInstance): Promise<void> 
     const firestore = fb.status === 'ready' ? await verifyFirebaseAdmin() : null
     return {
       ok: true,
-      service: 'hub-pos-server',
+      service: 'beo-os-server',
       env: env.nodeEnv,
       uptimeSec: Math.floor(process.uptime()),
       integrations: {

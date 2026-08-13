@@ -147,7 +147,7 @@ export function Collections() {
   )
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-5 px-4 py-6 sm:px-8">
+    <div className="beo-page space-y-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between text-right">
         <div>
           <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">

@@ -3,16 +3,6 @@ import { functionsClient } from './firebase'
 import { formatFirebaseErrorDetail } from './formatFirebaseError'
 import { useHubStore } from '../store/useStore'
 
-const sendAssigneeTaskNotification = httpsCallable<
-  { taskId: string; kind?: 'new' | 'transfer' },
-  {
-    ok: boolean
-    skipped?: boolean
-    sent?: boolean
-    reason?: string
-  }
->(functionsClient, 'sendAssigneeTaskNotification')
-
 const SKIP_TOAST: Record<string, string> = {
   no_smtp:
     'לא נשלח מייל על המשימה: חסרות הגדרות בשרת. הגדר RESEND_API_KEY + MAIL_FROM או SMTP מלא בפרויקט Functions.',
@@ -30,6 +20,16 @@ export function requestAssigneeTaskEmail(
   taskId: string,
   opts?: { kind?: 'new' | 'transfer' },
 ): void {
+  if (!functionsClient) return
+  const sendAssigneeTaskNotification = httpsCallable<
+    { taskId: string; kind?: 'new' | 'transfer' },
+    {
+      ok: boolean
+      skipped?: boolean
+      sent?: boolean
+      reason?: string
+    }
+  >(functionsClient, 'sendAssigneeTaskNotification')
   void sendAssigneeTaskNotification({
     taskId,
     ...(opts?.kind ? { kind: opts.kind } : {}),

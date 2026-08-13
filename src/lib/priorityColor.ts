@@ -5,7 +5,7 @@ export function priorityColor(p: Priority): string {
     case 'high':
       return '#EF4444'
     case 'medium':
-      return '#F97316'
+      return '#f59e0b'
     case 'low':
       return '#64748B'
   }

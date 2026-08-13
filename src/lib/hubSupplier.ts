@@ -1,17 +1,19 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { db } from './firebase'
+import { BRAND } from './brand'
+import { canUseLegacyFirestore, db } from './firebase'
 
 /** מזהה קבוע לספק ביצוע ברירת המחדל */
-export const HUB_SUPPLIER_ID = 'supplier_hub_systems'
+export const HUB_SUPPLIER_ID = BRAND.defaultSupplierId
 
-export const HUB_SUPPLIER_NAME = 'האב מערכות'
+export const HUB_SUPPLIER_NAME = BRAND.defaultSupplierName
 
 let ensureInFlight = false
 
 /**
- * מבטיח שמסמך ברירת המחדל "האב מערכות" קיים — ללא מחיקת ספקים אחרים.
+ * מבטיח שמסמך ברירת המחדל של החברה קיים — ללא מחיקת ספקים אחרים.
  */
 export async function ensureHubSupplierExists(): Promise<void> {
+  if (!canUseLegacyFirestore()) return
   if (ensureInFlight) return
   ensureInFlight = true
   try {
@@ -20,7 +22,7 @@ export async function ensureHubSupplierExists(): Promise<void> {
       {
         name: HUB_SUPPLIER_NAME,
         phone: '',
-        email: 'admin@hub.co.il',
+        email: '',
         createdAt: serverTimestamp(),
       },
       { merge: true },

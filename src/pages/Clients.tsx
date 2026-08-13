@@ -12,7 +12,6 @@ import { isAdminRole } from '../components/RequireAdmin'
 import { useHubStore } from '../store/useStore'
 import type { Client, ClientStatus } from '../types'
 import { hubSectionClass } from '../lib/hubSectionBorder'
-import { memberIsSalesAgentFlag } from '../lib/salesAgent'
 import { ClientActivityModal } from '../components/ClientActivityModal'
 import { ClientsSyncButton } from '../components/ClientsSyncButton'
 import { exportClientsToExcel } from '../lib/clientsExcelExport'
@@ -28,7 +27,6 @@ interface ClientFormState {
   email: string
   department: string
   status: ClientStatus
-  salesAgentUserId: string
   assignedEmployeeUserIds: string[]
 }
 
@@ -39,7 +37,6 @@ const emptyForm: ClientFormState = {
   email: '',
   department: '',
   status: 'active',
-  salesAgentUserId: '',
   assignedEmployeeUserIds: [],
 }
 
@@ -86,11 +83,7 @@ export function Clients() {
     () => teamMembers.find((m) => m.id === (user?.uid ?? '')),
     [teamMembers, user?.uid],
   )
-  const canSetSalesAgent = Boolean(myMember && isAdminRole(myMember.role))
-  const agentOptions = useMemo(
-    () => teamMembers.filter((u) => memberIsSalesAgentFlag(u) && u.active !== false),
-    [teamMembers],
-  )
+  const isAdmin = Boolean(myMember && isAdminRole(myMember.role))
 
   const employeeAssignOptions = useMemo(
     () =>
@@ -148,7 +141,6 @@ export function Clients() {
       email: c.email,
       department: c.department ?? '',
       status: c.status,
-      salesAgentUserId: c.salesAgentUserId ?? '',
       assignedEmployeeUserIds: c.assignedEmployeeUserIds?.length
         ? [...c.assignedEmployeeUserIds]
         : [],
@@ -176,11 +168,6 @@ export function Clients() {
         department: departmentTrim ? departmentTrim : null,
         status: form.status,
       }
-      if (canSetSalesAgent) {
-        patch.salesAgentUserId = form.salesAgentUserId.trim()
-          ? form.salesAgentUserId.trim()
-          : ''
-      }
       patch.assignedEmployeeUserIds = form.assignedEmployeeUserIds
       updateClient(editingId, patch)
     } else {
@@ -191,9 +178,6 @@ export function Clients() {
         email: form.email.trim(),
         ...(departmentTrim ? { department: departmentTrim } : {}),
         status: form.status,
-        ...(canSetSalesAgent && form.salesAgentUserId.trim()
-          ? { salesAgentUserId: form.salesAgentUserId.trim() }
-          : {}),
         ...(form.assignedEmployeeUserIds.length
           ? { assignedEmployeeUserIds: form.assignedEmployeeUserIds }
           : {}),
@@ -339,7 +323,7 @@ export function Clients() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-5 md:px-8 md:py-8">
+    <div className="beo-page space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">
@@ -350,7 +334,7 @@ export function Clients() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          {canSetSalesAgent ? <ClientsSyncButton /> : null}
+          {isAdmin ? <ClientsSyncButton /> : null}
           <button
             type="button"
             onClick={exportExcel}
@@ -595,30 +579,9 @@ export function Clients() {
               <option value="inactive">לא פעיל</option>
             </select>
           </div>
-          {canSetSalesAgent ? (
-            <div>
-              <label className="mb-1 block text-xs text-[var(--text-mid)]">
-                סוכן מכירות (פורטל סוכן)
-              </label>
-              <select
-                value={form.salesAgentUserId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, salesAgentUserId: e.target.value }))
-                }
-                className="w-full max-w-md rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] px-3 py-2 text-sm"
-              >
-                <option value="">ללא סוכן</option>
-                {agentOptions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
           <div>
             <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              עובדים משויכים ללקוח (מוצג בפורטל הסוכן)
+              עובדים משויכים ללקוח
             </label>
             <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] p-2 text-sm">
               {employeeAssignOptions.length === 0 ? (

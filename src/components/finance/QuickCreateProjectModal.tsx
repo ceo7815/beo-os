@@ -5,7 +5,7 @@ import { useHubStore } from '../../store/useStore'
 import { todayYmd } from '../../lib/dates'
 
 const PROJECT_COLORS = [
-  '#F97316',
+  '#5828A0',
   '#0EA5E9',
   '#10B981',
   '#8B5CF6',

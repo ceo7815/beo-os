@@ -162,13 +162,13 @@ export function FinanceCashflow() {
   const loading = cashflowLoading || incomesLoading || expensesLoading
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-5 px-4 py-6 sm:px-8">
+    <div className="beo-page space-y-5">
       <header className="text-right">
         <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">
           תזרים מזומנים
         </h1>
         <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-mid)] md:text-[13px]">
-          תחזית כניסות ויציאות — הוראות קבע, ריטיינרים, גבייה, הוצאות קבועות ומע״מ
+          תחזית כניסות ויציאות — ריטיינרים, גבייה, הוצאות קבועות ומע״מ
         </p>
       </header>
 
@@ -305,7 +305,7 @@ export function FinanceCashflow() {
             </div>
             <p className="mb-3 text-[11px] text-[var(--text-mid)]">
               צפי יומי מסודר: מה נכנס, מה יוצא, יתרה זמינה, אופן תשלום והערות — כולל
-              הוראות קבע, ריטיינרים, גבייה, הוצאות קבועות, הוצאות צפויות ידניות ומע״מ.
+              ריטיינרים, גבייה, הוצאות קבועות, הוצאות צפויות ידניות ומע״מ.
               שורות אומדן מע״מ ניתנות לעריכה ישירה בעמודת «יצא».
             </p>
             <FinanceCashflowLedgerTable

@@ -32,7 +32,7 @@ function SupplierTypesBlock({ s }: { s: Supplier }) {
   if (isHub) {
     return (
       <div className="space-y-1.5">
-        <Badge label="ספק ברירת מחדל" color="#F97316" />
+        <Badge label="ספק ברירת מחדל" color="#5828A0" />
         {(s.supplierTypes?.length ?? 0) > 0 ? (
           <div className="flex flex-wrap gap-1">
             {(s.supplierTypes ?? []).map((t) => (
@@ -68,8 +68,8 @@ function SupplierTypesBlock({ s }: { s: Supplier }) {
 const uiButtonBase =
   'inline-flex h-9 min-w-[104px] items-center justify-center rounded-[10px] px-3 text-xs font-semibold transition'
 const uiFilterInactive = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] text-[var(--text-mid)] hover:bg-[var(--surface-muted)]`
-const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
-const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[#ea6c0a]`
+const uiFilterActive = `${uiButtonBase} border border-[var(--orange)] bg-[var(--orange)] text-white shadow-sm hover:bg-[var(--brand-hover)]`
+const uiButtonBrand = `${uiButtonBase} border border-transparent bg-[var(--orange)] text-white shadow-sm hover:bg-[var(--brand-hover)]`
 const uiButtonGhost = uiFilterInactive
 const uiBtnSmOutline = `${uiButtonBase} border border-[var(--border-orange-soft)] bg-[var(--dash-panel-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--orange)] hover:bg-[var(--orange-light)]`
 
@@ -327,7 +327,7 @@ export function Suppliers() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 px-4 py-5 md:px-8 md:py-8">
+    <div className="beo-page space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">

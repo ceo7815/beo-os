@@ -25,7 +25,7 @@ export const BUILTIN_FINANCE_EXPENSE_TYPES: FinanceExpenseTypeDef[] = [
   {
     id: 'one_time',
     label: 'חד פעמית כללית',
-    color: '#F97316',
+    color: '#5828A0',
     fieldMode: 'none',
     autoRecurring: false,
     pnlCategory: 'fixed',
@@ -82,7 +82,7 @@ export const EXPENSE_TYPE_COLOR_PRESETS = [
   '#94A3B8',
   '#3B82F6',
   '#8B5CF6',
-  '#F97316',
+  '#5828A0',
   '#10B981',
   '#EF4444',
   '#F59E0B',

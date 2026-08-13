@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToHostingRecord } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { HostingRecord } from '../types'
@@ -92,6 +92,10 @@ export function HostingProvider({ children }: { children: ReactNode }) {
       setRecords([])
       setLoading(false)
       setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
+      setLoading(false)
       return
     }
     setLoading(true)

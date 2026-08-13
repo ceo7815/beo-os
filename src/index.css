@@ -1,53 +1,62 @@
 @import 'tailwindcss';
 
-/* Design Tokens — Enterprise calm */
+/* Design Tokens — Beo OS */
 :root {
-  /* רקעים */
-  --bg-main: #f1f5f9;
-  --bg-sidebar: #454545;
+  --brand: #5828a0;
+  --brand-hover: #6d3bb8;
+  --brand-deep: #3d1c74;
+  --brand-light: #f1ebfa;
+  --brand-muted: rgba(88, 40, 160, 0.12);
+  --border-brand-soft: rgba(88, 40, 160, 0.28);
+
+  --bg-main: #f3f0f7;
+  --bg-sidebar: #ffffff;
   --bg-card: #ffffff;
   --dash-panel-bg: #ffffff;
   --bg-input: #ffffff;
 
-  /* מותג */
-  --blue-dark: #1e293b;
-  --blue-mid: #2563eb;
-  --blue-light: #eff6ff;
-  --orange: #f97316;
-  --orange-light: #fff7ed;
-  --orange-muted: rgba(249, 115, 22, 0.12);
+  --sidebar-text: #5b5566;
+  --sidebar-text-strong: #141218;
+  --sidebar-muted: #8b8494;
+  --sidebar-hover: rgba(88, 40, 160, 0.08);
+  --sidebar-active-bg: rgba(88, 40, 160, 0.14);
+  --sidebar-active-text: #3d1c74;
+  --sidebar-border: #e6e1ee;
+  --sidebar-panel: #f7f5fb;
 
-  /* טקסט */
-  --text-dark: #0f172a;
-  --text-mid: #475569;
-  --text-light: #94a3b8;
+  --blue-dark: #181818;
+  --blue-mid: var(--brand);
+  --blue-light: var(--brand-light);
+  --orange: var(--brand);
+  --orange-light: var(--brand-light);
+  --orange-muted: var(--brand-muted);
 
-  /* גבולות וצל */
-  --border: #e2e8f0;
-  --border-dark: #cbd5e1;
-  --border-orange-soft: rgba(249, 115, 22, 0.35);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --text-dark: #141218;
+  --text-mid: #5b5566;
+  --text-light: #8b8494;
 
-  /** רקע פנימי בכרטיס — אפור עדין */
-  --surface-muted: #f8fafc;
-  --surface-hover: #f1f5f9;
+  --border: #e6e1ee;
+  --border-dark: #cfc8db;
+  --border-orange-soft: var(--border-brand-soft);
+  --shadow-sm: 0 1px 2px rgba(20, 18, 24, 0.05);
+  --shadow-md: 0 8px 24px rgba(88, 40, 160, 0.07);
+  --shadow-lg: 0 16px 40px rgba(20, 18, 24, 0.1);
 
-  /* סטטוס */
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  --surface-muted: #f7f5fb;
+  --surface-hover: #efeaf8;
+
+  --success: #0f9f6e;
+  --warning: #d97706;
+  --danger: #dc2626;
   --info: #2563eb;
-  --retainer: #7c3aed;
+  --retainer: #5828a0;
 
-  /* תאימות לקוד קיים */
   --bg: var(--bg-main);
   --sidebar: var(--bg-sidebar);
   --card: var(--bg-card);
   --text: var(--text-dark);
   --muted: var(--text-mid);
-  --accent: var(--blue-mid);
+  --accent: var(--brand);
 }
 
 * {
@@ -67,14 +76,18 @@ body,
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-dark);
-  border-radius: 3px;
+  background: #cfc8db;
+  border-radius: 99px;
+}
+.beo-sidebar ::-webkit-scrollbar-thumb {
+  background: #cfc8db;
 }
 
 input,
@@ -98,8 +111,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--blue-mid);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-muted);
 }
 
 input[type='radio'],
@@ -113,13 +126,13 @@ input[type='checkbox'] {
   background: transparent;
   box-shadow: none;
   flex-shrink: 0;
-  accent-color: var(--blue-mid);
+  accent-color: var(--brand);
 }
 
 input[type='radio']:focus,
 input[type='checkbox']:focus {
   box-shadow: none;
-  outline: 2px solid var(--blue-mid);
+  outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
 
@@ -160,40 +173,31 @@ button {
   animation: hub-realtime-bubble-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.hub-btn-primary {
-  background: var(--blue-mid);
+.hub-btn-primary,
+.hub-btn-orange {
+  background: var(--brand);
   color: #fff;
   border: none;
-  padding: 9px 20px;
+  padding: 9px 18px;
   border-radius: 10px;
   font-weight: 600;
+  box-shadow: 0 6px 16px rgba(88, 40, 160, 0.22);
 }
-.hub-btn-primary:hover {
-  background: #1d4ed8;
+.hub-btn-primary:hover,
+.hub-btn-orange:hover {
+  background: var(--brand-hover);
 }
 
 .hub-btn-secondary {
-  background: var(--blue-light);
-  color: var(--blue-mid);
-  border: 1px solid #bfdbfe;
-  padding: 9px 20px;
+  background: var(--brand-light);
+  color: var(--brand-deep);
+  border: 1px solid var(--border-brand-soft);
+  padding: 9px 18px;
   border-radius: 10px;
   font-weight: 600;
 }
 .hub-btn-secondary:hover {
-  background: #dbeafe;
-}
-
-.hub-btn-orange {
-  background: var(--orange);
-  color: #fff;
-  border: none;
-  padding: 9px 20px;
-  border-radius: 10px;
-  font-weight: 600;
-}
-.hub-btn-orange:hover {
-  background: #ea580c;
+  background: #e7def8;
 }
 
 .hub-btn-danger {
@@ -237,8 +241,8 @@ select.hub-select:hover:not(:disabled) {
 }
 
 select.hub-select:focus {
-  border-color: var(--blue-mid);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-muted);
 }
 
 select.hub-select:disabled {
@@ -264,9 +268,22 @@ select.hub-select:disabled {
 /** כרטיס בולט (hero, KPI ראשי) */
 .hub-dash-card.hub-dash-card--elevated,
 .hub-dash-card.hub-dash-card--hero {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(88, 40, 160, 0.12);
   background: var(--dash-panel-bg);
   box-shadow: var(--shadow-md);
+}
+
+.beo-kpi--danger {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: linear-gradient(180deg, #fff 0%, #fff7f7 100%);
+}
+.beo-kpi--brand {
+  border-color: rgba(88, 40, 160, 0.22);
+  background: linear-gradient(180deg, #fff 0%, #f8f4ff 100%);
+}
+.beo-kpi--warn {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: linear-gradient(180deg, #fff 0%, #fffbeb 100%);
 }
 
 /** שורה/אזור פנימי ברשימות */
@@ -327,7 +344,7 @@ select.hub-select:disabled {
 .hub-chip-link--accent:hover {
   border-color: var(--orange);
   background: var(--orange-light);
-  color: #c2410c;
+  color: var(--brand-deep);
 }
 
 /** כפתור משני בתוך כרטיס */
@@ -394,9 +411,97 @@ select.hub-select:disabled {
   background: #fef3c7;
 }
 
-/** מצב ריק */
 .hub-empty-dashed {
   border: 1px dashed var(--border-dark);
   background: var(--surface-muted);
   box-shadow: none;
+}
+
+/* סיידבר בהיר — מערכת ניהול */
+.beo-sidebar {
+  background: var(--bg-sidebar);
+  color: var(--sidebar-text);
+  border-color: var(--sidebar-border);
+  box-shadow: -1px 0 0 var(--sidebar-border);
+}
+.beo-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--sidebar-text);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.beo-nav-item:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text-strong);
+}
+.beo-nav-item.is-active {
+  background: var(--brand);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: none;
+}
+.beo-nav-group.is-open {
+  background: var(--sidebar-panel);
+  border-radius: 12px;
+}
+.beo-nav-subpanel {
+  border-top: 1px solid var(--sidebar-border);
+  padding: 0.5rem 0.45rem 0.6rem;
+}
+.beo-nav-subpanel-inner {
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0.3rem;
+}
+.beo-nav-sub {
+  display: flex;
+  min-height: 34px;
+  width: 100%;
+  align-items: center;
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sidebar-text);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.beo-nav-sub:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text-strong);
+}
+.beo-nav-sub.is-active {
+  background: var(--brand-light);
+  color: var(--sidebar-active-text);
+  font-weight: 600;
+}
+.beo-nav-label {
+  padding: 0.45rem 0.55rem 0.15rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--sidebar-muted);
+}
+.beo-sidebar-divider {
+  border-color: var(--sidebar-border);
+}
+
+.beo-page {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 1440px;
+  padding: 1.35rem 1.15rem 2.25rem;
+}
+@media (min-width: 768px) {
+  .beo-page {
+    padding: 1.75rem 2rem 2.5rem;
+  }
 }

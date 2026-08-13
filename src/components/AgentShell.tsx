@@ -5,8 +5,9 @@ import { useUsers } from '../hooks/useUsers'
 import { usesSalesAgentPortal } from '../lib/salesAgent'
 import type { TeamMember } from '../types'
 import { ToastHost } from './shared/Toast'
+import { brandLogoAlt, brandLogoSrc } from '../lib/brand'
 
-const LAYOUT_LOGO_SRC = `${import.meta.env.BASE_URL}logo-hub-pos.png?v=3`
+const LAYOUT_LOGO_SRC = `${brandLogoSrc()}?v=3`
 
 const navBase =
   'flex items-center gap-2.5 rounded-none px-5 py-3 text-base transition'
@@ -102,13 +103,13 @@ export function AgentShell() {
       className="flex min-h-[100dvh] flex-col bg-[var(--bg-main)] md:h-[100dvh] md:flex-row md:overflow-hidden"
     >
       <header
-        className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-[rgba(255,255,255,0.12)] bg-[#454545] px-3 py-2.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)] md:hidden"
+        className="sticky top-0 z-[45] flex shrink-0 items-center gap-3 border-b border-[var(--border)] bg-white px-3 py-2.5 shadow-sm md:hidden"
         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
       >
         <button
           type="button"
           onClick={() => setMobileNavOpen(true)}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white transition hover:bg-white/10 active:scale-[0.98]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-slate-50 text-slate-700 transition hover:bg-[var(--brand-muted)] active:scale-[0.98]"
           aria-label="פתח תפריט ניווט"
           aria-expanded={mobileNavOpen}
           aria-controls="agent-sidebar"
@@ -134,7 +135,7 @@ export function AgentShell() {
           height={36}
           decoding="async"
         />
-        <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-white/70">
+        <span className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-slate-500">
           פורטל סוכן
         </span>
       </header>
@@ -152,7 +153,7 @@ export function AgentShell() {
         id="agent-sidebar"
         role="navigation"
         aria-label="ניווט פורטל סוכן"
-        className={`flex flex-col bg-[#454545] transition-transform duration-200 ease-out max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto max-md:border-l max-md:border-[rgba(255,255,255,0.08)] max-md:shadow-[-10px_0_40px_rgba(0,0,0,0.35)] md:static md:z-auto md:h-full md:w-[220px] md:shrink-0 md:translate-x-0 md:overflow-y-auto md:border-b-0 md:border-l md:border-[rgba(255,255,255,0.08)] md:shadow-none ${
+        className={`flex flex-col bg-white transition-transform duration-200 ease-out max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-[58] max-md:h-[100dvh] max-md:w-[min(100vw-0.75rem,300px)] max-md:overflow-y-auto max-md:border-l max-md:border-[var(--border)] max-md:shadow-[-10px_0_40px_rgba(15,23,42,0.12)] md:static md:z-auto md:h-full md:w-[220px] md:shrink-0 md:translate-x-0 md:overflow-y-auto md:border-b-0 md:border-l md:border-[var(--border)] md:shadow-none ${
           mobileNavOpen ? 'max-md:translate-x-0' : 'max-md:pointer-events-none max-md:translate-x-full'
         }`}
         style={{
@@ -165,25 +166,25 @@ export function AgentShell() {
         }}
       >
         <div className="flex flex-1 flex-col gap-5 p-4">
-          <div className="relative border-b border-white/10 pb-4">
+          <div className="relative border-b border-[var(--border)] pb-4">
             <button
               type="button"
               onClick={closeMobileNav}
-              className="absolute left-0 top-0 flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 text-lg font-light leading-none text-white/80 transition hover:bg-white/10 md:hidden"
+              className="absolute left-0 top-0 flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-lg font-light leading-none text-slate-600 transition hover:bg-[var(--brand-muted)] md:hidden"
               aria-label="סגור תפריט"
             >
               ×
             </button>
             <img
               src={LAYOUT_LOGO_SRC}
-              alt="Hub-Pos"
+              alt={brandLogoAlt()}
               className="mx-auto h-auto w-full max-w-[196px] select-none object-contain max-md:pt-1"
               width={196}
               height={72}
               decoding="async"
             />
-            <p className="mt-3 text-center text-[11px] font-semibold text-white/55">פורטל סוכן</p>
-            <p className="mt-1 text-center text-[14px] font-bold leading-snug text-[#F97316]">
+            <p className="mt-3 text-center text-[11px] font-semibold text-slate-400">פורטל סוכן</p>
+            <p className="mt-1 text-center text-[14px] font-bold leading-snug text-[var(--orange)]">
               מכירות
             </p>
           </div>
@@ -195,8 +196,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'bg-white/10 font-semibold text-[#F97316]'
-                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
+                    ? 'bg-[var(--brand-muted)] font-semibold text-[var(--orange)]'
+                    : 'font-medium text-slate-600 hover:bg-[var(--brand-muted)] hover:text-slate-900'
                 }`
               }
             >
@@ -213,8 +214,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'bg-white/10 font-semibold text-[#F97316]'
-                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
+                    ? 'bg-[var(--brand-muted)] font-semibold text-[var(--orange)]'
+                    : 'font-medium text-slate-600 hover:bg-[var(--brand-muted)] hover:text-slate-900'
                 }`
               }
             >
@@ -230,8 +231,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'bg-white/10 font-semibold text-[#F97316]'
-                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
+                    ? 'bg-[var(--brand-muted)] font-semibold text-[var(--orange)]'
+                    : 'font-medium text-slate-600 hover:bg-[var(--brand-muted)] hover:text-slate-900'
                 }`
               }
             >
@@ -245,8 +246,8 @@ export function AgentShell() {
               className={({ isActive }) =>
                 `${navBase} ${
                   isActive
-                    ? 'bg-white/10 font-semibold text-[#F97316]'
-                    : 'font-medium text-white/60 hover:bg-white/[0.06] hover:text-white/90'
+                    ? 'bg-[var(--brand-muted)] font-semibold text-[var(--orange)]'
+                    : 'font-medium text-slate-600 hover:bg-[var(--brand-muted)] hover:text-slate-900'
                 }`
               }
             >
@@ -258,8 +259,8 @@ export function AgentShell() {
             </NavLink>
           </nav>
 
-          <div className="mt-auto space-y-2 border-t border-[rgba(255,255,255,0.1)] pt-4">
-            <p className="text-[9px] font-semibold uppercase tracking-[2px] text-[rgba(255,255,255,0.3)]">
+          <div className="mt-auto space-y-2 border-t border-[var(--border)] pt-4">
+            <p className="text-[9px] font-semibold uppercase tracking-[2px] text-slate-400">
               GOOGLE WORKSPACE
             </p>
             <ul className="space-y-2 text-[12px]">
@@ -268,7 +269,7 @@ export function AgentShell() {
                   href="https://mail.google.com"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[rgba(255,255,255,0.55)] transition hover:text-white"
+                  className="text-slate-500 transition hover:text-slate-900"
                 >
                   Gmail
                 </a>
@@ -278,7 +279,7 @@ export function AgentShell() {
                   href="https://calendar.google.com"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[rgba(255,255,255,0.55)] transition hover:text-white"
+                  className="text-slate-500 transition hover:text-slate-900"
                 >
                   Calendar
                 </a>
@@ -287,7 +288,7 @@ export function AgentShell() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-[rgba(255,255,255,0.1)] p-4">
+        <div className="flex flex-col gap-2 border-t border-[var(--border)] p-4">
           <div className="flex items-center gap-2">
             <span
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -299,8 +300,8 @@ export function AgentShell() {
               {mainUser.avatar}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold text-white">{mainUser.name}</div>
-              <div className="truncate text-[11px] text-[rgba(255,255,255,0.4)]">סוכן מכירות</div>
+              <div className="truncate text-sm font-semibold text-slate-900">{mainUser.name}</div>
+              <div className="truncate text-[11px] text-slate-500">סוכן מכירות</div>
             </div>
           </div>
           <button
@@ -308,7 +309,7 @@ export function AgentShell() {
             onClick={() => {
               void signOutUser().then(() => navigate('/login', { replace: true }))
             }}
-            className="w-full rounded-lg border border-white/20 py-1.5 text-center text-xs font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+            className="w-full rounded-lg border border-[var(--border)] py-1.5 text-center text-xs font-semibold text-slate-700 transition hover:bg-[var(--brand-muted)] hover:text-slate-900"
           >
             התנתקות
           </button>

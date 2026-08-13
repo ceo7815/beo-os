@@ -201,7 +201,7 @@ export function HubDropdownSelect({
                   onMouseEnter={() => setHi(i)}
                   className={`w-full py-2.5 pe-3 ps-3 text-right text-sm transition-colors ${
                     isSelectedValue
-                      ? 'bg-[var(--bg-sidebar)] font-semibold text-white'
+                      ? 'bg-[var(--brand)] font-semibold text-white'
                       : isHi
                         ? 'bg-[var(--orange-light)] font-medium text-[var(--text-dark)]'
                         : 'bg-[var(--dash-panel-bg)] font-normal text-[var(--text-dark)] hover:bg-[var(--surface-muted)]'

@@ -7,7 +7,7 @@ import {
   setDoc,
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError } from '../lib/fsToast'
 import type { ImportRule } from '../lib/bankImport/matching'
@@ -27,6 +27,10 @@ export function useFinanceImportRules() {
   useEffect(() => {
     if (!user) {
       setRules([])
+      setLoading(false)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
       setLoading(false)
       return
     }

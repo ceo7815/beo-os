@@ -1,16 +1,16 @@
-import { auth } from './firebase'
+import { requireSupabase } from './supabase'
 
 /**
- * קריאה ל-API של השרת (Fastify) עם Firebase ID token.
+ * קריאה ל-API של השרת (Fastify) עם JWT של Supabase.
  * ה-proxy ב-Vite מפנה /api → השרת בפיתוח.
  */
 export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const user = auth.currentUser
-  if (!user) throw new ApiError('לא מחובר', 401)
-  const token = await user.getIdToken()
+  const { data: sessionData } = await requireSupabase().auth.getSession()
+  const token = sessionData.session?.access_token
+  if (!token) throw new ApiError('לא מחובר', 401)
 
   const method = (init.method ?? 'GET').toUpperCase()
   // POST/PUT/PATCH חייבים body כש-content-type הוא JSON — שולחים {} כברירת מחדל

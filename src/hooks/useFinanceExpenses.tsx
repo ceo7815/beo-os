@@ -21,7 +21,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToFinanceExpense } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type {
@@ -206,6 +206,12 @@ export function FinanceExpensesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) {
+      setExpenses([])
+      setLoading(false)
+      setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
       setExpenses([])
       setLoading(false)
       setError(null)

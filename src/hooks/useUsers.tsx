@@ -7,11 +7,34 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { collection, deleteField, doc, onSnapshot, query, updateDoc } from 'firebase/firestore'
+import { collection, onSnapshot, query } from 'firebase/firestore'
 import { docToTeamMember } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { canUseLegacyFirestore, db } from '../lib/firebase'
+import { isSupabaseConfigured } from '../lib/backend'
+import { requireSupabase, supabase } from '../lib/supabase'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import type { TeamMember } from '../types'
+
+function profileRowToTeamMember(row: Record<string, unknown>): TeamMember {
+  const name = String(row.name ?? row.email ?? 'משתמש')
+  const roleRaw = String(row.role ?? 'employee').toLowerCase()
+  return {
+    id: String(row.id),
+    name,
+    email: typeof row.email === 'string' ? row.email : undefined,
+    avatar: String(row.avatar || name.slice(0, 2)),
+    color: String(row.color || '#5828A0'),
+    role: roleRaw === 'admin' || roleRaw === 'superadmin' ? 'admin' : 'employee',
+    active: row.active !== false,
+    isAgent: Boolean(row.is_agent),
+    agentCommissionPercent:
+      typeof row.agent_commission_percent === 'number'
+        ? row.agent_commission_percent
+        : undefined,
+    monthlyWorkHours:
+      typeof row.monthly_work_hours === 'number' ? row.monthly_work_hours : null,
+  }
+}
 
 type TeamRole = 'admin' | 'employee'
 
@@ -39,12 +62,56 @@ type UsersContextValue = {
 
 const UsersContext = createContext<UsersContextValue | null>(null)
 
+async function patchProfile(uid: string, patch: Record<string, unknown>) {
+  const sb = requireSupabase()
+  const { error } = await sb.from('profiles').update(patch).eq('id', uid)
+  if (error) throw error
+}
+
 export function UsersProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
+    if (isSupabaseConfigured() && supabase) {
+      const sb = supabase
+      let cancelled = false
+      const load = async () => {
+        const { data, error: qErr } = await sb.from('profiles').select('*')
+        if (cancelled) return
+        if (qErr) {
+          console.error('profiles', qErr)
+          setError(qErr)
+          setLoading(false)
+          return
+        }
+        setUsers((data ?? []).map((row) => profileRowToTeamMember(row as Record<string, unknown>)))
+        setLoading(false)
+        setError(null)
+      }
+      void load()
+      const channel = sb
+        .channel('profiles-live')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles' },
+          () => {
+            void load()
+          },
+        )
+        .subscribe()
+      return () => {
+        cancelled = true
+        void sb.removeChannel(channel)
+      }
+    }
+    if (!canUseLegacyFirestore()) {
+      setUsers([])
+      setLoading(false)
+      setError(null)
+      return
+    }
     setLoading(true)
     const q = query(collection(db, 'users'))
     const unsub = onSnapshot(
@@ -67,7 +134,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
 
   const updateUserRole = useCallback(async (uid: string, role: TeamRole) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { role: role === 'admin' ? 'admin' : 'employee' })
+      await patchProfile(uid, { role: role === 'admin' ? 'admin' : 'employee' })
       toastFsSuccess('התפקיד עודכן')
     } catch (e) {
       toastFsError('שגיאה בעדכון התפקיד', e, 'updateUserRole')
@@ -76,7 +143,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
 
   const toggleUserActive = useCallback(async (uid: string, active: boolean) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { active })
+      await patchProfile(uid, { active })
       toastFsSuccess('סטטוס המשתמש עודכן')
     } catch (e) {
       toastFsError('שגיאה בעדכון הסטטוס', e, 'toggleUserActive')
@@ -100,7 +167,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       }
       if (Object.keys(next).length === 0) return
       try {
-        await updateDoc(doc(db, 'users', uid), next)
+        await patchProfile(uid, next)
         toastFsSuccess('פרטי המשתמש עודכנו')
       } catch (e) {
         toastFsError('שגיאה בעדכון פרטי משתמש', e, 'updateUserProfile')
@@ -116,10 +183,10 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     ) => {
       try {
         if (schedule == null) {
-          await updateDoc(doc(db, 'users', uid), {
-            scheduleDayStart: deleteField(),
-            scheduleDayEnd: deleteField(),
-            scheduleBreakMinutes: deleteField(),
+          await patchProfile(uid, {
+            schedule_day_start: null,
+            schedule_day_end: null,
+            schedule_break_minutes: null,
           })
         } else {
           const normalizeHm = (s: string): string | null => {
@@ -145,10 +212,10 @@ export function UsersProvider({ children }: { children: ReactNode }) {
             return
           }
           const br = Math.max(0, Math.min(180, Math.round(schedule.breakMinutes)))
-          await updateDoc(doc(db, 'users', uid), {
-            scheduleDayStart: a,
-            scheduleDayEnd: b,
-            scheduleBreakMinutes: br,
+          await patchProfile(uid, {
+            schedule_day_start: a,
+            schedule_day_end: b,
+            schedule_break_minutes: br,
           })
         }
         toastFsSuccess('מועדי יום עבודה עודכנו')
@@ -162,7 +229,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   const updateUserMonthlyWorkHours = useCallback(async (uid: string, hours: number | null) => {
     try {
       if (hours == null) {
-        await updateDoc(doc(db, 'users', uid), { monthlyWorkHours: deleteField() })
+        await patchProfile(uid, { monthly_work_hours: null })
       } else {
         const n = Number(hours)
         if (!Number.isFinite(n) || n < 0 || n > 400) {
@@ -170,7 +237,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
           return
         }
         const rounded = Math.round(n * 10) / 10
-        await updateDoc(doc(db, 'users', uid), { monthlyWorkHours: rounded })
+        await patchProfile(uid, { monthly_work_hours: rounded })
       }
       toastFsSuccess('יעד שעות חודשי עודכן')
     } catch (e) {
@@ -180,7 +247,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
 
   const updateUserIsAgent = useCallback(async (uid: string, isAgent: boolean) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { isAgent })
+      await patchProfile(uid, { is_agent: isAgent })
       toastFsSuccess(isAgent ? 'המשתמש סומן כסוכן מכירות' : 'הוסר סימון סוכן מכירות')
     } catch (e) {
       toastFsError('שגיאה בעדכון סטטוס סוכן', e, 'updateUserIsAgent')
@@ -190,9 +257,9 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   const setUserRoleAndAgent = useCallback(
     async (uid: string, role: TeamRole, isAgent: boolean) => {
       try {
-        await updateDoc(doc(db, 'users', uid), {
+        await patchProfile(uid, {
           role: role === 'admin' ? 'admin' : 'employee',
-          isAgent,
+          is_agent: isAgent,
         })
         toastFsSuccess('התפקיד עודכן')
       } catch (e) {
@@ -206,14 +273,14 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     async (uid: string, percent: number | null) => {
       try {
         if (percent == null) {
-          await updateDoc(doc(db, 'users', uid), { agentCommissionPercent: deleteField() })
+          await patchProfile(uid, { agent_commission_percent: null })
         } else {
           const n = Math.round(Number(percent))
           if (!Number.isFinite(n) || n < 0 || n > 100) {
             toastFsError('אחוז עמלה חייב להיות בין 0 ל־100', new Error('agentCommissionPercent'), 'updateUserAgentCommissionPercent')
             return
           }
-          await updateDoc(doc(db, 'users', uid), { agentCommissionPercent: n })
+          await patchProfile(uid, { agent_commission_percent: n })
         }
         toastFsSuccess('אחוז עמלה לפורטל הסוכן עודכן')
       } catch (e) {

@@ -102,7 +102,7 @@ export function buildTaskAssignedHtml(args: {
   taskDescription: string
   dueDateLabel: string
   tasksUrl: string
-  /** בסיס האפליקציה (למשל https://….web.app) — ללוגו מ-/public/logo-hub-pos.png */
+  /** בסיס האפליקציה — ללוגו מ-/public/logo-beo-os.png */
   appBaseUrl: string
   /** העברת מוקצה — ניסוח מייל שונה ממשימה חדשה */
   mode?: 'new' | 'transfer'
@@ -115,20 +115,20 @@ export function buildTaskAssignedHtml(args: {
   const desc = nlToBr(args.taskDescription.trim() || '—')
   const url = escapeHtml(args.tasksUrl)
   const base = args.appBaseUrl.replace(/\/$/, '')
-  const logoUrl = escapeHtml(`${base}/logo-hub-pos.png`)
+  const logoUrl = escapeHtml(`${base}/logo-beo-os.png`)
 
   /** פס לוגו — אפור פחם כמו סרגל האפליקציה; גוף לבן; כפתור כתום מותג */
   const BG_MAIN = '#f3f4f6'
-  const CHARCOAL = '#454545'
+  const CHARCOAL = '#000000'
   const WHITE = '#ffffff'
-  const ORANGE = '#f97316'
-  const ORANGE_LIGHT = '#fff3e8'
+  const ORANGE = '#5828a0'
+  const ORANGE_LIGHT = '#f3eefc'
   const TEXT_DARK = '#0f172a'
   const TEXT_MID = '#334155'
   const TEXT_LIGHT = '#64748b'
   const BORDER = '#e2e8f0'
-  const BORDER_ORANGE_SOFT = 'rgba(249, 115, 22, 0.55)'
-  const BLUE_MID = '#2563eb'
+  const BORDER_ORANGE_SOFT = 'rgba(88, 40, 160, 0.45)'
+  const BLUE_MID = '#5828a0'
 
   const pageTitle = mode === 'transfer' ? 'העברת משימה' : 'משימה חדשה'
   const h1 =
@@ -154,13 +154,13 @@ export function buildTaskAssignedHtml(args: {
         <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;background:${WHITE};border-radius:16px;overflow:hidden;box-shadow:0 12px 36px rgba(15,23,42,0.1);">
           <tr>
             <td style="background:${CHARCOAL};padding:24px 20px;text-align:center;direction:rtl;">
-              <img src="${logoUrl}" alt="Hub POS" width="196" height="72" style="display:block;margin:0 auto;max-width:196px;height:auto;border:0;outline:none;text-decoration:none;" />
+              <img src="${logoUrl}" alt="Beo OS" width="196" height="72" style="display:block;margin:0 auto;max-width:196px;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
           </tr>
           <tr>
             <td style="background:${WHITE};padding:26px 24px 10px;text-align:right;direction:rtl;">
               <h1 style="margin:0 0 8px;padding:0;font-size:22px;font-weight:800;color:${TEXT_DARK};line-height:1.35;letter-spacing:-0.02em;text-align:right;">${h1}</h1>
-              <p style="margin:0 0 20px;font-size:12px;font-weight:600;color:${TEXT_LIGHT};text-align:right;">האב · ניהול סוכנות</p>
+              <p style="margin:0 0 20px;font-size:12px;font-weight:600;color:${TEXT_LIGHT};text-align:right;">Beo OS · ניהול סוכנות</p>
               <p style="margin:0 0 14px;font-size:15px;color:${TEXT_DARK};line-height:1.65;">שלום ${greeting},</p>
               ${leadPara}
               <div style="border-radius:14px;border:2px dashed ${BORDER_ORANGE_SOFT};background:${ORANGE_LIGHT};padding:18px 20px;margin-bottom:22px;text-align:right;">
@@ -182,7 +182,7 @@ export function buildTaskAssignedHtml(args: {
           </tr>
           <tr>
             <td style="padding:18px 24px 22px;border-top:1px solid ${BORDER};background:#fafafa;text-align:center;direction:rtl;">
-              <p style="margin:0;font-size:11px;color:${TEXT_LIGHT};line-height:1.5;">הודעה אוטומטית ממערכת האב · אין להשיב למייל זה</p>
+              <p style="margin:0;font-size:11px;color:${TEXT_LIGHT};line-height:1.5;">הודעה אוטומטית ממערכת Beo OS · אין להשיב למייל זה</p>
             </td>
           </tr>
         </table>
@@ -304,18 +304,18 @@ export function buildMeetingInviteHtml(args: {
   const hubUrl = escapeHtml(args.hubCalendarUrl)
   const gCalUrl = escapeHtml(args.googleCalendarUrl)
   const base = args.appBaseUrl.replace(/\/$/, '')
-  const logoUrl = escapeHtml(`${base}/logo-hub-pos.png`)
+  const logoUrl = escapeHtml(`${base}/logo-beo-os.png`)
   const BG_MAIN = '#f3f4f6'
-  const CHARCOAL = '#454545'
+  const CHARCOAL = '#000000'
   const WHITE = '#ffffff'
-  const ORANGE = '#f97316'
-  const ORANGE_LIGHT = '#fff3e8'
+  const ORANGE = '#5828a0'
+  const ORANGE_LIGHT = '#f3eefc'
   const TEXT_DARK = '#0f172a'
   const TEXT_MID = '#334155'
   const TEXT_LIGHT = '#64748b'
   const BORDER = '#e2e8f0'
-  const BORDER_ORANGE_SOFT = 'rgba(249, 115, 22, 0.55)'
-  const BLUE_MID = '#2563eb'
+  const BORDER_ORANGE_SOFT = 'rgba(88, 40, 160, 0.45)'
+  const BLUE_MID = '#5828a0'
 
   const clientN = (args.clientName ?? '').trim()
   const projectN = (args.projectName ?? '').trim()
@@ -346,13 +346,13 @@ export function buildMeetingInviteHtml(args: {
         <table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;background:${WHITE};border-radius:16px;overflow:hidden;box-shadow:0 12px 36px rgba(15,23,42,0.1);">
           <tr>
             <td style="background:${CHARCOAL};padding:24px 20px;text-align:center;direction:rtl;">
-              <img src="${logoUrl}" alt="Hub POS" width="196" height="72" style="display:block;margin:0 auto;max-width:196px;height:auto;border:0;outline:none;text-decoration:none;" />
+              <img src="${logoUrl}" alt="Beo OS" width="196" height="72" style="display:block;margin:0 auto;max-width:196px;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
           </tr>
           <tr>
             <td style="background:${WHITE};padding:26px 24px 10px;text-align:right;direction:rtl;">
               <h1 style="margin:0 0 8px;padding:0;font-size:22px;font-weight:800;color:${TEXT_DARK};line-height:1.35;letter-spacing:-0.02em;text-align:right;">נקבעה לך פגישה ביומן</h1>
-              <p style="margin:0 0 20px;font-size:12px;font-weight:600;color:${TEXT_LIGHT};text-align:right;">האב · ניהול סוכנות</p>
+              <p style="margin:0 0 20px;font-size:12px;font-weight:600;color:${TEXT_LIGHT};text-align:right;">Beo OS · ניהול סוכנות</p>
               <p style="margin:0 0 14px;font-size:15px;color:${TEXT_DARK};line-height:1.65;">שלום ${greeting},</p>
               <p style="margin:0 0 20px;font-size:14px;color:${TEXT_MID};line-height:1.7;"><strong style="color:${TEXT_DARK};">${creator}</strong> קבע/ה עבורך פגישה במערכת — להלן הפרטים.</p>
               <div style="border-radius:14px;border:2px dashed ${BORDER_ORANGE_SOFT};background:${ORANGE_LIGHT};padding:18px 20px;margin-bottom:22px;text-align:right;">
@@ -393,7 +393,7 @@ export function buildMeetingInviteHtml(args: {
           </tr>
           <tr>
             <td style="padding:18px 24px 22px;border-top:1px solid ${BORDER};background:#fafafa;text-align:center;direction:rtl;">
-              <p style="margin:0;font-size:11px;color:${TEXT_LIGHT};line-height:1.5;">הודעה אוטומטית ממערכת האב · אין להשיב למייל זה</p>
+              <p style="margin:0;font-size:11px;color:${TEXT_LIGHT};line-height:1.5;">הודעה אוטומטית ממערכת Beo OS · אין להשיב למייל זה</p>
             </td>
           </tr>
         </table>

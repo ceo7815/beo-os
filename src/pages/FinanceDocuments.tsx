@@ -201,7 +201,7 @@ export function FinanceDocuments() {
   const busy = progress !== null
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-8">
+    <div className="beo-page space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center md:justify-between">
         <div className="min-w-0 text-right md:order-2 md:flex-1">
           <h1 className="text-[22px] font-extrabold leading-tight text-[var(--text-dark)] md:text-[26px]">

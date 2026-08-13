@@ -34,7 +34,7 @@ import {
 import { isFinanceHostingType } from '../lib/financeHostingTypes'
 import { incomeDocumentKind, incomeUsesPaymentAnchor } from '../lib/financeIncomeDocument'
 import { prorateVatBreakdown, resolveIncomeVat } from '../lib/israeliVat'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import { docToFinanceIncome } from '../lib/firestoreMappers'
 import { todayYmd } from '../lib/dates'
 import { withDisplayOverdueIncomes, formatNis } from '../lib/financeCalc'
@@ -273,6 +273,10 @@ export function FinanceIncomesProvider({ children }: { children: ReactNode }) {
       setIncomes([])
       setLoading(false)
       setError(null)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
+      setLoading(false)
       return
     }
     setLoading(true)

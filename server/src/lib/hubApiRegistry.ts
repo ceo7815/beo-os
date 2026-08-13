@@ -98,7 +98,7 @@ export function normalizeEntity(raw: string): EntityName | null {
 export function apiCatalog(): Record<string, unknown> {
   return {
     version: 1,
-    source: 'hub-pos-server (Fastify, not the difyHubData Cloud Function)',
+    source: 'beo-os-server (Fastify)',
     auth: { headers: ['X-Hub-Api-Key', 'Authorization: Bearer <key>'] },
     routing: {
       entity: 'query entity (or legacy resource)',

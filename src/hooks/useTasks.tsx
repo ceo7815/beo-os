@@ -9,34 +9,15 @@ import {
   type ReactNode,
 } from 'react'
 import {
-  addDoc,
-  collection,
-  collectionGroup,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocsFromServer,
-  or,
-  query,
-  serverTimestamp,
-  where,
-  writeBatch,
-} from 'firebase/firestore'
-import {
   addDaysYmd,
   formatTaskDueDisplay,
   nextWeeklyYmdAfter,
   todayYmd,
 } from '../lib/dates'
 import { useAuth } from '../contexts/AuthContext'
-import { docToTask, taskNoteDocToTaskNote } from '../lib/firestoreMappers'
-import {
-  deleteActivitySubcollection,
-  deleteTaskNotesSubcollection,
-} from '../lib/firestoreCascades'
-import { db } from '../lib/firebase'
-import { useHubStore } from '../store/useStore'
-import { stripUndefined } from '../lib/stripUndefined'
+import { isSupabaseConfigured } from '../lib/backend'
+import { requireSupabase } from '../lib/supabase'
+import { subscribeTable, uuidList, uuidOrNull } from '../lib/sbLive'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import { requestAssigneeTaskEmail } from '../lib/taskAssignmentEmail'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
@@ -59,10 +40,8 @@ type TasksContextValue = {
   loading: boolean
   error: Error | null
   drawerTaskId: string | null
-  /** Seed למגירת משימה חדשה — רלוונטי כש־drawerTaskId === NEW_TASK_DRAWER_ID */
   newTaskDraftSeed: NewTaskDraftSeed | null
   setDrawerTaskId: (id: string | null) => void
-  /** פותח את מגירת המשימה במצב טיוטה (ללא שמירה ב-Firestore עד «שמור משימה») */
   openNewTaskDraft: (seed: NewTaskDraftSeed) => void
   quickSliderOpen: boolean
   setQuickSliderOpen: (open: boolean) => void
@@ -84,7 +63,6 @@ type TasksContextValue = {
   deleteTask: (id: string) => Promise<void>
   cycleStatus: (id: string) => Promise<void>
   toggleQuickDone: (taskId: string, checked: boolean) => Promise<void>
-  /** מנהל: תבנית משימה קבועה + משימה ראשונה */
   addRecurringTemplateWithFirstTask: (args: {
     title: string
     description: string
@@ -101,34 +79,68 @@ type TasksContextValue = {
 
 const TasksContext = createContext<TasksContextValue | null>(null)
 
-function taskToFirestoreUpdate(patch: Partial<Task>): Record<string, unknown> {
-  const {
-    activity: _a,
-    manualNotes: _n,
-    id: _i,
-    createdAt: _c,
-    teamWideShared: _tw,
-    ...rest
-  } = patch
-  const o: Record<string, unknown> = { ...rest }
-  if ('clientId' in o && (o.clientId === '' || o.clientId === undefined)) {
-    o.clientId = null
+function rowToTask(row: Record<string, unknown>): Task {
+  return {
+    id: String(row.id),
+    title: String(row.title ?? ''),
+    description: String(row.description ?? ''),
+    status: (row.status as TaskStatus) || 'todo',
+    priority: (row.priority as Priority) || 'medium',
+    assigneeId: row.assignee_id ? String(row.assignee_id) : '',
+    clientId: row.client_id ? String(row.client_id) : undefined,
+    projectId: row.project_id ? String(row.project_id) : undefined,
+    supplierId: row.supplier_id ? String(row.supplier_id) : undefined,
+    dueDate: row.due_date ? String(row.due_date) : '',
+    dueTime: typeof row.due_time === 'string' && row.due_time.trim() ? row.due_time : undefined,
+    reminderDate: row.reminder_date ? String(row.reminder_date) : undefined,
+    tags: Array.isArray(row.tags) ? row.tags.map((t) => String(t)) : [],
+    reminders: Array.isArray(row.reminders)
+      ? (row.reminders as Task['reminders'])
+      : [],
+    createdAt: row.created_at
+      ? new Date(String(row.created_at)).toISOString()
+      : new Date().toISOString(),
+    createdBy: row.created_by ? String(row.created_by) : '',
+    sharedWithUserIds: Array.isArray(row.shared_with_user_ids)
+      ? row.shared_with_user_ids.map((id) => String(id))
+      : [],
+    teamWideShared: Boolean(row.team_wide_shared),
+    activity: [],
+    manualNotes: [],
+    recurringTemplateId: row.recurring_template_id
+      ? String(row.recurring_template_id)
+      : undefined,
+    recurringFrequency: (row.recurring_frequency as TaskRecurrence) || undefined,
   }
-  if ('projectId' in o && (o.projectId === '' || o.projectId === undefined)) {
-    o.projectId = null
+}
+
+function taskPatchToRow(patch: Partial<Task>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (patch.title !== undefined) out.title = patch.title
+  if (patch.description !== undefined) out.description = patch.description ?? ''
+  if (patch.status !== undefined) out.status = patch.status
+  if (patch.priority !== undefined) out.priority = patch.priority
+  if ('assigneeId' in patch) out.assignee_id = uuidOrNull(patch.assigneeId)
+  if ('clientId' in patch) out.client_id = uuidOrNull(patch.clientId)
+  if ('projectId' in patch) out.project_id = uuidOrNull(patch.projectId)
+  if ('supplierId' in patch) out.supplier_id = uuidOrNull(patch.supplierId)
+  if (patch.dueDate !== undefined) out.due_date = patch.dueDate || null
+  if ('dueTime' in patch) out.due_time = patch.dueTime?.trim() || null
+  if ('reminderDate' in patch) out.reminder_date = patch.reminderDate || null
+  if (patch.tags !== undefined) out.tags = patch.tags ?? []
+  if (patch.reminders !== undefined) out.reminders = patch.reminders ?? []
+  if (patch.sharedWithUserIds !== undefined) {
+    out.shared_with_user_ids = uuidList(patch.sharedWithUserIds)
+    out.team_wide_shared = false
   }
-  if ('supplierId' in o && (o.supplierId === '' || o.supplierId === undefined)) {
-    o.supplierId = null
+  if (patch.teamWideShared !== undefined) out.team_wide_shared = patch.teamWideShared
+  if ('recurringTemplateId' in patch) {
+    out.recurring_template_id = uuidOrNull(patch.recurringTemplateId)
   }
-  if ('dueTime' in o && (o.dueTime === '' || o.dueTime === undefined)) {
-    o.dueTime = null
+  if ('recurringFrequency' in patch) {
+    out.recurring_frequency = patch.recurringFrequency || null
   }
-  if ('sharedWithUserIds' in patch) {
-    o.sharedWithUserIds = patch.sharedWithUserIds ?? []
-    o.shared = false
-  }
-  delete o.teamWideShared
-  return stripUndefined(o)
+  return out
 }
 
 function shareTargetsSignature(t: Task): string {
@@ -175,9 +187,7 @@ function collectActivityStrings(
     )
   }
   if (shareTargetsSignature(merged) !== shareTargetsSignature(prev)) {
-    out.push(
-      logActivity(taskId, userId, userName, 'shared_targets_updated').action,
-    )
+    out.push(logActivity(taskId, userId, userName, 'shared_targets_updated').action)
   }
   if (merged.priority !== prev.priority) {
     out.push(
@@ -201,63 +211,21 @@ function collectActivityStrings(
       ).action,
     )
   }
-  const prevDueLabel =
-    formatTaskDueDisplay(prev.dueDate, prev.dueTime) || 'לא צוין'
-  const mergedDueLabel =
-    formatTaskDueDisplay(merged.dueDate, merged.dueTime) || 'לא צוין'
+  const prevDueLabel = formatTaskDueDisplay(prev.dueDate, prev.dueTime) || 'לא צוין'
+  const mergedDueLabel = formatTaskDueDisplay(merged.dueDate, merged.dueTime) || 'לא צוין'
   if (mergedDueLabel !== prevDueLabel) {
-    out.push(
-      logActivity(
-        taskId,
-        userId,
-        userName,
-        'due_changed',
-        mergedDueLabel,
-      ).action,
-    )
+    out.push(logActivity(taskId, userId, userName, 'due_changed', mergedDueLabel).action)
   }
   const prevS = prev.supplierId || undefined
   const nextS = merged.supplierId || undefined
   if (nextS !== prevS) {
     if (nextS && !prevS) {
-      out.push(
-        logActivity(
-          taskId,
-          userId,
-          userName,
-          'supplier_added',
-          supplierName(nextS),
-        ).action,
-      )
+      out.push(logActivity(taskId, userId, userName, 'supplier_added', supplierName(nextS)).action)
     } else if (!nextS && prevS) {
-      out.push(
-        logActivity(
-          taskId,
-          userId,
-          userName,
-          'supplier_removed',
-          supplierName(prevS),
-        ).action,
-      )
+      out.push(logActivity(taskId, userId, userName, 'supplier_removed', supplierName(prevS)).action)
     } else if (nextS && prevS) {
-      out.push(
-        logActivity(
-          taskId,
-          userId,
-          userName,
-          'supplier_removed',
-          supplierName(prevS),
-        ).action,
-      )
-      out.push(
-        logActivity(
-          taskId,
-          userId,
-          userName,
-          'supplier_added',
-          supplierName(nextS),
-        ).action,
-      )
+      out.push(logActivity(taskId, userId, userName, 'supplier_removed', supplierName(prevS)).action)
+      out.push(logActivity(taskId, userId, userName, 'supplier_added', supplierName(nextS)).action)
     }
   }
   const prevP = prev.projectId?.trim() || undefined
@@ -265,13 +233,7 @@ function collectActivityStrings(
   if (nextP !== prevP) {
     if (nextP) {
       out.push(
-        logActivity(
-          taskId,
-          userId,
-          userName,
-          'project_set',
-          projectName(nextP) || nextP,
-        ).action,
+        logActivity(taskId, userId, userName, 'project_set', projectName(nextP) || nextP).action,
       )
     } else {
       out.push(logActivity(taskId, userId, userName, 'project_cleared').action)
@@ -297,14 +259,10 @@ function collectActivityStrings(
   const prevTags = new Set(prev.tags)
   const nextTags = new Set(merged.tags)
   for (const t of merged.tags) {
-    if (!prevTags.has(t)) {
-      out.push(logActivity(taskId, userId, userName, 'tag_added', t).action)
-    }
+    if (!prevTags.has(t)) out.push(logActivity(taskId, userId, userName, 'tag_added', t).action)
   }
   for (const t of prev.tags) {
-    if (!nextTags.has(t)) {
-      out.push(logActivity(taskId, userId, userName, 'tag_removed', t).action)
-    }
+    if (!nextTags.has(t)) out.push(logActivity(taskId, userId, userName, 'tag_removed', t).action)
   }
   return out
 }
@@ -318,92 +276,63 @@ async function spawnNextRecurringAfterCompletion(
   const tid = completed.recurringTemplateId
   if (!tid) return
   try {
-    const tsnap = await getDoc(doc(db, 'recurringTaskTemplates', tid))
-    if (!tsnap.exists()) return
-    const x = tsnap.data()
-    if (x.active === false) return
+    const sb = requireSupabase()
+    const { data: tmpl, error: tErr } = await sb
+      .from('recurring_task_templates')
+      .select('*')
+      .eq('id', tid)
+      .maybeSingle()
+    if (tErr) throw tErr
+    if (!tmpl || tmpl.active === false) return
 
-    const freq: TaskRecurrence =
-      x.frequency === 'weekly' ? 'weekly' : 'daily'
-    let nextDue: string
-    if (freq === 'daily') {
-      nextDue = addDaysYmd(todayYmd(), 1)
-    } else {
-      const dow =
-        typeof x.weeklyDayOfWeek === 'number' &&
-        x.weeklyDayOfWeek >= 0 &&
-        x.weeklyDayOfWeek <= 6
-          ? x.weeklyDayOfWeek
-          : 0
-      nextDue = nextWeeklyYmdAfter(todayYmd(), dow)
-    }
-
-    const payload = {
-      title: String(x.title ?? ''),
-      description: String(x.description ?? ''),
-      status: 'todo' as TaskStatus,
-      priority: (x.priority ?? 'medium') as Priority,
-      assigneeId: String(x.assigneeId ?? ''),
-      clientId: x.clientId ?? null,
-      projectId: x.projectId ?? null,
-      supplierId: x.supplierId ?? null,
-      dueDate: nextDue,
-      reminderDate: null,
-      tags: Array.isArray(x.tags) ? x.tags.map((t: unknown) => String(t)) : [],
-      reminders: [],
-      sharedWithUserIds: [],
-      shared: false,
-      recurringTemplateId: tid,
-      recurringFrequency: freq,
-      createdBy: uid,
-      lastEventByUserId: uid,
-      lastEventByUserName: uname,
-      createdAt: serverTimestamp(),
-    }
-
-    const ref = await addDoc(collection(db, 'tasks'), payload)
-    const entry = logActivity(ref.id, uid, uname, 'created')
-    await addDoc(collection(db, 'tasks', ref.id, 'activity'), {
-      userId: uid,
-      userName: uname,
-      action: `${entry.action} · משימה קבועה`,
-      createdAt: serverTimestamp(),
-    })
-
-    const optimisticTask: Task = {
-      id: ref.id,
-      title: payload.title,
-      description: payload.description,
-      status: 'todo',
-      priority: payload.priority,
-      assigneeId: payload.assigneeId,
-      clientId: (payload.clientId as string | null) ?? undefined,
-      projectId: (payload.projectId as string | null) ?? undefined,
-      supplierId: (payload.supplierId as string | null) ?? undefined,
-      dueDate: payload.dueDate,
-      reminderDate: undefined,
-      tags: payload.tags,
-      reminders: [],
-      createdAt: new Date().toISOString(),
-      createdBy: uid,
-      sharedWithUserIds: [],
-      teamWideShared: false,
-      activity: [],
-      manualNotes: [],
-      recurringTemplateId: tid,
-      recurringFrequency: freq,
-    }
-    setRawTasks((prev) =>
-      prev.some((t) => t.id === ref.id) ? prev : [...prev, optimisticTask],
-    )
-    if (payload.assigneeId !== uid) {
-      requestAssigneeTaskEmail(ref.id)
-    }
-    toastFsSuccess(
+    const freq: TaskRecurrence = tmpl.frequency === 'weekly' ? 'weekly' : 'daily'
+    const nextDue =
       freq === 'daily'
-        ? 'נוצרה משימת המשך למחר'
-        : 'נוצרה משימת המשך לשבוע הבא',
-    )
+        ? addDaysYmd(todayYmd(), 1)
+        : nextWeeklyYmdAfter(
+            todayYmd(),
+            typeof tmpl.weekly_day_of_week === 'number' &&
+              tmpl.weekly_day_of_week >= 0 &&
+              tmpl.weekly_day_of_week <= 6
+              ? tmpl.weekly_day_of_week
+              : 0,
+          )
+
+    const { data: created, error: qErr } = await sb
+      .from('tasks')
+      .insert({
+        title: String(tmpl.title ?? ''),
+        description: String(tmpl.description ?? ''),
+        status: 'todo',
+        priority: tmpl.priority ?? 'medium',
+        assignee_id: uuidOrNull(String(tmpl.assignee_id ?? '')),
+        client_id: uuidOrNull(tmpl.client_id ? String(tmpl.client_id) : undefined),
+        project_id: uuidOrNull(tmpl.project_id ? String(tmpl.project_id) : undefined),
+        supplier_id: uuidOrNull(tmpl.supplier_id ? String(tmpl.supplier_id) : undefined),
+        due_date: nextDue,
+        tags: Array.isArray(tmpl.tags) ? tmpl.tags : [],
+        reminders: [],
+        shared_with_user_ids: [],
+        team_wide_shared: false,
+        recurring_template_id: tid,
+        recurring_frequency: freq,
+        created_by: uid,
+      })
+      .select('*')
+      .single()
+    if (qErr) throw qErr
+    const optimistic = rowToTask(created as Record<string, unknown>)
+    await sb.from('task_activity').insert({
+      task_id: optimistic.id,
+      user_id: uid,
+      user_name: uname,
+      action: `${logActivity(optimistic.id, uid, uname, 'created').action} · משימה קבועה`,
+    })
+    setRawTasks((prev) => (prev.some((t) => t.id === optimistic.id) ? prev : [...prev, optimistic]))
+    if (optimistic.assigneeId && optimistic.assigneeId !== uid) {
+      requestAssigneeTaskEmail(optimistic.id)
+    }
+    toastFsSuccess(freq === 'daily' ? 'נוצרה משימת המשך למחר' : 'נוצרה משימת המשך לשבוע הבא')
   } catch (e) {
     toastFsError('שגיאה ביצירת משימת המשך הקבועה', e, 'spawnRecurring')
   }
@@ -411,19 +340,13 @@ async function spawnNextRecurringAfterCompletion(
 
 export function TasksProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
-  const currentUser = useHubStore((s) => s.currentUser)
   const [rawTasks, setRawTasks] = useState<Task[]>([])
-  const [activityByTaskId, setActivityByTaskId] = useState<
-    Record<string, TaskActivity[]>
-  >({})
-  const [notesByTaskId, setNotesByTaskId] = useState<
-    Record<string, TaskNote[]>
-  >({})
+  const [activityByTaskId, setActivityByTaskId] = useState<Record<string, TaskActivity[]>>({})
+  const [notesByTaskId, setNotesByTaskId] = useState<Record<string, TaskNote[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [drawerTaskId, setDrawerTaskIdInner] = useState<string | null>(null)
-  const [newTaskDraftSeed, setNewTaskDraftSeed] =
-    useState<NewTaskDraftSeed | null>(null)
+  const [newTaskDraftSeed, setNewTaskDraftSeed] = useState<NewTaskDraftSeed | null>(null)
   const [quickSliderOpen, setQuickSliderOpen] = useState(false)
   const tasksRef = useRef<Task[]>([])
 
@@ -452,125 +375,93 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   }, [tasks])
 
   useEffect(() => {
+    if (!user) {
+      setRawTasks([])
+      setActivityByTaskId({})
+      setNotesByTaskId({})
+      setLoading(false)
+      setError(null)
+      return
+    }
+    if (!isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
-    let cancelled = false
-
-    const uid = user?.uid ?? ''
-    const role =
-      currentUser?.uid === uid && typeof currentUser.role === 'string'
-        ? currentUser.role
-        : currentUser?.uid === uid
-          ? 'employee'
-          : ''
-    const profileReady =
-      Boolean(uid) &&
-      currentUser?.uid === uid &&
-      (role === 'admin' ||
-        role === 'superadmin' ||
-        role === 'employee' ||
-        role === 'office')
-
-    const tasksQuery =
-      !profileReady || !uid
-        ? null
-        : role === 'admin' || role === 'superadmin'
-          ? query(collection(db, 'tasks'))
-          : query(
-              collection(db, 'tasks'),
-              or(
-                where('assigneeId', '==', uid),
-                where('createdBy', '==', uid),
-              ),
-            )
-
-    async function fetchNotesMap(
-      taskIds: Set<string>,
-    ): Promise<Record<string, TaskNote[]>> {
-      const notesMap: Record<string, TaskNote[]> = {}
-      try {
-        const notesSnap = await getDocsFromServer(
-          query(collectionGroup(db, 'taskNotes')),
-        )
-        for (const d of notesSnap.docs) {
-          const taskRef = d.ref.parent.parent
-          if (!taskRef) continue
-          const taskId = taskRef.id
-          if (!taskIds.has(taskId)) continue
-          const note = taskNoteDocToTaskNote(d, taskId)
-          if (!notesMap[taskId]) notesMap[taskId] = []
-          notesMap[taskId].push(note)
-        }
-        for (const tid of Object.keys(notesMap)) {
-          notesMap[tid].sort((a, b) =>
-            a.createdAt.localeCompare(b.createdAt),
-          )
-        }
-      } catch (noteErr) {
-        console.error('taskNotes collectionGroup', noteErr)
-      }
-      return notesMap
-    }
-
-    const load = async (includeNotes: boolean) => {
-      if (!uid) {
-        if (cancelled) return
-        setRawTasks([])
-        setNotesByTaskId({})
-        setActivityByTaskId({})
+    const unsubTasks = subscribeTable(
+      'tasks',
+      (rows) => {
+        setRawTasks(rows.map(rowToTask))
         setLoading(false)
         setError(null)
-        return
-      }
-      if (!tasksQuery) {
-        /* ממתינים לפרופיל מ-Firestore (תפקיד) כדי לבנות שאילתה תואמת חוקים */
-        return
-      }
-      try {
-        const snap = await getDocsFromServer(tasksQuery)
-        const taskList = snap.docs.map((d) => docToTask(d))
-        const taskIds = new Set(taskList.map((t) => t.id))
-
-        if (includeNotes) {
-          const notesMap = await fetchNotesMap(taskIds)
-          if (cancelled) return
-          setNotesByTaskId(notesMap)
+      },
+      (err) => {
+        console.error('tasks', err)
+        toastFsError('שגיאה בטעינת משימות', err, 'tasks')
+        setError(err)
+        setLoading(false)
+      },
+    )
+    const unsubActivity = subscribeTable(
+      'task_activity',
+      (rows) => {
+        const map: Record<string, TaskActivity[]> = {}
+        for (const row of rows) {
+          const taskId = String(row.task_id ?? '')
+          if (!taskId) continue
+          const item: TaskActivity = {
+            id: String(row.id),
+            taskId,
+            userId: row.user_id ? String(row.user_id) : '',
+            userName: String(row.user_name ?? ''),
+            action: String(row.action ?? ''),
+            timestamp: row.created_at
+              ? new Date(String(row.created_at)).toISOString()
+              : new Date().toISOString(),
+          }
+          if (!map[taskId]) map[taskId] = []
+          map[taskId].push(item)
         }
-
-        if (cancelled) return
-        setActivityByTaskId({})
-        setRawTasks(taskList)
-        setLoading(false)
-        setError(null)
-      } catch (err) {
-        if (cancelled) return
-        console.error('tasks snapshot', err)
-        toastFsError('שגיאה בטעינת משימות', err, 'tasks snapshot')
-        setError(err instanceof Error ? err : new Error(String(err)))
-        setLoading(false)
-      }
-    }
-
-    if (!uid) {
-      void load(true)
-    } else if (tasksQuery) {
-      void load(true)
-    }
-
-    const tasksPollMs = 18_000
-    const notesPollMs = 50_000
-    const timerTasks = window.setInterval(() => {
-      if (tasksQuery) void load(false)
-    }, tasksPollMs)
-    const timerNotes = window.setInterval(() => {
-      if (tasksQuery) void load(true)
-    }, notesPollMs)
-
+        for (const list of Object.values(map)) {
+          list.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+        }
+        setActivityByTaskId(map)
+      },
+      (err) => console.error('task_activity', err),
+    )
+    const unsubNotes = subscribeTable(
+      'task_notes',
+      (rows) => {
+        const map: Record<string, TaskNote[]> = {}
+        for (const row of rows) {
+          const taskId = String(row.task_id ?? '')
+          if (!taskId) continue
+          const item: TaskNote = {
+            id: String(row.id),
+            taskId,
+            userId: row.user_id ? String(row.user_id) : '',
+            userName: String(row.user_name ?? ''),
+            text: String(row.text ?? ''),
+            createdAt: row.created_at
+              ? new Date(String(row.created_at)).toISOString()
+              : new Date().toISOString(),
+          }
+          if (!map[taskId]) map[taskId] = []
+          map[taskId].push(item)
+        }
+        for (const list of Object.values(map)) {
+          list.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        }
+        setNotesByTaskId(map)
+      },
+      (err) => console.error('task_notes', err),
+    )
     return () => {
-      cancelled = true
-      window.clearInterval(timerTasks)
-      window.clearInterval(timerNotes)
+      unsubTasks()
+      unsubActivity()
+      unsubNotes()
     }
-  }, [user?.uid, currentUser?.uid, currentUser?.role])
+  }, [user])
 
   const displayName = useCallback(() => {
     const u = user
@@ -590,81 +481,48 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       const uid = user.uid
       const uname = displayName()
       try {
-        const payload = {
-          title: data.title,
-          description: data.description ?? '',
-          status: data.status ?? 'todo',
-          priority: data.priority ?? 'medium',
-          assigneeId: data.assigneeId,
-          clientId: data.clientId ?? null,
-          projectId: data.projectId ?? null,
-          supplierId: data.supplierId ?? null,
-          dueDate: data.dueDate,
-          ...(data.dueTime?.trim() ? { dueTime: data.dueTime.trim() } : {}),
-          reminderDate: data.reminderDate ?? null,
-          tags: data.tags ?? [],
-          reminders: data.reminders ?? [],
-          sharedWithUserIds: data.sharedWithUserIds ?? [],
-          shared: false,
-          ...(data.recurringTemplateId
-            ? { recurringTemplateId: data.recurringTemplateId }
-            : {}),
-          ...(data.recurringFrequency
-            ? { recurringFrequency: data.recurringFrequency }
-            : {}),
-          createdBy: uid,
-          lastEventByUserId: uid,
-          lastEventByUserName: uname,
-          createdAt: serverTimestamp(),
-        }
-        const ref = await addDoc(collection(db, 'tasks'), payload)
-        const entry = logActivity(ref.id, uid, uname, 'created')
-        await addDoc(collection(db, 'tasks', ref.id, 'activity'), {
-          userId: uid,
-          userName: uname,
+        const sb = requireSupabase()
+        const { data: created, error: qErr } = await sb
+          .from('tasks')
+          .insert({
+            title: data.title,
+            description: data.description ?? '',
+            status: data.status ?? 'todo',
+            priority: data.priority ?? 'medium',
+            assignee_id: uuidOrNull(data.assigneeId),
+            client_id: uuidOrNull(data.clientId),
+            project_id: uuidOrNull(data.projectId),
+            supplier_id: uuidOrNull(data.supplierId),
+            due_date: data.dueDate || null,
+            due_time: data.dueTime?.trim() || null,
+            reminder_date: data.reminderDate || null,
+            tags: data.tags ?? [],
+            reminders: data.reminders ?? [],
+            shared_with_user_ids: uuidList(data.sharedWithUserIds),
+            team_wide_shared: false,
+            recurring_template_id: uuidOrNull(data.recurringTemplateId),
+            recurring_frequency: data.recurringFrequency || null,
+            created_by: uid,
+          })
+          .select('*')
+          .single()
+        if (qErr) throw qErr
+        const optimistic = rowToTask(created as Record<string, unknown>)
+        const entry = logActivity(optimistic.id, uid, uname, 'created')
+        await sb.from('task_activity').insert({
+          task_id: optimistic.id,
+          user_id: uid,
+          user_name: uname,
           action: entry.action,
-          createdAt: serverTimestamp(),
         })
-        setRawTasks((prev) => {
-          if (prev.some((t) => t.id === ref.id)) return prev
-          const optimisticTask: Task = {
-            id: ref.id,
-            title: payload.title,
-            description: payload.description,
-            status: payload.status as TaskStatus,
-            priority: payload.priority as Task['priority'],
-            assigneeId: payload.assigneeId,
-            clientId: (payload.clientId as string | null) ?? undefined,
-            projectId: (payload.projectId as string | null) ?? undefined,
-            supplierId: (payload.supplierId as string | null) ?? undefined,
-            dueDate: payload.dueDate,
-            dueTime:
-              payload.dueTime != null && String(payload.dueTime).trim()
-                ? String(payload.dueTime).trim()
-                : undefined,
-            reminderDate: (payload.reminderDate as string | null) ?? undefined,
-            tags: payload.tags as string[],
-            reminders: payload.reminders as Task['reminders'],
-            createdAt: new Date().toISOString(),
-            createdBy: uid,
-            sharedWithUserIds: payload.sharedWithUserIds as string[],
-            teamWideShared: false,
-            activity: [],
-            manualNotes: [],
-            ...(data.recurringTemplateId
-              ? { recurringTemplateId: data.recurringTemplateId }
-              : {}),
-            ...(data.recurringFrequency
-              ? { recurringFrequency: data.recurringFrequency }
-              : {}),
-          }
-          return [...prev, optimisticTask]
-        })
+        setRawTasks((prev) =>
+          prev.some((t) => t.id === optimistic.id) ? prev : [...prev, optimistic],
+        )
         if (!options?.quiet) toastFsSuccess('המשימה נוספה')
-        if (payload.assigneeId !== uid) {
-          requestAssigneeTaskEmail(ref.id)
+        if (optimistic.assigneeId && optimistic.assigneeId !== uid) {
+          requestAssigneeTaskEmail(optimistic.id)
         }
-        return ref.id
+        return optimistic.id
       } catch (e) {
         toastFsError('שגיאה בשמירת המשימה', e, 'addTask')
         return null
@@ -691,26 +549,30 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         return false
       }
       const uid = user.uid
-      let templateRefId: string | null = null
+      const sb = requireSupabase()
+      let templateId: string | null = null
       try {
-        const tref = await addDoc(collection(db, 'recurringTaskTemplates'), {
-          title: args.title.trim(),
-          description: args.description.trim(),
-          assigneeId: args.assigneeId,
-          frequency: args.frequency,
-          ...(args.frequency === 'weekly' && args.weeklyDayOfWeek != null
-            ? { weeklyDayOfWeek: args.weeklyDayOfWeek }
-            : {}),
-          priority: args.priority,
-          clientId: args.clientId ?? null,
-          projectId: args.projectId ?? null,
-          supplierId: args.supplierId ?? null,
-          tags: [],
-          active: true,
-          createdBy: uid,
-          createdAt: serverTimestamp(),
-        })
-        templateRefId = tref.id
+        const { data: tmpl, error: tErr } = await sb
+          .from('recurring_task_templates')
+          .insert({
+            title: args.title.trim(),
+            description: args.description.trim(),
+            assignee_id: uuidOrNull(args.assigneeId),
+            frequency: args.frequency,
+            weekly_day_of_week:
+              args.frequency === 'weekly' ? args.weeklyDayOfWeek ?? null : null,
+            priority: args.priority,
+            client_id: uuidOrNull(args.clientId),
+            project_id: uuidOrNull(args.projectId),
+            supplier_id: uuidOrNull(args.supplierId),
+            tags: [],
+            active: true,
+            created_by: uid,
+          })
+          .select('id')
+          .single()
+        if (tErr) throw tErr
+        templateId = String(tmpl.id)
         const taskId = await addTask(
           {
             title: args.title.trim(),
@@ -725,21 +587,21 @@ export function TasksProvider({ children }: { children: ReactNode }) {
             tags: [],
             reminders: [],
             sharedWithUserIds: [],
-            recurringTemplateId: tref.id,
+            recurringTemplateId: templateId,
             recurringFrequency: args.frequency,
           },
           { quiet: true },
         )
         if (!taskId) {
-          await deleteDoc(doc(db, 'recurringTaskTemplates', tref.id))
+          await sb.from('recurring_task_templates').delete().eq('id', templateId)
           return false
         }
         toastFsSuccess('הוגדרה משימה קבועה והמשימה הראשונה נוספה ללוח')
         return true
       } catch (e) {
-        if (templateRefId) {
+        if (templateId) {
           try {
-            await deleteDoc(doc(db, 'recurringTaskTemplates', templateRefId))
+            await sb.from('recurring_task_templates').delete().eq('id', templateId)
           } catch {
             /* ניקוי עזר */
           }
@@ -759,29 +621,15 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       }
       const trimmed = text.trim()
       if (!trimmed) return
-      const uid = user.uid
-      const uname = displayName()
       try {
-        const ref = await addDoc(collection(db, 'tasks', taskId, 'taskNotes'), {
-          userId: uid,
-          userName: uname,
+        const sb = requireSupabase()
+        const { error: qErr } = await sb.from('task_notes').insert({
+          task_id: taskId,
+          user_id: user.uid,
+          user_name: displayName(),
           text: trimmed,
-          createdAt: serverTimestamp(),
         })
-        const newNote: TaskNote = {
-          id: ref.id,
-          taskId,
-          userId: uid,
-          userName: uname,
-          text: trimmed,
-          createdAt: new Date().toISOString(),
-        }
-        setNotesByTaskId((prev) => {
-          const list = [...(prev[taskId] ?? []), newNote].sort((a, b) =>
-            a.createdAt.localeCompare(b.createdAt),
-          )
-          return { ...prev, [taskId]: list }
-        })
+        if (qErr) throw qErr
         toastFsSuccess('ההערה פורסמה')
       } catch (e) {
         toastFsError('שגיאה בשמירת הערה', e, 'addTaskNote')
@@ -817,9 +665,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
             ? patch.sharedWithUserIds
             : prev.sharedWithUserIds,
         teamWideShared:
-          patch.sharedWithUserIds !== undefined
-            ? false
-            : prev.teamWideShared,
+          patch.sharedWithUserIds !== undefined ? false : prev.teamWideShared,
         manualNotes: prev.manualNotes,
         clientId:
           'clientId' in patch
@@ -837,32 +683,26 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       const uid = user.uid
       const uname = displayName()
       const strings = collectActivityStrings(prev, merged, id, uid, uname, opts)
-      const fsPatch = taskToFirestoreUpdate(patch)
-      if (Object.keys(fsPatch).length === 0 && strings.length === 0) return
+      const row = taskPatchToRow(patch)
+      if (Object.keys(row).length === 0 && strings.length === 0) return
 
       try {
-        const batch = writeBatch(db)
-        const tref = doc(db, 'tasks', id)
-        const meta = {
-          lastEventByUserId: uid,
-          lastEventByUserName: uname,
-          lastEventAt: serverTimestamp(),
+        const sb = requireSupabase()
+        if (Object.keys(row).length > 0) {
+          const { error: qErr } = await sb.from('tasks').update(row).eq('id', id)
+          if (qErr) throw qErr
         }
-        if (Object.keys(fsPatch).length > 0) {
-          batch.update(tref, { ...fsPatch, ...meta })
-        } else if (strings.length > 0) {
-          batch.update(tref, meta)
+        if (strings.length > 0) {
+          const { error: aErr } = await sb.from('task_activity').insert(
+            strings.map((action) => ({
+              task_id: id,
+              user_id: uid,
+              user_name: uname,
+              action,
+            })),
+          )
+          if (aErr) throw aErr
         }
-        for (const action of strings) {
-          const aref = doc(collection(db, 'tasks', id, 'activity'))
-          batch.set(aref, {
-            userId: uid,
-            userName: uname,
-            action,
-            createdAt: serverTimestamp(),
-          })
-        }
-        await batch.commit()
         setRawTasks((prevList) =>
           prevList.map((t) =>
             t.id === id
@@ -876,17 +716,11 @@ export function TasksProvider({ children }: { children: ReactNode }) {
                       ? patch.sharedWithUserIds
                       : t.sharedWithUserIds,
                   teamWideShared:
-                    patch.sharedWithUserIds !== undefined
-                      ? false
-                      : t.teamWideShared,
+                    patch.sharedWithUserIds !== undefined ? false : t.teamWideShared,
                   clientId:
-                    patch.clientId !== undefined
-                      ? patch.clientId || undefined
-                      : t.clientId,
+                    patch.clientId !== undefined ? patch.clientId || undefined : t.clientId,
                   projectId:
-                    patch.projectId !== undefined
-                      ? patch.projectId || undefined
-                      : t.projectId,
+                    patch.projectId !== undefined ? patch.projectId || undefined : t.projectId,
                   supplierId:
                     patch.supplierId !== undefined
                       ? patch.supplierId || undefined
@@ -907,30 +741,17 @@ export function TasksProvider({ children }: { children: ReactNode }) {
         const prevAssigneeId = String(prev.assigneeId ?? '').trim()
         const assigneeChanged =
           patch.assigneeId !== undefined && nextAssigneeId !== prevAssigneeId
-        if (
-          assigneeChanged &&
-          nextAssigneeId &&
-          nextAssigneeId !== uid
-        ) {
+        if (assigneeChanged && nextAssigneeId && nextAssigneeId !== uid) {
           const isTransfer = Boolean(prevAssigneeId)
-          requestAssigneeTaskEmail(
-            id,
-            isTransfer ? { kind: 'transfer' } : undefined,
-          )
+          requestAssigneeTaskEmail(id, isTransfer ? { kind: 'transfer' } : undefined)
         }
 
-        const mergedStatus = patch.status ?? prev.status
         if (
-          mergedStatus === 'done' &&
+          (patch.status ?? prev.status) === 'done' &&
           prev.status !== 'done' &&
           prev.recurringTemplateId
         ) {
-          void spawnNextRecurringAfterCompletion(
-            prev,
-            uid,
-            uname,
-            setRawTasks,
-          )
+          void spawnNextRecurringAfterCompletion(prev, uid, uname, setRawTasks)
         }
       } catch (e) {
         toastFsError('שגיאה בעדכון המשימה', e, 'updateTask')
@@ -941,9 +762,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   const deleteTask = useCallback(async (id: string) => {
     try {
-      await deleteActivitySubcollection(id)
-      await deleteTaskNotesSubcollection(id)
-      await deleteDoc(doc(db, 'tasks', id))
+      const sb = requireSupabase()
+      const { error: qErr } = await sb.from('tasks').delete().eq('id', id)
+      if (qErr) throw qErr
       setRawTasks((prev) => prev.filter((t) => t.id !== id))
       setActivityByTaskId((prev) => {
         const next = { ...prev }
@@ -961,15 +782,18 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const cycleStatus = useCallback(async (id: string) => {
-    if (!user) return
-    const prev = tasksRef.current.find((t) => t.id === id)
-    if (!prev) return
-    const order: TaskStatus[] = ['todo', 'doing', 'blocked', 'done']
-    const idx = order.indexOf(prev.status)
-    const next = order[(idx + 1) % order.length]
-    await updateTask(id, { status: next })
-  }, [user, updateTask])
+  const cycleStatus = useCallback(
+    async (id: string) => {
+      if (!user) return
+      const prev = tasksRef.current.find((t) => t.id === id)
+      if (!prev) return
+      const order: TaskStatus[] = ['todo', 'doing', 'blocked', 'done']
+      const idx = order.indexOf(prev.status)
+      const next = order[(idx + 1) % order.length]
+      await updateTask(id, { status: next })
+    },
+    [user, updateTask],
+  )
 
   const toggleQuickDone = useCallback(
     async (taskId: string, checked: boolean) => {
@@ -1025,9 +849,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  return (
-    <TasksContext.Provider value={value}>{children}</TasksContext.Provider>
-  )
+  return <TasksContext.Provider value={value}>{children}</TasksContext.Provider>
 }
 
 export function useTasks(): TasksContextValue {

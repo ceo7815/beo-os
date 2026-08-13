@@ -21,7 +21,7 @@ function dealTypeLabelHe(k: DealKind): string {
 function dealTypeBadgeColor(k: DealKind): string {
   if (k === 'retainer_yearly') return '#2563EB'
   if (k === 'one_time') return '#7C3AED'
-  return '#F97316'
+  return '#5828A0'
 }
 
 function dealStatusHe(s: DealStatus): string {

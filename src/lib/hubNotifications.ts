@@ -1,7 +1,9 @@
 import { useHubRealtimeBubbleStore } from '../store/hubRealtimeBubbleStore'
 
+import { BRAND } from './brand'
+
 /** כותרת ברירת המחדל של הטאב — חייב להתאים ל־index.html */
-export const HUB_TAB_TITLE_BASE = 'האב — ניהול סוכנות'
+export const HUB_TAB_TITLE_BASE = BRAND.tabTitle
 
 let tabUnreadCount = 0
 

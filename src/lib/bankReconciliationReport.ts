@@ -1,3 +1,4 @@
+import { BRAND } from './brand'
 import { formatDateIL } from './dates'
 import { monthLabelHe } from './financeCalc'
 import { resolveExpenseType } from './financeExpenseTypes'
@@ -241,11 +242,11 @@ export function bankReconciliationReportHtml(
       justify-content: space-between;
       align-items: flex-start;
       gap: 16px;
-      border-bottom: 3px solid #f97316;
+      border-bottom: 3px solid #5828a0;
       padding-bottom: 14px;
       margin-bottom: 18px;
     }
-    .brand { font-size: 22px; font-weight: 800; color: #ea580c; }
+    .brand { font-size: 22px; font-weight: 800; color: #5828a0; }
     .title { font-size: 18px; font-weight: 800; margin-top: 4px; }
     .subtitle { color: #64748b; margin-top: 6px; font-size: 12px; }
     .meta { text-align: left; color: #64748b; font-size: 11px; }
@@ -303,7 +304,7 @@ export function bankReconciliationReportHtml(
 <body>
   <header class="header">
     <div>
-      <div class="brand">HUB POS</div>
+      <div class="brand">${BRAND.productName}</div>
       <div class="title">דוח התאמות בנקים</div>
       <div class="subtitle">תקופה: ${escapeHtml(data.periodLabel)} · תשלומים מול חשבוניות ספק</div>
     </div>
@@ -341,7 +342,7 @@ export function bankReconciliationReportHtml(
   ${data.rows.length === 0 ? '<p>אין תשלומים בתקופה שנבחרה.</p>' : ''}
 
   <footer class="footer">
-    <span>HUB ADVANCED · דוח פנימי</span>
+    <span>${BRAND.reportFooter}</span>
     <span>${data.rows.length} שורות · ${escapeHtml(data.periodLabel)}</span>
   </footer>
 </body>

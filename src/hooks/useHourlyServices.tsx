@@ -24,7 +24,7 @@ import {
   docToHourlyService,
   docToHourlyServiceEntry,
 } from '../lib/firestoreMappers'
-import { db, ensureFirestoreReady } from '../lib/firebase'
+import { db, ensureFirestoreReady, canUseLegacyFirestore } from '../lib/firebase'
 import { stripUndefined } from '../lib/stripUndefined'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
 import {
@@ -83,6 +83,12 @@ export function HourlyServicesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) {
+      setServices([])
+      setEntries([])
+      setLoading(false)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
       setServices([])
       setEntries([])
       setLoading(false)

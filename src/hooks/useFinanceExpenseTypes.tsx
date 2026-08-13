@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore'
 import { useAuth } from '../contexts/AuthContext'
 import { docToFinanceExpenseType } from '../lib/firestoreMappers'
-import { db } from '../lib/firebase'
+import { db, canUseLegacyFirestore } from '../lib/firebase'
 import {
   defaultPnlForFieldMode,
   mergeExpenseTypes,
@@ -59,6 +59,10 @@ export function FinanceExpenseTypesProvider({
   useEffect(() => {
     if (!user) {
       setCustomTypes([])
+      setLoading(false)
+      return
+    }
+    if (!canUseLegacyFirestore()) {
       setLoading(false)
       return
     }
@@ -141,7 +145,7 @@ export function newExpenseTypeDefaults(
 ): NewFinanceExpenseTypeInput {
   return {
     label: '',
-    color: '#F97316',
+    color: '#5828A0',
     fieldMode,
     autoRecurring: false,
     pnlCategory: defaultPnlForFieldMode(fieldMode),
