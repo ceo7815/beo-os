@@ -11,7 +11,7 @@ services:
       NODE_ENV: production
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8787
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://os.beosystem.co.il}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://whispering-cliff.1wp.site}
       SUPABASE_URL: ${SUPABASE_URL:-${VITE_SUPABASE_URL:-}}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-${VITE_SUPABASE_ANON_KEY:-}}
       SYNC_FROM_DATE: ${SYNC_FROM_DATE:-2026-03-01}
@@ -29,8 +29,6 @@ services:
       - beo-os-finance-docs:/data/finance-documents
       - beo-os-morning:/data/morning
     restart: unless-stopped
-    networks:
-      - bakrayot-proxy
 
   hub-pos:
     container_name: hub-pos-web
@@ -46,13 +44,7 @@ services:
     ports:
       - "127.0.0.1:3002:80"
     restart: unless-stopped
-    networks:
-      - bakrayot-proxy
 
 volumes:
   beo-os-finance-docs:
   beo-os-morning:
-
-networks:
-  bakrayot-proxy:
-    external: true
