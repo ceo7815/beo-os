@@ -43,6 +43,8 @@ services:
         VITE_GREEN_INVOICE_URL: ${VITE_GREEN_INVOICE_URL:-}
     ports:
       - "127.0.0.1:3002:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:

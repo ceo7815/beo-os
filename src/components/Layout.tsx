@@ -12,6 +12,8 @@ import { QuickTasksSlider } from './QuickTasksSlider'
 import { TaskDrawer } from './TaskDrawer'
 import { userIsAdmin } from './RequireAdmin'
 import { BRAND, brandLogoAlt, brandLogoSrc } from '../lib/brand'
+import { AI_AGENT_BOARDS } from '../lib/aiAgentsRegistry'
+import { useAiAgentsFleet } from '../hooks/useAiAgentsFleet'
 
 const workspaceLinks = [
   { label: 'Drive', href: 'https://drive.google.com', dot: '#FCD34D' },
@@ -166,9 +168,11 @@ export function Layout() {
     location.pathname.startsWith('/tasks') ||
     location.pathname.startsWith('/hourly-services') ||
     location.pathname.startsWith('/prompts')
+  const aiAgentsNavActive = location.pathname.startsWith('/ai-agents')
 
   const [operationsOpen, setOperationsOpen] = useState(operationsNavActive)
   const [financeOpen, setFinanceOpen] = useState(financeNavActive)
+  const [aiAgentsOpen, setAiAgentsOpen] = useState(aiAgentsNavActive)
 
   useEffect(() => {
     if (operationsNavActive) setOperationsOpen(true)
@@ -177,6 +181,10 @@ export function Layout() {
   useEffect(() => {
     if (financeNavActive) setFinanceOpen(true)
   }, [financeNavActive])
+
+  useEffect(() => {
+    if (aiAgentsNavActive) setAiAgentsOpen(true)
+  }, [aiAgentsNavActive])
 
   useEffect(() => {
     setMobileNavOpen(false)
@@ -230,6 +238,7 @@ export function Layout() {
 
   const showAdminNav = userIsAdmin(user?.uid, teamMembers, hubUser)
   const showFinanceNav = showAdminNav
+  const { fleet, fleetUp } = useAiAgentsFleet(showAdminNav)
 
   return (
     <>
@@ -461,6 +470,45 @@ export function Layout() {
               {showAdminNav ? (
                 <>
                   <div className="beo-sidebar-divider my-2 border-t" />
+
+                  <NavExpandableGroup
+                    label="סוכני AI"
+                    isSectionActive={aiAgentsNavActive}
+                    open={aiAgentsOpen}
+                    onToggle={() => setAiAgentsOpen((v) => !v)}
+                    icon={
+                      <NavGlyph>
+                        <path d="M12 2a4 4 0 014 4v1h1a3 3 0 010 6h-1v1a4 4 0 01-8 0v-1H7a3 3 0 010-6h1V6a4 4 0 014-4z" />
+                        <circle cx="9.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+                        <circle cx="14.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+                      </NavGlyph>
+                    }
+                  >
+                    <NavSubLink to="/ai-agents" label="סקירה" end />
+                    {AI_AGENT_BOARDS.map((board) => {
+                      const fromFleet = fleetUp
+                        ? fleet?.agents.find((a) => a.id === board.id)
+                        : undefined
+                      const label = fromFleet?.display_name ?? board.displayName
+                      const running = Boolean(fromFleet?.running)
+                      return (
+                        <NavSubLink
+                          key={board.id}
+                          to={board.path}
+                          label={label}
+                          badge={
+                            running ? (
+                              <span className="text-[10px] font-bold text-emerald-700">חי</span>
+                            ) : !fleetUp ? (
+                              <span className="text-[10px] font-semibold text-[var(--text-light)]">
+                                לא זמין
+                              </span>
+                            ) : undefined
+                          }
+                        />
+                      )
+                    })}
+                  </NavExpandableGroup>
 
                   <NavLink
                     to="/users"

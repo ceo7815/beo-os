@@ -30,6 +30,8 @@ import { HourlyServices } from './pages/HourlyServices'
 import { HourlyServiceDetail } from './pages/HourlyServiceDetail'
 import { HourlyServiceShare } from './pages/HourlyServiceShare'
 import { Vault } from './pages/Vault'
+import { AiAgents } from './pages/AiAgents'
+import { AiAgentBoard } from './pages/ai-agents/AiAgentBoard'
 
 export default function App() {
   return (
@@ -129,6 +131,22 @@ export default function App() {
                     element={<HourlyServiceDetail />}
                   />
                   <Route path="prompts" element={<PromptLibrary />} />
+                  <Route
+                    path="ai-agents"
+                    element={
+                      <RequireAdmin>
+                        <AiAgents />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="ai-agents/:id"
+                    element={
+                      <RequireAdmin>
+                        <AiAgentBoard />
+                      </RequireAdmin>
+                    }
+                  />
                   <Route
                     path="users"
                     element={
