@@ -233,8 +233,8 @@ export function AiAgents() {
                         {busy
                           ? '…'
                           : agent.running
-                            ? 'כבה gateway'
-                            : 'הפעל gateway'}
+                            ? 'כבה'
+                            : 'הפעל'}
                       </button>
                     ) : null}
                   </div>

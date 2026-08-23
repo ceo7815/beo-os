@@ -484,7 +484,7 @@ export function LeadsBeoBoard({
     </span>
   ) : inFleet ? (
     <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-mid)]">
-      צינור מוכן
+      כבוי
     </span>
   ) : (
     <span className="rounded-full bg-[var(--brand-light)] px-2.5 py-1 text-[11px] font-bold text-[var(--brand-deep)]">
@@ -543,7 +543,7 @@ export function LeadsBeoBoard({
               : running
                 ? 'חי'
                 : inFleet
-                  ? 'צינור מוכן'
+                  ? 'כבוי'
                   : 'בקרוב'
           }
           lastActivity={

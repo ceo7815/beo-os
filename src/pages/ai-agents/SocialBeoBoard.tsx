@@ -102,7 +102,7 @@ export function SocialBeoBoard({
           <div
             className={`${hubSectionClass(0)} rounded-2xl px-4 py-2.5 text-[13px] text-[var(--text-mid)]`}
           >
-            הצי לא זמין — לא ניתן להפעיל gateway עד ש-Beo-agents יעלה על פורט 8788.
+            הצי לא זמין — לא ניתן להפעיל או לכבות עד ש-Beo-agents יעלה על פורט 8788.
           </div>
         ) : null
       }
@@ -119,9 +119,9 @@ export function SocialBeoBoard({
           }
           lastActivity={
             agent?.running
-              ? 'Gateway פעיל'
+              ? 'הסוכן פעיל'
               : agent
-                ? 'Gateway כבוי'
+                ? 'הסוכן כבוי'
                 : null
           }
         />
@@ -132,7 +132,7 @@ export function SocialBeoBoard({
           <p className="text-[13px] leading-relaxed text-[var(--text-mid)]">{board.purpose}</p>
           <dl className="grid gap-3 sm:grid-cols-2">
             <div>
-              <dt className="text-[11px] font-semibold text-[var(--text-light)]">Gateway</dt>
+              <dt className="text-[11px] font-semibold text-[var(--text-light)]">סטטוס</dt>
               <dd className="mt-0.5 text-[14px] font-bold text-[var(--text-dark)]">
                 {!fleetUp ? 'לא זמין' : agent ? statusLabel(agent) : 'לא בצי'}
               </dd>
@@ -155,7 +155,7 @@ export function SocialBeoBoard({
                   onClick={() => void toggle('stop')}
                   className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--surface-hover)] disabled:opacity-60"
                 >
-                  {busy ? 'מכבה…' : 'עצור gateway'}
+                  {busy ? 'מכבה…' : 'כבה'}
                 </button>
               ) : (
                 <button
@@ -164,7 +164,7 @@ export function SocialBeoBoard({
                   onClick={() => void toggle('start')}
                   className="rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-hover)] disabled:opacity-60"
                 >
-                  {busy ? 'מפעיל…' : 'הפעל gateway'}
+                  {busy ? 'מפעיל…' : 'הפעל'}
                 </button>
               )}
             </div>
@@ -198,7 +198,7 @@ export function SocialBeoBoard({
               description={
                 !fleetUp
                   ? 'Beo-agents לא זמין. לא מוצג כפתור הפעלה כדי למנוע כשל שקט.'
-                  : 'הסוכן לא במצב live בצי — אין gateway להפעלה.'
+                  : 'הסוכן לא במצב live בצי — אין מה להפעיל.'
               }
             />
           ) : (
@@ -214,7 +214,7 @@ export function SocialBeoBoard({
                     onClick={() => void toggle('stop')}
                     className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold disabled:opacity-60"
                   >
-                    {busy ? 'מכבה…' : 'כבה gateway'}
+                    {busy ? 'מכבה…' : 'כבה'}
                   </button>
                 ) : (
                   <button
@@ -223,7 +223,7 @@ export function SocialBeoBoard({
                     onClick={() => void toggle('start')}
                     className="rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white disabled:opacity-60"
                   >
-                    {busy ? 'מפעיל…' : 'הפעל gateway'}
+                    {busy ? 'מפעיל…' : 'הפעל'}
                   </button>
                 )}
               </div>
