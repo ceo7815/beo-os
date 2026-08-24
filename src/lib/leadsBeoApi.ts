@@ -160,7 +160,10 @@ export async function fetchLeadsApprovals(): Promise<
 > {
   const result = await fetchLeadsPipeline('pending_approval')
   if (!result.ok) return result
-  return { ok: true, items: result.items }
+  return {
+    ok: true,
+    items: result.items.filter((row) => row.status === 'pending_approval'),
+  }
 }
 
 export async function postLeadAction(

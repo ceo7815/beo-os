@@ -340,7 +340,7 @@ export function LeadsBeoBoard({
   const [learning, setLearning] = useState<LeadsLearning | null>(null)
   const [learningBusy, setLearningBusy] = useState(false)
 
-  const reload = useCallback(async () => {
+  const loadBoard = useCallback(async () => {
     if (!fleetUp) {
       setOverview(null)
       setItems([])
@@ -348,18 +348,6 @@ export function LeadsBeoBoard({
       return
     }
     setLoading(true)
-    const sync = await syncBeoAgentRepliesToCrm({
-      userId: user?.uid,
-      addLead,
-    })
-    if (sync.created > 0) {
-      pushToast(
-        sync.created === 1
-          ? 'תשובה אנושית — נוצר ליד בדף לידים'
-          : `${sync.created} תשובות אנושיות — נוצרו לידים`,
-        'success',
-      )
-    }
     const [ov, pipe, appr, learned] = await Promise.all([
       fetchLeadsOverview(),
       fetchLeadsPipeline(),
@@ -371,14 +359,37 @@ export function LeadsBeoBoard({
       setItems(pipe.items)
       setLabels(pipe.labels)
     }
-    if (appr.ok) setApprovals(appr.items)
+    if (appr.ok) {
+      setApprovals(appr.items.filter((row) => row.status === 'pending_approval'))
+    }
     if (learned.ok) setLearning(learned.data)
     setLoading(false)
-  }, [fleetUp, user, addLead, pushToast])
+  }, [fleetUp])
+
+  const syncInbox = useCallback(async () => {
+    if (!fleetUp || !user) return
+    const sync = await syncBeoAgentRepliesToCrm({
+      userId: user.uid,
+      addLead,
+    })
+    if (sync.created > 0) {
+      pushToast(
+        sync.created === 1
+          ? 'תשובה אנושית — נוצר ליד בדף לידים'
+          : `${sync.created} תשובות אנושיות — נוצרו לידים`,
+        'success',
+      )
+      await loadBoard()
+    }
+  }, [fleetUp, user, addLead, pushToast, loadBoard])
 
   useEffect(() => {
-    void reload()
-  }, [reload])
+    void loadBoard()
+  }, [loadBoard])
+
+  useEffect(() => {
+    void syncInbox()
+  }, [syncInbox])
 
   const act = async (
     id: string,
@@ -388,6 +399,9 @@ export function LeadsBeoBoard({
     setBusyId(id)
     const result = await postLeadAction(id, action, body)
     if (result.ok) {
+      if (action === 'approve' || action === 'reject') {
+        setApprovals((prev) => prev.filter((row) => row.id !== id))
+      }
       if (action === 'approve') {
         pushToast('המייל נשלח מ-sales@beosystem.com', 'success')
       } else if (action === 'reject') {
@@ -395,7 +409,7 @@ export function LeadsBeoBoard({
       } else {
         pushToast('נשמר', 'success')
       }
-      await reload()
+      await loadBoard()
     } else {
       pushToast(result.error, 'error')
     }
@@ -411,7 +425,7 @@ export function LeadsBeoBoard({
           `נוספו ${result.added_pending ?? 0} טיוטות לאישור`,
         'success',
       )
-      await reload()
+      await loadBoard()
     } else {
       pushToast(result.error, 'error')
     }
@@ -423,7 +437,7 @@ export function LeadsBeoBoard({
     const result = await redraftLeads()
     if (result.ok) {
       pushToast(result.message || 'הטיוטות שוכתבו', 'success')
-      await reload()
+      await loadBoard()
     } else {
       pushToast(result.error, 'error')
     }
@@ -576,7 +590,7 @@ export function LeadsBeoBoard({
               <button
                 type="button"
                 disabled={!fleetUp || loading}
-                onClick={() => void reload()}
+                onClick={() => void loadBoard()}
                 className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold"
               >
                 רענון צינור
