@@ -360,7 +360,13 @@ export function LeadsBeoBoard({
       setLabels(pipe.labels)
     }
     if (appr.ok) {
-      setApprovals(appr.items.filter((row) => row.status === 'pending_approval'))
+      setApprovals(
+        appr.items.filter(
+          (row) =>
+            row.status === 'pending_approval' ||
+            (row.status === 'approved' && !row.gmail_id),
+        ),
+      )
     }
     if (learned.ok) setLearning(learned.data)
     setLoading(false)
@@ -412,6 +418,7 @@ export function LeadsBeoBoard({
       await loadBoard()
     } else {
       pushToast(result.error, 'error')
+      await loadBoard()
     }
     setBusyId(null)
   }

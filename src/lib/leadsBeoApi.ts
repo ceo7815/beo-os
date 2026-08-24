@@ -46,6 +46,7 @@ export type LeadPipelineItem = {
   reply_kind?: string
   reply_preview?: string
   os_lead_created?: boolean
+  gmail_id?: string
 }
 
 export type LeadsOverview = {
@@ -158,11 +159,24 @@ export async function fetchLeadsPipeline(status?: string): Promise<
 export async function fetchLeadsApprovals(): Promise<
   { ok: true; items: LeadPipelineItem[] } | { ok: false; error: string }
 > {
-  const result = await fetchLeadsPipeline('pending_approval')
-  if (!result.ok) return result
-  return {
-    ok: true,
-    items: result.items.filter((row) => row.status === 'pending_approval'),
+  try {
+    const res = await fetch('/api/beo-agents/leads/approvals')
+    const data = (await readJsonSafe(res)) as {
+      ok?: boolean
+      items?: LeadPipelineItem[]
+      error?: string
+    } | null
+    if (!res.ok || !data?.ok) {
+      return { ok: false, error: data?.error || `HTTP ${res.status}` }
+    }
+    const items = (data.items ?? []).filter(
+      (row) =>
+        row.status === 'pending_approval' ||
+        (row.status === 'approved' && !row.gmail_id),
+    )
+    return { ok: true, items }
+  } catch {
+    return { ok: false, error: 'צי הסוכנים לא זמין' }
   }
 }
 
@@ -178,6 +192,12 @@ export async function postLeadAction(
       body: JSON.stringify(body ?? {}),
     })
     const data = (await readJsonSafe(res)) as { ok?: boolean; error?: string } | null
+    if (res.status === 502) {
+      return {
+        ok: false,
+        error: 'השרת לא ענה בזמן (502). רעננו את הלוח — אם נשלח, הכרטיס ירד מהתור.',
+      }
+    }
     if (!res.ok || !data?.ok) {
       return { ok: false, error: data?.error || `HTTP ${res.status}` }
     }
