@@ -8,7 +8,6 @@ import { useLeads } from '../../hooks/useLeads'
 import type { FleetAgent } from '../../lib/aiAgentsFleet'
 import type { AiAgentBoardDef } from '../../lib/aiAgentsRegistry'
 import {
-  checkLeadsReplies,
   fetchLeadsApprovals,
   fetchLeadsLearning,
   fetchLeadsOverview,
@@ -22,6 +21,7 @@ import {
   type LeadsOverview,
   type LearningArm,
 } from '../../lib/leadsBeoApi'
+import { syncBeoAgentRepliesToCrm } from '../../lib/syncBeoLeadsCrm'
 import {
   AgentBoardShell,
   AgentConnectionsList,
@@ -57,6 +57,7 @@ const STATUS_HE: Record<string, string> = {
   approved: 'אושר · ממתין ל-Gmail',
   sent: 'נשלח',
   replied: 'נענה → ליד',
+  bounced: 'כתובת לא נכונה',
   closed_no_reply: 'לא ענו → סגור',
 }
 
@@ -347,26 +348,15 @@ export function LeadsBeoBoard({
       return
     }
     setLoading(true)
-    const replies = await checkLeadsReplies()
-    if (replies.ok && replies.human && user) {
-      for (const row of replies.items ?? []) {
-        if (row.os_lead_created) continue
-        await addLead({
-          name: row.owner_name || row.company,
-          company: row.company,
-          phone: row.phone || undefined,
-          email: row.email || undefined,
-          source: 'Beo AI Lead Agent',
-          status: 'new',
-          ownerId: user.uid,
-          clientNeeds: row.reply_preview || undefined,
-        })
-        await postLeadAction(row.id, 'edit', { os_lead_created: true })
-      }
+    const sync = await syncBeoAgentRepliesToCrm({
+      userId: user?.uid,
+      addLead,
+    })
+    if (sync.created > 0) {
       pushToast(
-        replies.human === 1
-          ? 'תשובה אנושית — נוצר ליד ב-Beo OS'
-          : `${replies.human} תשובות אנושיות — נוצרו לידים`,
+        sync.created === 1
+          ? 'תשובה אנושית — נוצר ליד בדף לידים'
+          : `${sync.created} תשובות אנושיות — נוצרו לידים`,
         'success',
       )
     }
@@ -600,6 +590,7 @@ export function LeadsBeoBoard({
               { label: 'ממתינים לאישור', value: overview?.pending_approval ?? 0 },
               { label: 'נשלח היום', value: overview?.sent_today ?? 0 },
               { label: 'נענו / לידים', value: overview?.replied ?? 0 },
+              { label: 'כתובת לא נכונה', value: overview?.bounced ?? 0 },
             ]}
           />
           <p className="text-[12px] text-[var(--text-light)]">
@@ -693,6 +684,11 @@ export function LeadsBeoBoard({
                   value: overview?.replied ?? items.filter((r) => r.status === 'replied').length,
                   accent: 'text-emerald-800',
                 },
+                {
+                  label: 'כתובת לא נכונה',
+                  value: overview?.bounced ?? items.filter((r) => r.status === 'bounced').length,
+                  accent: 'text-amber-800',
+                },
               ] as const
             ).map((kpi) => (
               <div key={kpi.label} className="beo-agent-stat">
@@ -748,9 +744,9 @@ export function LeadsBeoBoard({
       {tab === 'leads' ? (
         <div className={`${hubSectionClass(3)} space-y-4 rounded-2xl p-5`}>
           <p className="text-[13px] leading-relaxed text-[var(--text-mid)]">
-            ליד ב-Beo OS נוצר אוטומטית אחרי תשובה אנושית בגימייל. מקור:{' '}
-            <strong>Beo AI Lead Agent</strong>, סטטוס <strong>new</strong>. לא ענו → סגור בצינור, בלי
-            כרטיס.
+            ליד ב-Beo OS נוצר רק אחרי תשובה אנושית בגימייל. מקור:{' '}
+            <strong>Beo AI Lead Agent</strong>, סטטוס <strong>new</strong>. מייל שחזר (כתובת שגויה)
+            לא נפתח כליד.
           </p>
           {items.filter((row) => row.status === 'replied').length === 0 ? (
             <EmptyState
@@ -777,6 +773,24 @@ export function LeadsBeoBoard({
                 ))}
             </ul>
           )}
+          {items.filter((row) => row.status === 'bounced').length > 0 ? (
+            <div className="space-y-2">
+              <h3 className="text-[13px] font-bold text-[var(--text-dark)]">כתובת לא נכונה</h3>
+              <ul className="space-y-2">
+                {items
+                  .filter((row) => row.status === 'bounced')
+                  .map((row) => (
+                    <li
+                      key={row.id}
+                      className="rounded-xl border border-amber-200/80 bg-amber-50/60 px-3 py-2.5"
+                    >
+                      <div className="font-semibold text-[var(--text-dark)]">{row.company}</div>
+                      <div className="text-[12px] text-[var(--text-mid)]">{row.email}</div>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : null}
           <Link
             to="/leads"
             className="inline-flex rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-hover)]"

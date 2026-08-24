@@ -18,6 +18,7 @@ import { Modal } from '../components/shared/Modal'
 import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import { exportLeadsToExcel } from '../lib/excelTableExports'
+import { syncBeoAgentRepliesToCrm } from '../lib/syncBeoLeadsCrm'
 
 /** ערך נשמר ב־Firestore בשדה `source` כשבוחרים מהרשימה הקבועה */
 const LEAD_SOURCE_BEO_SYSTEMS = 'Beo systems'
@@ -244,6 +245,11 @@ export function Leads() {
     setFormOpen(true)
     navigate('.', { replace: true, state: null })
   }, [location.state, navigate])
+
+  useEffect(() => {
+    if (!user) return
+    void syncBeoAgentRepliesToCrm({ userId: user.uid, addLead })
+  }, [user, addLead])
 
   useEffect(() => {
     const f = searchParams.get('filter')?.trim()

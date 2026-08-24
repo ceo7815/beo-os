@@ -5,7 +5,7 @@ import { honestConnections } from './aiAgentsFleet'
 export const AI_AGENT_COST_USD = 0
 export const AI_AGENT_COST_LABEL = '$0.00'
 export const AI_AGENT_COST_HINT =
-  'אין דיווח עלויות עדיין — יופיע כשהצי ידווח'
+  'טוקני OpenAI בלבד: מחקר, ניסוח טיוטות, טלגרם ולמידה. שליחת Gmail בלי עלות טוקנים.'
 export const AI_AGENT_MODEL_PROVIDER = 'OpenAI'
 
 export type DisplayTool = {

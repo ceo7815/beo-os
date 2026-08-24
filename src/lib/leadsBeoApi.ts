@@ -8,6 +8,7 @@ export type LeadPipelineStatus =
   | 'approved'
   | 'sent'
   | 'replied'
+  | 'bounced'
   | 'closed_no_reply'
   | string
 
@@ -59,6 +60,7 @@ export type LeadsOverview = {
   pending_today?: number
   sent_today?: number
   replied?: number
+  bounced?: number
   closed_no_reply?: number
   gmail_connected?: boolean
   openai_connected?: boolean

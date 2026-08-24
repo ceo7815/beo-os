@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import { useHubStore } from '../store/useStore'
@@ -12,6 +12,7 @@ import {
 import {
   AI_AGENT_COST_LABEL,
   displayToolsForAgent,
+  formatUsd,
 } from '../lib/aiAgentsDisplay'
 import { useAiAgentsFleet } from '../hooks/useAiAgentsFleet'
 import {
@@ -20,6 +21,7 @@ import {
 } from '../components/ai-agents/AgentCostsUi'
 import { AgentAvatar } from '../components/ai-agents/AgentProfilePanel'
 import { getAgentProfile } from '../lib/aiAgentProfiles'
+import { fetchLeadsCosts } from '../lib/leadsBeoApi'
 
 type CardModel = {
   board: AiAgentBoardDef
@@ -72,6 +74,21 @@ export function AiAgents() {
   const pushToast = useHubStore((s) => s.pushToast)
   const { loading, error, fleet, fleetUp, reload } = useAiAgentsFleet()
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [leadsUsd, setLeadsUsd] = useState(0)
+  const [leadsCostsReady, setLeadsCostsReady] = useState(false)
+
+  useEffect(() => {
+    if (!fleetUp) return
+    let cancelled = false
+    void fetchLeadsCosts().then((result) => {
+      if (cancelled || !result.ok) return
+      setLeadsUsd(result.data.usd ?? 0)
+      setLeadsCostsReady(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [fleetUp])
 
   const cards = useMemo(
     () => buildCards(fleet?.agents ?? null, fleetUp),
@@ -145,7 +162,7 @@ export function AiAgents() {
         </div>
       ) : (
         <>
-          <FleetCostsBlock />
+          <FleetCostsBlock leadsUsd={leadsUsd} leadsReady={leadsCostsReady} />
 
           <p className="text-[13px] text-[var(--text-mid)]">
             {!fleetUp ? (
@@ -213,7 +230,9 @@ export function AiAgents() {
                   <p className="mt-3 text-[11px] text-[var(--text-light)]">
                     עלות החודש ·{' '}
                     <span className="font-semibold tabular-nums text-[var(--text-mid)]">
-                      {AI_AGENT_COST_LABEL}
+                      {board.id === 'leads-beo' && leadsCostsReady
+                        ? formatUsd(leadsUsd)
+                        : AI_AGENT_COST_LABEL}
                     </span>
                   </p>
 

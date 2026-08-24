@@ -10,8 +10,16 @@ import {
 import type { DisplayTool } from '../../lib/aiAgentsDisplay'
 import { fetchLeadsCosts, type LeadsCostsReport } from '../../lib/leadsBeoApi'
 
-/** בלוק עלויות צי — תמיד $0 עד שיהיה דיווח אמיתי. */
-export function FleetCostsBlock() {
+/** בלוק עלויות צי — שי מדווח טוקני OpenAI; עדי עדיין בלי מדידה. */
+export function FleetCostsBlock({
+  leadsUsd = 0,
+  leadsReady = false,
+}: {
+  leadsUsd?: number
+  leadsReady?: boolean
+}) {
+  const leadsLabel = leadsReady ? formatUsd(leadsUsd) : AI_AGENT_COST_LABEL
+  const monthLabel = leadsReady ? formatUsd(leadsUsd) : AI_AGENT_COST_LABEL
   return (
     <section className="beo-agent-panel space-y-4 p-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -26,9 +34,9 @@ export function FleetCostsBlock() {
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: 'עלות החודש', value: AI_AGENT_COST_LABEL },
+          { label: 'עלות החודש', value: monthLabel },
           { label: 'Beo Social', value: AI_AGENT_COST_LABEL },
-          { label: 'Beo Leads (שי)', value: AI_AGENT_COST_LABEL },
+          { label: 'Beo Leads (שי)', value: leadsLabel },
           { label: 'ספק', value: AI_AGENT_MODEL_PROVIDER },
         ].map((cell) => (
           <div
