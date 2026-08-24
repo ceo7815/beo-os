@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
 import { EmptyState } from '../../components/shared/EmptyState'
@@ -16,6 +16,7 @@ import {
   redraftLeads,
   runLeadsDaily,
   runLeadsLearn,
+  stillNeedsApproval,
   type LeadPipelineItem,
   type LeadsLearning,
   type LeadsOverview,
@@ -339,6 +340,7 @@ export function LeadsBeoBoard({
   const [redrafting, setRedrafting] = useState(false)
   const [learning, setLearning] = useState<LeadsLearning | null>(null)
   const [learningBusy, setLearningBusy] = useState(false)
+  const hiddenIds = useRef(new Set<string>())
 
   const loadBoard = useCallback(async () => {
     if (!fleetUp) {
@@ -362,9 +364,7 @@ export function LeadsBeoBoard({
     if (appr.ok) {
       setApprovals(
         appr.items.filter(
-          (row) =>
-            row.status === 'pending_approval' ||
-            (row.status === 'approved' && !row.gmail_id),
+          (row) => stillNeedsApproval(row) && !hiddenIds.current.has(row.id),
         ),
       )
     }
@@ -406,6 +406,7 @@ export function LeadsBeoBoard({
     const result = await postLeadAction(id, action, body)
     if (result.ok) {
       if (action === 'approve' || action === 'reject') {
+        hiddenIds.current.add(id)
         setApprovals((prev) => prev.filter((row) => row.id !== id))
       }
       if (action === 'approve') {

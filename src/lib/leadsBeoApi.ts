@@ -47,6 +47,7 @@ export type LeadPipelineItem = {
   reply_preview?: string
   os_lead_created?: boolean
   gmail_id?: string
+  sent_at?: string
 }
 
 export type LeadsOverview = {
@@ -156,6 +157,20 @@ export async function fetchLeadsPipeline(status?: string): Promise<
   }
 }
 
+export function stillNeedsApproval(row: LeadPipelineItem): boolean {
+  if (row.gmail_id || row.sent_at) return false
+  if (
+    row.status === 'sent' ||
+    row.status === 'rejected' ||
+    row.status === 'bounced' ||
+    row.status === 'replied' ||
+    row.status === 'closed_no_reply'
+  ) {
+    return false
+  }
+  return row.status === 'pending_approval' || row.status === 'approved'
+}
+
 export async function fetchLeadsApprovals(): Promise<
   { ok: true; items: LeadPipelineItem[] } | { ok: false; error: string }
 > {
@@ -169,12 +184,7 @@ export async function fetchLeadsApprovals(): Promise<
     if (!res.ok || !data?.ok) {
       return { ok: false, error: data?.error || `HTTP ${res.status}` }
     }
-    const items = (data.items ?? []).filter(
-      (row) =>
-        row.status === 'pending_approval' ||
-        (row.status === 'approved' && !row.gmail_id),
-    )
-    return { ok: true, items }
+    return { ok: true, items: (data.items ?? []).filter(stillNeedsApproval) }
   } catch {
     return { ok: false, error: 'צי הסוכנים לא זמין' }
   }
