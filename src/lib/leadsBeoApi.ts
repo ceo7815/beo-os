@@ -280,3 +280,29 @@ export async function runLeadsLearn(): Promise<
     return { ok: false, error: 'רענון למידה נכשל' }
   }
 }
+
+export type LeadsCostsReport = {
+  ok?: boolean
+  month?: string
+  model?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  usd?: number
+  days?: { date?: string; kind?: string; tokens?: number; usd?: number }[]
+}
+
+export async function fetchLeadsCosts(): Promise<
+  { ok: true; data: LeadsCostsReport } | { ok: false; error: string }
+> {
+  try {
+    const res = await fetch('/api/beo-agents/leads/costs')
+    const data = (await readJsonSafe(res)) as LeadsCostsReport | null
+    if (!res.ok || !data?.ok) {
+      return { ok: false, error: (data as { error?: string } | null)?.error || `HTTP ${res.status}` }
+    }
+    return { ok: true, data }
+  } catch {
+    return { ok: false, error: 'עלויות לא זמינות' }
+  }
+}

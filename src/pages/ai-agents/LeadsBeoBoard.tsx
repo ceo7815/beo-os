@@ -855,7 +855,7 @@ export function LeadsBeoBoard({
       ) : null}
 
       {tab === 'costs' ? (
-        <AgentCostsTabPanel agentLabel={`${board.displayName} (שי)`} />
+        <AgentCostsTabPanel agentLabel={`${board.displayName} (שי)`} source="leads" />
       ) : null}
     </AgentBoardShell>
   )

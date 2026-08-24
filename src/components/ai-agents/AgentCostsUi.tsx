@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { EmptyState } from '../shared/EmptyState'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
 import {
@@ -7,6 +8,7 @@ import {
   formatUsd,
 } from '../../lib/aiAgentsDisplay'
 import type { DisplayTool } from '../../lib/aiAgentsDisplay'
+import { fetchLeadsCosts, type LeadsCostsReport } from '../../lib/leadsBeoApi'
 
 /** בלוק עלויות צי — תמיד $0 עד שיהיה דיווח אמיתי. */
 export function FleetCostsBlock() {
@@ -44,7 +46,41 @@ export function FleetCostsBlock() {
   )
 }
 
-export function AgentCostsTabPanel({ agentLabel }: { agentLabel: string }) {
+export function AgentCostsTabPanel({
+  agentLabel,
+  source,
+}: {
+  agentLabel: string
+  source?: 'leads'
+}) {
+  const [report, setReport] = useState<LeadsCostsReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (source !== 'leads') return
+    let cancelled = false
+    void fetchLeadsCosts().then((result) => {
+      if (cancelled) return
+      if (result.ok) {
+        setReport(result.data)
+        setError(null)
+      } else {
+        setError(result.error)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [source])
+
+  const rows = report?.days ?? []
+  const totalUsd = report?.usd ?? 0
+  const totalTokens = report?.total_tokens ?? 0
+  const hasLive = source === 'leads' && report
+  const hint = hasLive
+    ? `מודל ${report?.model || 'OpenAI'} · טוקנים החודש ${totalTokens.toLocaleString()}`
+    : AI_AGENT_COST_HINT
+
   return (
     <div className={`${hubSectionClass(3)} space-y-4 rounded-2xl p-5`}>
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -52,15 +88,18 @@ export function AgentCostsTabPanel({ agentLabel }: { agentLabel: string }) {
           <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">
             עלויות · {agentLabel}
           </h2>
-          <p className="mt-1 text-[12px] text-[var(--text-light)]">{AI_AGENT_COST_HINT}</p>
+          <p className="mt-1 text-[12px] text-[var(--text-light)]">{hint}</p>
         </div>
         <div className="text-left">
           <div className="text-[11px] font-semibold text-[var(--text-light)]">החודש</div>
           <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
-            {formatUsd(0)}
+            {formatUsd(totalUsd)}
           </div>
         </div>
       </div>
+      {error ? (
+        <p className="text-[13px] text-amber-800">{error}</p>
+      ) : null}
       <div className="overflow-hidden rounded-xl border border-[var(--border)]">
         <table className="w-full min-w-[520px] border-collapse text-[13px]">
           <thead>
@@ -76,14 +115,31 @@ export function AgentCostsTabPanel({ agentLabel }: { agentLabel: string }) {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td colSpan={4} className="p-0">
-                <EmptyState
-                  title="אין רשומות עלות"
-                  description="הטבלה תתמלא כש-Beo-agents ידווח על שימוש. לא מוצגים סכומים מדומים."
-                />
-              </td>
-            </tr>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="p-0">
+                  <EmptyState
+                    title="אין רשומות עלות"
+                    description={
+                      source === 'leads'
+                        ? 'אחרי המחקר הבא יופיעו כאן טוקנים ועלות לפי הקריאות ל-OpenAI.'
+                        : 'הטבלה תתמלא כש-Beo-agents ידווח על שימוש. לא מוצגים סכומים מדומים.'
+                    }
+                  />
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, idx) => (
+                <tr key={`${row.date}-${row.kind}-${idx}`} className="border-t border-[var(--border)]">
+                  <td className="px-3 py-2 font-mono text-[12px]">{row.date}</td>
+                  <td className="px-3 py-2">{row.kind}</td>
+                  <td className="px-3 py-2 font-mono tabular-nums">
+                    {(row.tokens ?? 0).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2 font-mono tabular-nums">{formatUsd(row.usd ?? 0)}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
