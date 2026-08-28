@@ -15,10 +15,8 @@ import {
   formatUsd,
 } from '../lib/aiAgentsDisplay'
 import { useAiAgentsFleet } from '../hooks/useAiAgentsFleet'
-import {
-  FleetCostsBlock,
-  ToolStatusLine,
-} from '../components/ai-agents/AgentCostsUi'
+import { FleetCostsBlock, ConnectionCubes } from '../components/ai-agents/AgentCostsUi'
+import { AgentStatGrid } from './ai-agents/AgentBoardShell'
 import { AgentAvatar } from '../components/ai-agents/AgentProfilePanel'
 import { getAgentProfile } from '../lib/aiAgentProfiles'
 import { fetchLeadsCosts } from '../lib/leadsBeoApi'
@@ -126,28 +124,30 @@ export function AiAgents() {
   }
 
   return (
-    <div className="beo-page beo-agent-deck space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[26px] font-extrabold tracking-tight text-[var(--text-dark)]">
+    <div className="beo-page beo-agent-deck space-y-6">
+      <header className="beo-agent-panel beo-agent-panel--hero overflow-hidden">
+        <div className="beo-agent-panel-grid" aria-hidden />
+        <div className="relative flex flex-col items-center gap-3 px-6 py-8 text-center md:px-10">
+          <p className="beo-agent-kicker">Beo OS · חדר בקרה</p>
+          <h1 className="text-[28px] font-extrabold tracking-tight text-[var(--text-dark)] md:text-[32px]">
             סוכני AI
           </h1>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--text-mid)]">
+          <p className="max-w-xl text-[13px] leading-relaxed text-[var(--text-mid)]">
             מרכז השליטה של Beo Systems. טלגרם לעדכונים בלבד — אישורים והפעלה כאן.
           </p>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            className="mt-1 rounded-xl border border-[var(--border)] bg-white px-4 py-2 text-[13px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--surface-hover)]"
+          >
+            רענון
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void reload()}
-          className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--surface-hover)]"
-        >
-          רענון
-        </button>
       </header>
 
       {!loading && error ? (
         <div
-          className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-2.5 text-[13px] text-amber-950"
+          className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-2.5 text-center text-[13px] text-amber-950"
           role="status"
         >
           {error}
@@ -156,39 +156,30 @@ export function AiAgents() {
 
       {loading ? (
         <div
-          className={`${hubSectionClass(0)} rounded-2xl p-8 text-center text-[13px] text-[var(--text-mid)]`}
+          className={`${hubSectionClass(0)} rounded-2xl p-10 text-center text-[13px] text-[var(--text-mid)]`}
         >
           טוען צי סוכנים…
         </div>
       ) : (
         <>
+          <AgentStatGrid
+            items={[
+              {
+                label: fleetUp ? 'רצים עכשיו' : 'מצב צי',
+                value: fleetUp ? runningCount : 'לא זמין',
+              },
+              { label: 'כבויים (live)', value: fleetUp ? stoppedLive : '—' },
+              { label: 'בקרוב', value: plannedCount },
+              {
+                label: 'עלות שי החודש',
+                value: leadsCostsReady ? formatUsd(leadsUsd) : AI_AGENT_COST_LABEL,
+              },
+            ]}
+          />
+
           <FleetCostsBlock leadsUsd={leadsUsd} leadsReady={leadsCostsReady} />
 
-          <p className="text-[13px] text-[var(--text-mid)]">
-            {!fleetUp ? (
-              <>מצב צי: <strong className="text-[var(--text-dark)]">לא זמין</strong> · הקוביות
-              נשארות לניהול</>
-            ) : (
-              <>
-                רצים עכשיו:{' '}
-                <strong className="tabular-nums text-[var(--text-dark)]">{runningCount}</strong>
-                {' · '}
-                כבויים (live):{' '}
-                <strong className="tabular-nums text-[var(--text-dark)]">{stoppedLive}</strong>
-                {plannedCount > 0 ? (
-                  <>
-                    {' · '}
-                    בקרוב:{' '}
-                    <strong className="tabular-nums text-[var(--text-dark)]">
-                      {plannedCount}
-                    </strong>
-                  </>
-                ) : null}
-              </>
-            )}
-          </p>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="beo-agent-fleet-grid">
             {cards.map((card, idx) => {
               const { board, agent, mode } = card
               const live = mode === 'fleet' && agent?.status === 'live'
@@ -204,39 +195,36 @@ export function AiAgents() {
                   key={board.id}
                   to={board.path}
                   title="פתיחת לוח הסוכן"
-                  className={`${hubSectionClass(idx % 4)} beo-agent-cube group flex min-h-[280px] flex-col rounded-2xl p-5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)]`}
+                  className={`${hubSectionClass(idx % 4)} beo-agent-cube group rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)]`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <AgentAvatar boardId={board.id} size="sm" />
-                      <div className="min-w-0">
-                        <h2 className="truncate text-[17px] font-extrabold text-[var(--text-dark)]">
-                          {name}
-                        </h2>
-                        <p className="mt-0.5 font-mono text-[12px] text-[var(--text-light)]" dir="ltr">
-                          {handle}
-                        </p>
-                      </div>
-                    </div>
+                  <div className="flex flex-col items-center gap-3">
+                    <AgentAvatar boardId={board.id} size="md" />
                     <StatusPill card={card} />
+                    <div>
+                      <h2 className="text-[18px] font-extrabold text-[var(--text-dark)]">{name}</h2>
+                      <p className="mt-1 font-mono text-[12px] text-[var(--text-light)]" dir="ltr">
+                        {handle}
+                      </p>
+                    </div>
+                    <p className="max-w-sm text-[13px] leading-relaxed text-[var(--text-mid)]">
+                      {blurb}
+                    </p>
                   </div>
 
-                  <p className="mt-4 line-clamp-3 flex-1 text-[13px] leading-relaxed text-[var(--text-mid)]">
-                    {blurb}
-                  </p>
+                  <div className="mt-5 w-full">
+                    <ConnectionCubes tools={tools} />
+                  </div>
 
-                  <ToolStatusLine tools={tools} />
-
-                  <p className="mt-3 text-[11px] text-[var(--text-light)]">
-                    עלות החודש ·{' '}
-                    <span className="font-semibold tabular-nums text-[var(--text-mid)]">
+                  <div className="beo-agent-stat mt-5 w-full !min-h-0 !py-3">
+                    <div className="beo-agent-stat-label">עלות החודש</div>
+                    <div className="beo-agent-stat-value !text-[1.15rem]">
                       {board.id === 'leads-beo' && leadsCostsReady
                         ? formatUsd(leadsUsd)
                         : AI_AGENT_COST_LABEL}
-                    </span>
-                  </p>
+                    </div>
+                  </div>
 
-                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-4">
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2 border-t border-[var(--border)] pt-4">
                     <span className="text-[12px] font-bold text-[var(--brand)] transition group-hover:underline">
                       פתיחת לוח הסוכן
                     </span>
@@ -247,13 +235,9 @@ export function AiAgents() {
                         onClick={(e) =>
                           void toggleAgent(e, agent, agent.running ? 'stop' : 'start')
                         }
-                        className="mr-auto rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--surface-hover)] disabled:opacity-60"
+                        className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 text-[11px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--surface-hover)] disabled:opacity-60"
                       >
-                        {busy
-                          ? '…'
-                          : agent.running
-                            ? 'כבה'
-                            : 'הפעל'}
+                        {busy ? '…' : agent.running ? 'כבה' : 'הפעל'}
                       </button>
                     ) : null}
                   </div>

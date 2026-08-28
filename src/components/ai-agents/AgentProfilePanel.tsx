@@ -6,6 +6,7 @@ import {
   saveAgentAvatar,
 } from '../../lib/aiAgentProfiles'
 import { useHubStore } from '../../store/useStore'
+import { ConnectionCubes } from './AgentCostsUi'
 
 const MAX_UPLOAD_BYTES = 900 * 1024
 
@@ -146,23 +147,6 @@ export function AgentAvatar({
   )
 }
 
-function ConnRow({ tool }: { tool: DisplayTool }) {
-  return (
-    <div className={`beo-agent-conn ${tool.connected ? 'is-on' : 'is-off'}`}>
-      <span className="beo-agent-conn-led" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-bold text-[var(--text-dark)]">{tool.label}</div>
-        {tool.hint ? (
-          <div className="text-[11px] text-[var(--text-light)]">{tool.hint}</div>
-        ) : null}
-      </div>
-      <span className="beo-agent-conn-state">
-        {tool.connected ? 'מחובר' : 'לא מחובר'}
-      </span>
-    </div>
-  )
-}
-
 export function AgentProfilePanel({
   boardId,
   displayName,
@@ -186,9 +170,9 @@ export function AgentProfilePanel({
     <div className="beo-agent-profile space-y-4">
       <section className="beo-agent-panel beo-agent-panel--hero overflow-hidden">
         <div className="beo-agent-panel-grid" aria-hidden />
-        <div className="relative flex flex-wrap items-start gap-5 p-5 md:p-6">
+        <div className="relative flex flex-col items-center gap-4 p-6 text-center md:p-8">
           <AgentAvatar boardId={boardId} size="lg" editable />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <p className="beo-agent-kicker">פרופיל סוכן · Beo OS</p>
             <h2 className="mt-1 text-[24px] font-extrabold tracking-tight text-[var(--text-dark)]">
               {profile?.personName || displayName}
@@ -199,7 +183,7 @@ export function AgentProfilePanel({
             <p className="mt-0.5 font-mono text-[12px] text-[var(--text-light)]" dir="ltr">
               {handle}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               <span className="beo-agent-chip">{statusLabel}</span>
               {profile?.department ? (
                 <span className="beo-agent-chip beo-agent-chip--muted">
@@ -212,12 +196,12 @@ export function AgentProfilePanel({
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="beo-agent-panel space-y-4 p-5">
+        <section className="beo-agent-panel space-y-4 p-6 text-center">
           <h3 className="beo-agent-section-title">פרטי קשר</h3>
-          <dl className="space-y-3 text-[13px]">
+          <dl className="space-y-4 text-[13px]">
             <div>
               <dt className="text-[11px] font-semibold text-[var(--text-light)]">מייל שליחה</dt>
-              <dd className="mt-0.5 font-mono text-[14px] font-bold text-[var(--text-dark)]" dir="ltr">
+              <dd className="mt-1 font-mono text-[14px] font-bold text-[var(--text-dark)]" dir="ltr">
                 {profile?.email || '—'}
               </dd>
               {profile?.emailNote ? (
@@ -226,28 +210,24 @@ export function AgentProfilePanel({
             </div>
             <div>
               <dt className="text-[11px] font-semibold text-[var(--text-light)]">שם תצוגה</dt>
-              <dd className="mt-0.5 font-bold text-[var(--text-dark)]">{displayName}</dd>
+              <dd className="mt-1 font-bold text-[var(--text-dark)]">{displayName}</dd>
             </div>
             <div>
               <dt className="text-[11px] font-semibold text-[var(--text-light)]">פעילות אחרונה</dt>
-              <dd className="mt-0.5 font-semibold text-[var(--text-dark)]">
+              <dd className="mt-1 font-semibold text-[var(--text-dark)]">
                 {lastActivity || 'אין דיווח עדיין מהצי'}
               </dd>
             </div>
           </dl>
         </section>
 
-        <section className="beo-agent-panel space-y-3 p-5">
-          <h3 className="beo-agent-section-title">חיבורים וכלים</h3>
-          <div className="space-y-2">
-            {tools.map((t) => (
-              <ConnRow key={t.kind} tool={t} />
-            ))}
-          </div>
+        <section className="beo-agent-panel space-y-4 p-6">
+          <h3 className="beo-agent-section-title text-center">חיבורים וכלים</h3>
+          <ConnectionCubes tools={tools} />
           {profile?.tools?.length ? (
-            <div className="border-t border-[var(--border)] pt-3">
+            <div className="border-t border-[var(--border)] pt-4 text-center">
               <p className="mb-2 text-[11px] font-semibold text-[var(--text-light)]">ארגז כלים</p>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
                 {profile.tools.map((tool) => (
                   <span key={tool} className="beo-agent-chip beo-agent-chip--muted">
                     {tool}
@@ -259,8 +239,8 @@ export function AgentProfilePanel({
         </section>
       </div>
 
-      <section className="beo-agent-panel space-y-3 p-5">
-        <h3 className="beo-agent-section-title">יכולות</h3>
+      <section className="beo-agent-panel space-y-4 p-6">
+        <h3 className="beo-agent-section-title text-center">יכולות</h3>
         <ul className="grid gap-2 sm:grid-cols-2">
           {(profile?.capabilities || []).map((cap) => (
             <li key={cap} className="beo-agent-capability">

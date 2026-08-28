@@ -25,6 +25,7 @@ export function AgentBoardShell({
   onTabChange,
   banner,
   tools,
+  monthCost,
   children,
 }: {
   boardId?: string
@@ -39,6 +40,7 @@ export function AgentBoardShell({
   onTabChange: (id: string) => void
   banner?: ReactNode
   tools?: DisplayTool[]
+  monthCost?: string
   children: ReactNode
 }) {
   const profile = boardId ? getAgentProfile(boardId) : undefined
@@ -59,7 +61,7 @@ export function AgentBoardShell({
 
       <header className="beo-agent-panel beo-agent-panel--hero overflow-hidden">
         <div className="beo-agent-panel-grid" aria-hidden />
-        <div className="relative flex flex-wrap items-start justify-between gap-5 p-5 md:p-6">
+        <div className="relative flex flex-wrap items-center justify-between gap-6 p-6 md:p-7">
           <div className="flex min-w-0 flex-1 items-start gap-4">
             {boardId ? <AgentAvatar boardId={boardId} size="lg" editable /> : null}
             <div className="min-w-0 flex-1">
@@ -98,14 +100,14 @@ export function AgentBoardShell({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex shrink-0 flex-col items-center gap-2 text-center">
             {statusBadge}
-            <div className="rounded-xl border border-[var(--border)] bg-white/80 px-3 py-2 text-left">
+            <div className="min-w-[8.5rem] rounded-xl border border-[var(--border)] bg-white/80 px-4 py-2.5">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-light)]">
                 עלות החודש
               </div>
-              <div className="font-mono text-[18px] font-extrabold tabular-nums text-[var(--text-dark)]">
-                {AI_AGENT_COST_LABEL}
+              <div className="mt-0.5 font-mono text-[18px] font-extrabold tabular-nums text-[var(--text-dark)]">
+                {monthCost ?? AI_AGENT_COST_LABEL}
               </div>
             </div>
           </div>
@@ -115,8 +117,8 @@ export function AgentBoardShell({
       {banner}
 
       {tools && tools.length > 0 ? (
-        <section>
-          <h2 className="beo-agent-section-title mb-2">חיבורים חיים</h2>
+        <section className="space-y-3">
+          <h2 className="beo-agent-section-title text-center">חיבורים חיים</h2>
           <ConnectionCubes tools={tools} />
         </section>
       ) : null}
@@ -145,16 +147,19 @@ export function AgentBoardShell({
 export function AgentStatGrid({
   items,
 }: {
-  items: { label: string; value: string | number }[]
+  items: { label: string; value: string | number; accent?: string }[]
 }) {
+  const count = items.length
+  const layout =
+    count === 2 ? 'is-two' : count === 4 ? 'is-four' : count === 6 ? 'is-six' : ''
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+    <div className={`beo-agent-stat-grid ${layout}`}>
       {items.map((item) => (
-        <div key={item.label} className="beo-agent-stat">
-          <div className="font-mono text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
+        <div key={item.label} className={`beo-agent-stat ${item.accent ?? ''}`}>
+          <div className="beo-agent-stat-value tabular-nums">
             {item.value}
           </div>
-          <div className="mt-1 text-[12px] text-[var(--text-mid)]">{item.label}</div>
+          <div className="beo-agent-stat-label">{item.label}</div>
         </div>
       ))}
     </div>
@@ -170,28 +175,25 @@ export function AgentConnectionsList({
 }) {
   if (connections.length === 0) {
     return (
-      <p className="text-[13px] text-[var(--text-mid)]">
+      <p className="text-center text-[13px] text-[var(--text-mid)]">
         {emptyHint ?? 'אין נתוני חיבורים להצגה.'}
       </p>
     )
   }
   return (
-    <div className="space-y-2">
+    <div className="beo-agent-conn-grid">
       {connections.map((c) => (
         <div
           key={c.kind}
-          className={`beo-agent-conn ${c.connected ? 'is-on' : 'is-off'}`}
+          className={`beo-agent-conn-cube ${c.connected ? 'is-on' : ''}`}
         >
-          <span className="beo-agent-conn-led" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-bold text-[var(--text-dark)]">{c.label}</div>
-            {c.note ? (
-              <div className="text-[12px] text-[var(--text-light)]">{c.note}</div>
-            ) : null}
-          </div>
-          <span className="beo-agent-conn-state">
+          <div className="text-[13px] font-bold text-[var(--text-dark)]">{c.label}</div>
+          <span className={`beo-agent-conn-state ${c.connected ? '' : 'text-[var(--text-light)]'}`}>
             {c.connected ? 'מחובר' : 'לא מחובר'}
           </span>
+          {c.note ? (
+            <div className="text-[11px] leading-snug text-[var(--text-light)]">{c.note}</div>
+          ) : null}
         </div>
       ))}
     </div>

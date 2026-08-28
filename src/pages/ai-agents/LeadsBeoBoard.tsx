@@ -9,6 +9,7 @@ import type { FleetAgent } from '../../lib/aiAgentsFleet'
 import type { AiAgentBoardDef } from '../../lib/aiAgentsRegistry'
 import {
   fetchLeadsApprovals,
+  fetchLeadsCosts,
   fetchLeadsLearning,
   fetchLeadsOverview,
   fetchLeadsPipeline,
@@ -30,7 +31,7 @@ import {
 } from './AgentBoardShell'
 import { AgentCostsTabPanel } from '../../components/ai-agents/AgentCostsUi'
 import { AgentProfilePanel } from '../../components/ai-agents/AgentProfilePanel'
-import { displayToolsForAgent } from '../../lib/aiAgentsDisplay'
+import { displayToolsForAgent, formatUsd, AI_AGENT_COST_LABEL } from '../../lib/aiAgentsDisplay'
 
 const TABS = [
   { id: 'profile', label: 'פרופיל' },
@@ -244,7 +245,7 @@ function ApprovalCard({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-3 py-2">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-3 py-3 text-center">
           <div className="text-[11px] font-semibold text-[var(--text-light)]">אתר</div>
           <a
             href={item.website}
@@ -255,7 +256,7 @@ function ApprovalCard({
             {item.website}
           </a>
         </div>
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-3 py-2">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-3 py-3 text-center">
           <div className="text-[11px] font-semibold text-[var(--text-light)]">שירות Beo</div>
           <div className="mt-0.5 text-[13px] font-semibold text-[var(--text-dark)]">
             {item.service || '—'}
@@ -284,7 +285,7 @@ function ApprovalCard({
         <p className="text-[11px] text-[var(--text-light)]">שם באתר: {item.owner_name}</p>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
+      <div className="flex flex-wrap items-center justify-center gap-2 border-t border-[var(--border)] pt-4">
         <button
           type="button"
           disabled={busy}
@@ -340,6 +341,7 @@ export function LeadsBeoBoard({
   const [redrafting, setRedrafting] = useState(false)
   const [learning, setLearning] = useState<LeadsLearning | null>(null)
   const [learningBusy, setLearningBusy] = useState(false)
+  const [monthCost, setMonthCost] = useState(AI_AGENT_COST_LABEL)
   const hiddenIds = useRef(new Set<string>())
 
   const loadBoard = useCallback(async () => {
@@ -350,11 +352,12 @@ export function LeadsBeoBoard({
       return
     }
     setLoading(true)
-    const [ov, pipe, appr, learned] = await Promise.all([
+    const [ov, pipe, appr, learned, costs] = await Promise.all([
       fetchLeadsOverview(),
       fetchLeadsPipeline(),
       fetchLeadsApprovals(),
       fetchLeadsLearning(),
+      fetchLeadsCosts(),
     ])
     if (ov.ok) setOverview(ov.data)
     if (pipe.ok) {
@@ -369,6 +372,7 @@ export function LeadsBeoBoard({
       )
     }
     if (learned.ok) setLearning(learned.data)
+    if (costs.ok) setMonthCost(formatUsd(costs.data.usd ?? 0))
     setLoading(false)
   }, [fleetUp])
 
@@ -531,6 +535,7 @@ export function LeadsBeoBoard({
       activeTab={tab}
       onTabChange={(id) => setTab(id as TabId)}
       tools={tools}
+      monthCost={monthCost}
       banner={
         !fleetUp ? (
           <div
@@ -567,18 +572,18 @@ export function LeadsBeoBoard({
       ) : null}
 
       {tab === 'overview' ? (
-        <div className="space-y-4">
-          <div className={`${hubSectionClass(0)} rounded-2xl p-5`}>
-            <p className="text-[13px] leading-relaxed text-[var(--text-mid)]">
+        <div className="space-y-5">
+          <div className={`${hubSectionClass(0)} rounded-2xl p-6 text-center`}>
+            <p className="mx-auto max-w-2xl text-[13px] leading-relaxed text-[var(--text-mid)]">
               {board.purpose} שי כותב עברית לישראל. רק ציון {overview?.score_floor ?? 72}+ עולה לאישור.
               שליחה א׳–ה׳ 09:00–17:00 אחרי אישור. תשובה אנושית → ליד כאן. כל יום שי לומד מה ענה.
             </p>
             {overview?.learning_headline ? (
-              <p className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-3 py-2 text-[13px] leading-relaxed text-[var(--text-dark)]">
+              <p className="mx-auto mt-4 max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-4 py-3 text-[13px] leading-relaxed text-[var(--text-dark)]">
                 למידה: {overview.learning_headline}
               </p>
             ) : null}
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
                 disabled={!fleetUp || runningDaily}
@@ -615,8 +620,8 @@ export function LeadsBeoBoard({
               { label: 'כתובת לא נכונה', value: overview?.bounced ?? 0 },
             ]}
           />
-          <p className="text-[12px] text-[var(--text-light)]">
-            יעד: {overview?.daily_target ?? 10} מוכנים עד {overview?.target_ready_by ?? '10:00'} ·{' '}
+          <p className="text-center text-[12px] text-[var(--text-light)]">
+            יעד: {overview?.daily_target ?? 10} מוכנים עד {overview?.target_ready_by ?? '17:00'} ·{' '}
             {overview?.date || '—'}
           </p>
         </div>
@@ -677,52 +682,39 @@ export function LeadsBeoBoard({
       ) : null}
 
       {tab === 'approvals' ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-            {(
-              [
-                {
-                  label: 'ממתינים לאישור',
-                  value: overview?.pending_approval ?? approvals.length,
-                  accent: 'text-[var(--brand-deep)]',
-                },
-                {
-                  label: 'נדחו',
-                  value: items.filter((r) => r.status === 'rejected').length,
-                  accent: 'text-[var(--text-dark)]',
-                },
-                {
-                  label: 'אושרו · ממתינים למייל',
-                  value: items.filter((r) => r.status === 'approved').length,
-                  accent: 'text-[var(--text-dark)]',
-                },
-                {
-                  label: 'נשלחו היום',
-                  value: overview?.sent_today ?? items.filter((r) => r.status === 'sent').length,
-                  accent: 'text-emerald-800',
-                },
-                {
-                  label: 'נענו → ליד',
-                  value: overview?.replied ?? items.filter((r) => r.status === 'replied').length,
-                  accent: 'text-emerald-800',
-                },
-                {
-                  label: 'כתובת לא נכונה',
-                  value: overview?.bounced ?? items.filter((r) => r.status === 'bounced').length,
-                  accent: 'text-amber-800',
-                },
-              ] as const
-            ).map((kpi) => (
-              <div key={kpi.label} className="beo-agent-stat">
-                <div className={`font-mono text-[22px] font-extrabold tabular-nums ${kpi.accent}`}>
-                  {kpi.value}
-                </div>
-                <div className="mt-1 text-[12px] font-semibold text-[var(--text-mid)]">
-                  {kpi.label}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="space-y-5">
+          <AgentStatGrid
+            items={[
+              {
+                label: 'ממתינים לאישור',
+                value: overview?.pending_approval ?? approvals.length,
+                accent: 'text-[var(--brand-deep)]',
+              },
+              {
+                label: 'נדחו',
+                value: items.filter((r) => r.status === 'rejected').length,
+              },
+              {
+                label: 'אושרו · ממתינים למייל',
+                value: items.filter((r) => r.status === 'approved').length,
+              },
+              {
+                label: 'נשלחו היום',
+                value: overview?.sent_today ?? items.filter((r) => r.status === 'sent').length,
+                accent: 'text-emerald-800',
+              },
+              {
+                label: 'נענו → ליד',
+                value: overview?.replied ?? items.filter((r) => r.status === 'replied').length,
+                accent: 'text-emerald-800',
+              },
+              {
+                label: 'כתובת לא נכונה',
+                value: overview?.bounced ?? items.filter((r) => r.status === 'bounced').length,
+                accent: 'text-amber-800',
+              },
+            ]}
+          />
 
           {approvals.length === 0 ? (
             <div className={`${hubSectionClass(2)} rounded-2xl p-5`}>
@@ -733,7 +725,7 @@ export function LeadsBeoBoard({
             </div>
           ) : (
             <>
-              <div className="flex justify-end">
+              <div className="flex justify-center">
                 <button
                   type="button"
                   disabled={!fleetUp || redrafting}
@@ -824,9 +816,9 @@ export function LeadsBeoBoard({
 
       {tab === 'learning' ? (
         <div className="space-y-4">
-          <div className={`${hubSectionClass(2)} space-y-3 rounded-2xl p-5`}>
+          <div className={`${hubSectionClass(2)} space-y-3 rounded-2xl p-6 text-center`}>
             <h2 className="text-[16px] font-extrabold text-[var(--text-dark)]">מה השוק לימד את שי</h2>
-            <p className="text-[13px] leading-relaxed text-[var(--text-mid)]">
+            <p className="mx-auto max-w-2xl text-[13px] leading-relaxed text-[var(--text-mid)]">
               {learning?.lesson ||
                 'עדיין אין שליחות. אחרי אישור מיילים והתשובות, יופיע כאן מה ממיר — תחום, מוצר, סגנון.'}
             </p>
@@ -868,7 +860,8 @@ export function LeadsBeoBoard({
       ) : null}
 
       {tab === 'connections' ? (
-        <div className={`${hubSectionClass(0)} rounded-2xl p-5`}>
+        <div className={`${hubSectionClass(0)} rounded-2xl p-6`}>
+          <h2 className="beo-agent-section-title mb-4 text-center">חיבורים חיים</h2>
           <AgentConnectionsList connections={connections} />
         </div>
       ) : null}
@@ -880,7 +873,7 @@ export function LeadsBeoBoard({
             <li>אין מייל גלוי באתר → דילוג. בלי Hunter.</li>
             <li>ציון מתחת ל-72 לא עולה לאישור. עדיף 5 חמים מ-10 בינוניים.</li>
             <li>בלי follow-up. לא ענו → סגור.</li>
-            <li>10 טיוטות עד 10:00. שליחה א׳–ה׳ 09:00–17:00 אחרי אישור כאן.</li>
+            <li>10 טיוטות בכל יום עבודה (א׳–ה׳). המחקר ממשיך עד שיש עשר, או עד 17:00. שליחה אחרי אישור כאן.</li>
             <li>החתימה מהתיבה בגימייל. כפתור וואטסאפ במייל.</li>
             <li>
               למידה יומית מהשוק: תשובה אנושית / לא מעוניין / לא ענו / דחייה שלך. מחר הציון, החיפוש

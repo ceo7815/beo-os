@@ -15,6 +15,7 @@ import { AgentProfilePanel } from '../../components/ai-agents/AgentProfilePanel'
 import {
   AgentBoardShell,
   AgentConnectionsList,
+  AgentStatGrid,
 } from './AgentBoardShell'
 
 const TABS = [
@@ -128,53 +129,56 @@ export function SocialBeoBoard({
       ) : null}
 
       {tab === 'overview' ? (
-        <div className={`${hubSectionClass(0)} space-y-4 rounded-2xl p-5`}>
-          <p className="text-[13px] leading-relaxed text-[var(--text-mid)]">{board.purpose}</p>
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <dt className="text-[11px] font-semibold text-[var(--text-light)]">סטטוס</dt>
-              <dd className="mt-0.5 text-[14px] font-bold text-[var(--text-dark)]">
-                {!fleetUp ? 'לא זמין' : agent ? statusLabel(agent) : 'לא בצי'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-semibold text-[var(--text-light)]">פרסום</dt>
-              <dd className="mt-0.5 text-[14px] font-bold text-[var(--text-dark)]">
-                {agent?.publish === 'preview'
-                  ? 'תצוגה מקדימה — Instagram/Facebook לא מחוברים לפרסום'
-                  : agent?.publish || '—'}
-              </dd>
-            </div>
-          </dl>
-          {live ? (
-            <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-4">
-              {running ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void toggle('stop')}
-                  className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--surface-hover)] disabled:opacity-60"
-                >
-                  {busy ? 'מכבה…' : 'כבה'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void toggle('start')}
-                  className="rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-hover)] disabled:opacity-60"
-                >
-                  {busy ? 'מפעיל…' : 'הפעל'}
-                </button>
-              )}
-            </div>
-          ) : null}
+        <div className="space-y-5">
+          <div className={`${hubSectionClass(0)} rounded-2xl p-6 text-center`}>
+            <p className="mx-auto max-w-2xl text-[13px] leading-relaxed text-[var(--text-mid)]">
+              {board.purpose}
+            </p>
+            {live ? (
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                {running ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void toggle('stop')}
+                    className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold text-[var(--text-dark)] transition hover:bg-[var(--surface-hover)] disabled:opacity-60"
+                  >
+                    {busy ? 'מכבה…' : 'כבה'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void toggle('start')}
+                    className="rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-[var(--brand-hover)] disabled:opacity-60"
+                  >
+                    {busy ? 'מפעיל…' : 'הפעל'}
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <AgentStatGrid
+            items={[
+              {
+                label: 'סטטוס',
+                value: !fleetUp ? 'לא זמין' : agent ? statusLabel(agent) : 'לא בצי',
+              },
+              {
+                label: 'פרסום',
+                value:
+                  agent?.publish === 'preview'
+                    ? 'תצוגה מקדימה'
+                    : agent?.publish || '—',
+              },
+            ]}
+          />
         </div>
       ) : null}
 
       {tab === 'connections' ? (
-        <div className={`${hubSectionClass(1)} rounded-2xl p-5`}>
-          <p className="mb-4 text-[13px] text-[var(--text-mid)]">
+        <div className={`${hubSectionClass(1)} rounded-2xl p-6`}>
+          <p className="mb-5 text-center text-[13px] leading-relaxed text-[var(--text-mid)]">
             Telegram ו-OpenAI לפי דיווח הצי. Instagram ו-Facebook נחשבים לא מחוברים כל עוד
             הפרסום במצב תצוגה מקדימה. טלגרם אינו ממשק ניהול — רק עדכונים.
           </p>

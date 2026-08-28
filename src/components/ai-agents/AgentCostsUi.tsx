@@ -21,32 +21,24 @@ export function FleetCostsBlock({
   const leadsLabel = leadsReady ? formatUsd(leadsUsd) : AI_AGENT_COST_LABEL
   const monthLabel = leadsReady ? formatUsd(leadsUsd) : AI_AGENT_COST_LABEL
   return (
-    <section className="beo-agent-panel space-y-4 p-5">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="beo-agent-kicker">עלויות</p>
-          <h2 className="mt-1 text-[15px] font-extrabold text-[var(--text-dark)]">עלויות צי</h2>
-          <p className="mt-1 text-[12px] text-[var(--text-light)]">{AI_AGENT_COST_HINT}</p>
-        </div>
-        <p className="font-mono text-[12px] font-semibold text-[var(--text-mid)]">
-          מודל / ספק · {AI_AGENT_MODEL_PROVIDER}
+    <section className="beo-agent-panel space-y-5 p-6">
+      <div className="flex flex-col items-center gap-1 text-center">
+        <p className="beo-agent-kicker">עלויות</p>
+        <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">עלויות צי</h2>
+        <p className="max-w-lg text-[12px] leading-relaxed text-[var(--text-light)]">
+          {AI_AGENT_COST_HINT}
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="beo-agent-stat-grid is-four">
         {[
           { label: 'עלות החודש', value: monthLabel },
           { label: 'Beo Social', value: AI_AGENT_COST_LABEL },
           { label: 'Beo Leads (שי)', value: leadsLabel },
           { label: 'ספק', value: AI_AGENT_MODEL_PROVIDER },
         ].map((cell) => (
-          <div
-            key={cell.label}
-            className="beo-agent-stat !py-3"
-          >
-            <div className="text-[11px] font-semibold text-[var(--text-light)]">{cell.label}</div>
-            <div className="mt-1 font-mono text-[20px] font-extrabold tabular-nums tracking-tight text-[var(--text-dark)]">
-              {cell.value}
-            </div>
+          <div key={cell.label} className="beo-agent-stat">
+            <div className="beo-agent-stat-value !text-[1.2rem]">{cell.value}</div>
+            <div className="beo-agent-stat-label">{cell.label}</div>
           </div>
         ))}
       </div>
@@ -90,19 +82,17 @@ export function AgentCostsTabPanel({
     : AI_AGENT_COST_HINT
 
   return (
-    <div className={`${hubSectionClass(3)} space-y-4 rounded-2xl p-5`}>
-      <div className="flex flex-wrap items-end justify-between gap-2">
+    <div className={`${hubSectionClass(3)} space-y-5 rounded-2xl p-6`}>
+      <div className="flex flex-col items-center gap-3 text-center">
         <div>
           <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">
             עלויות · {agentLabel}
           </h2>
           <p className="mt-1 text-[12px] text-[var(--text-light)]">{hint}</p>
         </div>
-        <div className="text-left">
-          <div className="text-[11px] font-semibold text-[var(--text-light)]">החודש</div>
-          <div className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
-            {formatUsd(totalUsd)}
-          </div>
+        <div className="beo-agent-stat !min-h-0 w-full max-w-[12rem] !py-3">
+          <div className="beo-agent-stat-label">החודש</div>
+          <div className="beo-agent-stat-value">{formatUsd(totalUsd)}</div>
         </div>
       </div>
       {error ? (
@@ -162,30 +152,31 @@ export function ConnectionCubes({ tools }: { tools: DisplayTool[] }) {
     )
   }
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="beo-agent-conn-grid">
       {tools.map((t) => (
         <div
           key={t.kind}
           className={`beo-agent-conn-cube ${t.connected ? 'is-on' : ''}`}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-[12px] font-bold text-[var(--text-dark)]">{t.label}</div>
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                t.connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]' : 'bg-slate-300'
-              }`}
-            />
-          </div>
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              t.connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]' : 'bg-slate-300'
+            }`}
+            aria-hidden
+          />
+          <div className="text-[12px] font-bold text-[var(--text-dark)]">{t.label}</div>
           <div
-            className={`mt-1.5 text-[11px] font-semibold ${
+            className={`text-[11px] font-semibold ${
               t.connected ? 'text-emerald-700' : 'text-[var(--text-light)]'
             }`}
           >
             {t.connected ? 'מחובר' : 'לא מחובר'}
-            {t.hint ? (
-              <span className="font-normal text-[var(--text-light)]"> · {t.hint}</span>
-            ) : null}
           </div>
+          {t.hint ? (
+            <div className="text-[10px] font-normal leading-snug text-[var(--text-light)]">
+              {t.hint}
+            </div>
+          ) : null}
         </div>
       ))}
     </div>
