@@ -14,10 +14,12 @@ import {
   fetchLeadsOverview,
   fetchLeadsPipeline,
   postLeadAction,
+  queueLeadFollowups,
   redraftLeads,
   runLeadsDaily,
   runLeadsLearn,
   stillNeedsApproval,
+  waMeUrl,
   type LeadPipelineItem,
   type LeadsLearning,
   type LeadsOverview,
@@ -194,16 +196,6 @@ function GmailPreview({
         <p className="text-[11px] text-[#5f6368]">
           תיקון קטן? עורכים כאן. שמירה שומרת בלי לשלוח. אשר שליחה שולח את מה שעל המסך.
         </p>
-        {item.whatsapp_url ? (
-          <a
-            href={item.whatsapp_url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex rounded-lg bg-[#25D366] px-3 py-1.5 text-[12px] font-bold text-white"
-          >
-            וואטסאפ
-          </a>
-        ) : null}
       </div>
     </div>
   )
@@ -220,24 +212,42 @@ function ApprovalCard({
   item: LeadPipelineItem
   labels?: Record<string, string>
   busy: boolean
-  onApprove: (subject: string, body: string) => void
+  onApprove: (subject: string, body: string, whatsappBody: string) => void
   onReject: () => void
-  onSaveEdit: (subject: string, body: string) => void
+  onSaveEdit: (subject: string, body: string, whatsappBody: string) => void
 }) {
   const [subject, setSubject] = useState(item.email_subject || '')
   const [body, setBody] = useState(item.email_body || '')
+  const [waBody, setWaBody] = useState(item.whatsapp_body || '')
+  const isFollowup = item.draft_kind === 'followup'
+  const waHref = waMeUrl(item.phone || '', waBody)
 
   useEffect(() => {
     setSubject(item.email_subject || '')
     setBody(item.email_body || '')
-  }, [item.id, item.email_subject, item.email_body])
+    setWaBody(item.whatsapp_body || '')
+  }, [item.id, item.email_subject, item.email_body, item.whatsapp_body])
 
   return (
     <article className={`${hubSectionClass(2)} space-y-4 rounded-2xl p-5`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-[18px] font-extrabold text-[var(--text-dark)]">{item.company}</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-[18px] font-extrabold text-[var(--text-dark)]">{item.company}</h3>
+            {isFollowup ? (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                פולואפ
+              </span>
+            ) : (
+              <span className="rounded-full bg-[var(--brand-light)] px-2 py-0.5 text-[11px] font-bold text-[var(--brand-deep)]">
+                פנייה ראשונה
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-[12px] text-[var(--text-light)]">{item.email || 'אין מייל'}</p>
+          {item.phone ? (
+            <p className="text-[12px] text-[var(--text-light)]">טלפון באתר: {item.phone}</p>
+          ) : null}
         </div>
         <span className="rounded-full bg-[var(--brand-light)] px-2.5 py-1 text-[12px] font-extrabold tabular-nums text-[var(--brand-deep)]">
           ציון {item.score ?? '—'}
@@ -273,6 +283,40 @@ function ApprovalCard({
         </p>
       </div>
 
+      <div className="space-y-2 rounded-xl border border-[#25D366]/40 bg-[#25D366]/10 px-4 py-3">
+        <div className="text-[12px] font-bold text-[var(--text-dark)]">
+          וואטסאפ אליהם — אתה שולח מהטלפון שלך
+        </div>
+        {item.phone ? (
+          <>
+            <textarea
+              value={waBody}
+              onChange={(e) => setWaBody(e.target.value)}
+              rows={5}
+              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-[13px] leading-relaxed text-[#202124]"
+            />
+            {waHref ? (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex rounded-lg bg-[#25D366] px-3.5 py-2 text-[13px] font-bold text-white"
+              >
+                פתח וואטסאפ ל-{item.phone}
+              </a>
+            ) : (
+              <p className="text-[12px] text-[var(--text-light)]">
+                המספר באתר לא נראה ישראלי — שלח רק מייל.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-[13px] text-[var(--text-mid)]">
+            אין טלפון גלוי באתר. שלח רק את המייל אחרי אישור.
+          </p>
+        )}
+      </div>
+
       <GmailPreview
         item={item}
         subject={subject}
@@ -289,10 +333,10 @@ function ApprovalCard({
         <button
           type="button"
           disabled={busy}
-          onClick={() => onApprove(subject, body)}
+          onClick={() => onApprove(subject, body, waBody)}
           className="rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white disabled:opacity-60"
         >
-          אשר שליחה
+          אשר שליחת מייל
         </button>
         <button
           type="button"
@@ -305,7 +349,7 @@ function ApprovalCard({
         <button
           type="button"
           disabled={busy}
-          onClick={() => onSaveEdit(subject, body)}
+          onClick={() => onSaveEdit(subject, body, waBody)}
           className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold disabled:opacity-60"
         >
           שמור טיוטה
@@ -339,6 +383,7 @@ export function LeadsBeoBoard({
   const [busyId, setBusyId] = useState<string | null>(null)
   const [runningDaily, setRunningDaily] = useState(false)
   const [redrafting, setRedrafting] = useState(false)
+  const [queueingFu, setQueueingFu] = useState(false)
   const [learning, setLearning] = useState<LeadsLearning | null>(null)
   const [learningBusy, setLearningBusy] = useState(false)
   const [monthCost, setMonthCost] = useState(AI_AGENT_COST_LABEL)
@@ -404,7 +449,7 @@ export function LeadsBeoBoard({
   const act = async (
     id: string,
     action: 'approve' | 'reject' | 'edit' | 'close',
-    body?: { email_subject?: string; email_body?: string },
+    body?: { email_subject?: string; email_body?: string; whatsapp_body?: string },
   ) => {
     setBusyId(id)
     const result = await postLeadAction(id, action, body)
@@ -414,7 +459,7 @@ export function LeadsBeoBoard({
         setApprovals((prev) => prev.filter((row) => row.id !== id))
       }
       if (action === 'approve') {
-        pushToast('המייל נשלח מ-sales@beosystem.com', 'success')
+        pushToast('המייל נשלח מ-sales@beosystem.com — וואטסאפ שולחים מהטלפון', 'success')
       } else if (action === 'reject') {
         pushToast('הטיוטה נדחתה', 'success')
       } else {
@@ -454,6 +499,18 @@ export function LeadsBeoBoard({
       pushToast(result.error, 'error')
     }
     setRedrafting(false)
+  }
+
+  const runQueueFollowups = async () => {
+    setQueueingFu(true)
+    const result = await queueLeadFollowups()
+    if (result.ok) {
+      pushToast(result.message || `הוכנו ${result.queued ?? 0} פולואפים`, 'success')
+      await loadBoard()
+    } else {
+      pushToast(result.error, 'error')
+    }
+    setQueueingFu(false)
   }
 
   const runLearn = async () => {
@@ -615,6 +672,7 @@ export function LeadsBeoBoard({
               { label: 'היום בדק', value: overview?.checked_today ?? 0 },
               { label: 'דילג', value: overview?.skipped_today ?? 0 },
               { label: 'ממתינים לאישור', value: overview?.pending_approval ?? 0 },
+              { label: 'פולואפים ממתינים', value: overview?.followups_pending ?? 0 },
               { label: 'נשלח היום', value: overview?.sent_today ?? 0 },
               { label: 'נענו / לידים', value: overview?.replied ?? 0 },
               { label: 'כתובת לא נכונה', value: overview?.bounced ?? 0 },
@@ -658,6 +716,11 @@ export function LeadsBeoBoard({
                     <tr key={row.id} className="border-b border-[var(--border)] last:border-0">
                       <td className="px-3 py-2.5 font-semibold text-[var(--text-dark)]">
                         {row.company}
+                        {row.draft_kind === 'followup' ? (
+                          <span className="ms-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                            פולואפ
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2.5">
                         <a
@@ -699,6 +762,11 @@ export function LeadsBeoBoard({
                 value: items.filter((r) => r.status === 'approved').length,
               },
               {
+                label: 'פולואפים',
+                value: overview?.followups_pending ?? 0,
+                accent: 'text-amber-800',
+              },
+              {
                 label: 'נשלחו היום',
                 value: overview?.sent_today ?? items.filter((r) => r.status === 'sent').length,
                 accent: 'text-emerald-800',
@@ -717,15 +785,25 @@ export function LeadsBeoBoard({
           />
 
           {approvals.length === 0 ? (
-            <div className={`${hubSectionClass(2)} rounded-2xl p-5`}>
+            <div className={`${hubSectionClass(2)} space-y-4 rounded-2xl p-5`}>
               <EmptyState
                 title="אין מיילים ממתינים לאישור"
-                description="אישור או דחייה רק כאן — לא בטלגרם. אחרי מחקר יומי יופיעו כאן עד 10 כרטיסים עם דוח וציון ותצוגת גימייל."
+                description="אישור או דחייה רק כאן. מחקר יומי מביא עד 10 פניות ראשונות. פולואפ לנשלחים בלי תשובה — אחרי ~48 שעות, באותו שרשור."
               />
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  disabled={!fleetUp || queueingFu}
+                  onClick={() => void runQueueFollowups()}
+                  className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold disabled:opacity-60"
+                >
+                  {queueingFu ? 'מכין פולואפים…' : 'הכן פולואפים לנשלחים'}
+                </button>
+              </div>
             </div>
           ) : (
             <>
-              <div className="flex justify-center">
+              <div className="flex flex-wrap justify-center gap-2">
                 <button
                   type="button"
                   disabled={!fleetUp || redrafting}
@@ -734,6 +812,14 @@ export function LeadsBeoBoard({
                 >
                   {redrafting ? 'משכתב…' : 'שכתב טיוטות (קצר + שאלה)'}
                 </button>
+                <button
+                  type="button"
+                  disabled={!fleetUp || queueingFu}
+                  onClick={() => void runQueueFollowups()}
+                  className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold disabled:opacity-60"
+                >
+                  {queueingFu ? 'מכין פולואפים…' : 'הכן פולואפים לנשלחים'}
+                </button>
               </div>
               {approvals.map((item) => (
                 <ApprovalCard
@@ -741,12 +827,20 @@ export function LeadsBeoBoard({
                   item={item}
                   labels={labels}
                   busy={busyId === item.id}
-                  onApprove={(email_subject, email_body) =>
-                    void act(item.id, 'approve', { email_subject, email_body })
+                  onApprove={(email_subject, email_body, whatsapp_body) =>
+                    void act(item.id, 'approve', {
+                      email_subject,
+                      email_body,
+                      whatsapp_body,
+                    })
                   }
                   onReject={() => void act(item.id, 'reject')}
-                  onSaveEdit={(email_subject, email_body) =>
-                    void act(item.id, 'edit', { email_subject, email_body })
+                  onSaveEdit={(email_subject, email_body, whatsapp_body) =>
+                    void act(item.id, 'edit', {
+                      email_subject,
+                      email_body,
+                      whatsapp_body,
+                    })
                   }
                 />
               ))}
@@ -872,9 +966,16 @@ export function LeadsBeoBoard({
           <ul className="list-disc space-y-2 pe-5 text-[13px] leading-relaxed text-[var(--text-mid)]">
             <li>אין מייל גלוי באתר → דילוג. בלי Hunter.</li>
             <li>ציון מתחת ל-72 לא עולה לאישור. עדיף 5 חמים מ-10 בינוניים.</li>
-            <li>בלי follow-up. לא ענו → סגור.</li>
-            <li>10 טיוטות בכל יום עבודה (א׳–ה׳). המחקר ממשיך עד שיש עשר, או עד 17:00. שליחה אחרי אישור כאן.</li>
-            <li>החתימה מהתיבה בגימייל. כפתור וואטסאפ במייל.</li>
+            <li>
+              פולואפ אחד אחרי ~48 שעות בלי תשובה — טיוטה לאישור כאן, באותו שרשור Gmail. לא ספאם.
+            </li>
+            <li>
+              10 פניות ראשונות בכל יום עבודה (א׳–ה׳) עד 17:00. פולואפים מחוץ למכסה. שליחה אחרי
+              אישור כאן.
+            </li>
+            <li>
+              וואטסאפ: טיוטה לטלפון שלהם בכרטיס — אתה שולח מהמספר של Beo. במייל נשאר קישור אלינו.
+            </li>
             <li>
               למידה יומית מהשוק: תשובה אנושית / לא מעוניין / לא ענו / דחייה שלך. מחר הציון, החיפוש
               והניסוח זזים לפי זה — בלי לנחש מאחוז על מדגם קטן.

@@ -26,7 +26,7 @@ export const AI_AGENT_BOARDS: readonly AiAgentBoardDef[] = [
     handle: 'leads.beo',
     role: 'שי · גיוס לידים',
     purpose:
-      'מוצא עסקים בישראל עם מייל מהאתר, טיוטות לאישור כאן, שולח מ-sales@beosystem.com אחרי אישור. בלי follow-up.',
+      'מוצא עסקים בישראל עם מייל מהאתר, טיוטות לאישור כאן, שולח מ-sales@ אחרי אישור. וואטסאפ לטלפון שלהם (אתה שולח) ופולואפ אחד באותו שרשור.',
     path: '/ai-agents/leads-beo',
     plannedByDefault: true,
   },

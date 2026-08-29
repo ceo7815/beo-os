@@ -39,6 +39,10 @@ export type LeadPipelineItem = {
   from_name?: string
   from_email?: string
   whatsapp_url?: string
+  whatsapp_body?: string
+  whatsapp_to_url?: string
+  draft_kind?: 'first' | 'followup' | string
+  parent_id?: string
   created_at?: string
   updated_at?: string
   batch_date?: string
@@ -60,6 +64,7 @@ export type LeadsOverview = {
   skipped_today?: number
   pending_approval?: number
   pending_today?: number
+  followups_pending?: number
   sent_today?: number
   replied?: number
   bounced?: number
@@ -190,10 +195,29 @@ export async function fetchLeadsApprovals(): Promise<
   }
 }
 
+export function israelWaDigits(phone: string): string {
+  const digits = (phone || '').replace(/\D/g, '')
+  if (!digits || digits === '33632519053') return ''
+  if (digits.startsWith('972')) return digits
+  if (digits.startsWith('0') && digits.length >= 9) return `972${digits.slice(1)}`
+  return ''
+}
+
+export function waMeUrl(phone: string, text: string): string {
+  const digits = israelWaDigits(phone)
+  if (!digits) return ''
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text || '')}`
+}
+
 export async function postLeadAction(
   id: string,
   action: 'approve' | 'reject' | 'edit' | 'close',
-  body?: { email_subject?: string; email_body?: string; os_lead_created?: boolean },
+  body?: {
+    email_subject?: string
+    email_body?: string
+    whatsapp_body?: string
+    os_lead_created?: boolean
+  },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const res = await fetch(`/api/beo-agents/leads/items/${id}/${action}`, {
@@ -238,6 +262,30 @@ export async function runLeadsDaily(
     return { ok: true, message: data.message, added_pending: data.added_pending }
   } catch {
     return { ok: false, error: 'הרצה יומית נכשלה — בדקו ש-8788 רץ' }
+  }
+}
+
+export async function queueLeadFollowups(): Promise<
+  { ok: true; queued?: number; message?: string } | { ok: false; error: string }
+> {
+  try {
+    const res = await fetch('/api/beo-agents/leads/queue-followups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    const data = (await readJsonSafe(res)) as {
+      ok?: boolean
+      error?: string
+      queued?: number
+      message?: string
+    } | null
+    if (!res.ok || !data?.ok) {
+      return { ok: false, error: data?.error || `HTTP ${res.status}` }
+    }
+    return { ok: true, queued: data.queued, message: data.message }
+  } catch {
+    return { ok: false, error: 'הכנת פולואפים נכשלה' }
   }
 }
 
