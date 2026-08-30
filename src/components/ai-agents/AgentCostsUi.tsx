@@ -21,22 +21,26 @@ export function FleetCostsBlock({
   const leadsLabel = leadsReady ? formatUsd(leadsUsd) : AI_AGENT_COST_LABEL
   const monthLabel = leadsReady ? formatUsd(leadsUsd) : AI_AGENT_COST_LABEL
   return (
-    <section className="beo-agent-panel space-y-5 p-6">
-      <div className="flex flex-col items-center gap-1 text-center">
-        <p className="beo-agent-kicker">עלויות</p>
-        <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">עלויות צי</h2>
-        <p className="max-w-lg text-[12px] leading-relaxed text-[var(--text-light)]">
-          {AI_AGENT_COST_HINT}
-        </p>
+    <section className="beo-agent-panel space-y-4 p-5 md:p-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="beo-agent-kicker">עלויות</p>
+          <h2 className="mt-0.5 text-[15px] font-extrabold text-[var(--text-dark)]">
+            עלויות צי
+          </h2>
+          <p className="mt-1 max-w-lg text-[12px] leading-relaxed text-[var(--text-light)]">
+            {AI_AGENT_COST_HINT}
+          </p>
+        </div>
       </div>
       <div className="beo-agent-stat-grid is-four">
         {[
-          { label: 'עלות החודש', value: monthLabel },
+          { label: 'עלות החודש', value: monthLabel, hot: true },
           { label: 'Beo Social', value: AI_AGENT_COST_LABEL },
           { label: 'Beo Leads (שי)', value: leadsLabel },
           { label: 'ספק', value: AI_AGENT_MODEL_PROVIDER },
         ].map((cell) => (
-          <div key={cell.label} className="beo-agent-stat">
+          <div key={cell.label} className={`beo-agent-stat ${cell.hot ? 'is-hot' : ''}`}>
             <div className="beo-agent-stat-value !text-[1.2rem]">{cell.value}</div>
             <div className="beo-agent-stat-label">{cell.label}</div>
           </div>
@@ -83,14 +87,14 @@ export function AgentCostsTabPanel({
 
   return (
     <div className={`${hubSectionClass(3)} space-y-5 rounded-2xl p-6`}>
-      <div className="flex flex-col items-center gap-3 text-center">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">
             עלויות · {agentLabel}
           </h2>
           <p className="mt-1 text-[12px] text-[var(--text-light)]">{hint}</p>
         </div>
-        <div className="beo-agent-stat !min-h-0 w-full max-w-[12rem] !py-3">
+        <div className="beo-agent-stat is-hot !min-h-0 w-full max-w-[11rem] !py-3">
           <div className="beo-agent-stat-label">החודש</div>
           <div className="beo-agent-stat-value">{formatUsd(totalUsd)}</div>
         </div>
@@ -145,10 +149,39 @@ export function AgentCostsTabPanel({
   )
 }
 
-export function ConnectionCubes({ tools }: { tools: DisplayTool[] }) {
+export function ConnectionCubes({
+  tools,
+  compact = false,
+}: {
+  tools: DisplayTool[]
+  compact?: boolean
+}) {
   if (tools.length === 0) {
     return (
       <p className="text-[12px] text-[var(--text-light)]">אין חיבורים להצגה.</p>
+    )
+  }
+  if (compact) {
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {tools.map((t) => (
+          <span
+            key={t.kind}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+              t.connected
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--text-mid)]'
+            }`}
+            title={t.hint || t.label}
+          >
+            <span
+              className={`beo-agent-live-dot ${t.connected ? '' : 'is-off'}`}
+              aria-hidden
+            />
+            {t.label}
+          </span>
+        ))}
+      </div>
     )
   }
   return (
@@ -159,24 +192,24 @@ export function ConnectionCubes({ tools }: { tools: DisplayTool[] }) {
           className={`beo-agent-conn-cube ${t.connected ? 'is-on' : ''}`}
         >
           <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              t.connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]' : 'bg-slate-300'
-            }`}
+            className={`beo-agent-live-dot ${t.connected ? '' : 'is-off'}`}
             aria-hidden
           />
-          <div className="text-[12px] font-bold text-[var(--text-dark)]">{t.label}</div>
-          <div
-            className={`text-[11px] font-semibold ${
-              t.connected ? 'text-emerald-700' : 'text-[var(--text-light)]'
-            }`}
-          >
-            {t.connected ? 'מחובר' : 'לא מחובר'}
-          </div>
-          {t.hint ? (
-            <div className="text-[10px] font-normal leading-snug text-[var(--text-light)]">
-              {t.hint}
+          <div className="beo-agent-conn-meta">
+            <div className="text-[12px] font-bold text-[var(--text-dark)]">{t.label}</div>
+            <div
+              className={`text-[11px] font-semibold ${
+                t.connected ? 'text-emerald-700' : 'text-[var(--text-light)]'
+              }`}
+            >
+              {t.connected ? 'מחובר' : 'לא מחובר'}
             </div>
-          ) : null}
+            {t.hint ? (
+              <div className="text-[10px] font-normal leading-snug text-[var(--text-light)]">
+                {t.hint}
+              </div>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>

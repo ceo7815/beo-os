@@ -11,6 +11,7 @@ import { AgentAvatar } from '../../components/ai-agents/AgentProfilePanel'
 export type AgentBoardTab = {
   id: string
   label: string
+  priority?: boolean
 }
 
 export function AgentBoardShell({
@@ -32,7 +33,6 @@ export function AgentBoardShell({
   displayName: string
   role?: string
   handle?: string
-  /** משפט קצר — fallback אם אין בפרופיל */
   purpose?: string
   statusBadge: ReactNode
   tabs: AgentBoardTab[]
@@ -50,10 +50,10 @@ export function AgentBoardShell({
   const email = profile?.email && profile.email !== '—' ? profile.email : null
 
   return (
-    <div className="beo-page beo-agent-deck space-y-5">
+    <div className="beo-page beo-agent-deck space-y-4">
       <nav className="flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--text-light)]">
         <Link to="/ai-agents" className="font-semibold text-[var(--brand)] hover:underline">
-          סוכני AI
+          רשת סוכנים
         </Link>
         <span aria-hidden>/</span>
         <span className="font-semibold text-[var(--text-mid)]">{displayName}</span>
@@ -61,15 +61,25 @@ export function AgentBoardShell({
 
       <header className="beo-agent-panel beo-agent-panel--hero overflow-hidden">
         <div className="beo-agent-panel-grid" aria-hidden />
-        <div className="relative flex flex-wrap items-center justify-between gap-6 p-6 md:p-7">
+        <div className="relative flex flex-wrap items-start justify-between gap-5 p-5 md:p-6">
           <div className="flex min-w-0 flex-1 items-start gap-4">
-            {boardId ? <AgentAvatar boardId={boardId} size="lg" editable /> : null}
+            {boardId ? (
+              <div className="beo-agent-avatar-wrap">
+                <AgentAvatar boardId={boardId} size="lg" editable />
+              </div>
+            ) : (
+              <img
+                src="/logo-beo-os.png"
+                alt=""
+                className="h-14 w-14 rounded-xl object-contain"
+              />
+            )}
             <div className="min-w-0 flex-1">
-              <p className="beo-agent-kicker">חדר בקרה</p>
-              <h1 className="mt-1 text-[26px] font-extrabold tracking-tight text-[var(--text-dark)] md:text-[30px]">
+              <p className="beo-agent-kicker">חדר בקרה · Beo OS</p>
+              <h1 className="mt-1 text-[24px] font-extrabold tracking-tight text-[var(--text-dark)] md:text-[28px]">
                 {personName}
                 {personName !== displayName ? (
-                  <span className="mr-2 text-[16px] font-bold text-[var(--text-mid)]">
+                  <span className="mr-2 text-[15px] font-bold text-[var(--text-mid)]">
                     · {displayName}
                   </span>
                 ) : null}
@@ -78,7 +88,7 @@ export function AgentBoardShell({
                 <p className="mt-1 text-[14px] font-semibold text-[var(--brand-deep)]">{title}</p>
               ) : null}
               {tagline ? (
-                <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--text-mid)]">
+                <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-[var(--text-mid)]">
                   {tagline}
                 </p>
               ) : null}
@@ -100,10 +110,10 @@ export function AgentBoardShell({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-center gap-2 text-center">
+          <div className="flex shrink-0 flex-col items-stretch gap-2 sm:min-w-[9.5rem]">
             {statusBadge}
-            <div className="min-w-[8.5rem] rounded-xl border border-[var(--border)] bg-white/80 px-4 py-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-light)]">
+            <div className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-light)]">
                 עלות החודש
               </div>
               <div className="mt-0.5 font-mono text-[18px] font-extrabold tabular-nums text-[var(--text-dark)]">
@@ -117,8 +127,13 @@ export function AgentBoardShell({
       {banner}
 
       {tools && tools.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="beo-agent-section-title text-center">חיבורים חיים</h2>
+        <section className="beo-agent-panel space-y-3 p-4 md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="beo-agent-section-title">חיבורים חיים</h2>
+            <span className="text-[11px] font-semibold text-[var(--text-light)]">
+              נקודה ירוקה = מחובר
+            </span>
+          </div>
           <ConnectionCubes tools={tools} />
         </section>
       ) : null}
@@ -131,7 +146,9 @@ export function AgentBoardShell({
               key={tab.id}
               type="button"
               onClick={() => onTabChange(tab.id)}
-              className={`beo-agent-tab ${active ? 'is-active' : ''}`}
+              className={`beo-agent-tab ${active ? 'is-active' : ''} ${
+                tab.priority ? 'is-priority' : ''
+              }`}
             >
               {tab.label}
             </button>
@@ -147,21 +164,51 @@ export function AgentBoardShell({
 export function AgentStatGrid({
   items,
 }: {
-  items: { label: string; value: string | number; accent?: string }[]
+  items: {
+    label: string
+    value: string | number
+    accent?: string
+    href?: string
+    onClick?: () => void
+    hint?: string
+    hot?: boolean
+  }[]
 }) {
   const count = items.length
   const layout =
     count === 2 ? 'is-two' : count === 4 ? 'is-four' : count === 6 ? 'is-six' : ''
+
   return (
     <div className={`beo-agent-stat-grid ${layout}`}>
-      {items.map((item) => (
-        <div key={item.label} className={`beo-agent-stat ${item.accent ?? ''}`}>
-          <div className="beo-agent-stat-value tabular-nums">
-            {item.value}
+      {items.map((item) => {
+        const className = `beo-agent-stat ${item.accent ?? ''} ${item.hot ? 'is-hot' : ''}`
+        const body = (
+          <>
+            <div className="beo-agent-stat-value tabular-nums">{item.value}</div>
+            <div className="beo-agent-stat-label">{item.label}</div>
+            {item.hint ? <div className="beo-agent-stat-hint">{item.hint}</div> : null}
+          </>
+        )
+        if (item.href) {
+          return (
+            <Link key={item.label} to={item.href} className={className}>
+              {body}
+            </Link>
+          )
+        }
+        if (item.onClick) {
+          return (
+            <button key={item.label} type="button" onClick={item.onClick} className={className}>
+              {body}
+            </button>
+          )
+        }
+        return (
+          <div key={item.label} className={className}>
+            {body}
           </div>
-          <div className="beo-agent-stat-label">{item.label}</div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -175,7 +222,7 @@ export function AgentConnectionsList({
 }) {
   if (connections.length === 0) {
     return (
-      <p className="text-center text-[13px] text-[var(--text-mid)]">
+      <p className="text-[13px] text-[var(--text-mid)]">
         {emptyHint ?? 'אין נתוני חיבורים להצגה.'}
       </p>
     )
@@ -187,13 +234,23 @@ export function AgentConnectionsList({
           key={c.kind}
           className={`beo-agent-conn-cube ${c.connected ? 'is-on' : ''}`}
         >
-          <div className="text-[13px] font-bold text-[var(--text-dark)]">{c.label}</div>
-          <span className={`beo-agent-conn-state ${c.connected ? '' : 'text-[var(--text-light)]'}`}>
-            {c.connected ? 'מחובר' : 'לא מחובר'}
-          </span>
-          {c.note ? (
-            <div className="text-[11px] leading-snug text-[var(--text-light)]">{c.note}</div>
-          ) : null}
+          <span
+            className={`beo-agent-live-dot ${c.connected ? '' : 'is-off'}`}
+            aria-hidden
+          />
+          <div className="beo-agent-conn-meta">
+            <div className="text-[13px] font-bold text-[var(--text-dark)]">{c.label}</div>
+            <span
+              className={`text-[11px] font-semibold ${
+                c.connected ? 'text-emerald-700' : 'text-[var(--text-light)]'
+              }`}
+            >
+              {c.connected ? 'מחובר' : 'לא מחובר'}
+            </span>
+            {c.note ? (
+              <div className="text-[11px] leading-snug text-[var(--text-light)]">{c.note}</div>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>

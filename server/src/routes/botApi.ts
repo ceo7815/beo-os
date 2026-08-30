@@ -18,6 +18,9 @@ import {
   unauthorized,
   type ApiResult,
 } from '../lib/hubApiHttpUtil.js'
+import { getAdminDb } from '../lib/firebaseAdmin.js'
+import { MorningClient, MorningError } from '../lib/morningClient.js'
+import { loadMorningCredentials } from '../lib/morningCredentials.js'
 
 // Bot/agent-facing CRM API, served directly from this already-running Fastify server instead of
 // the difyHubData Cloud Function (which requires GCP billing to be enabled on hub-pos-f399c -
@@ -137,6 +140,81 @@ export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> 
         return
       }
       throw e
+    }
+  })
+
+  app.post('/api/bot-morning/documents', async (req, reply) => {
+    if (!isValidApiKey(req.headers as Record<string, string | string[] | undefined>)) {
+      send(reply, unauthorized())
+      return
+    }
+    const body = parseBody(req.body)
+    const amount = Number(body.amount)
+    const description = String(body.description || '').trim()
+    if (!description || !Number.isFinite(amount) || amount <= 0) {
+      reply.code(400).send({ ok: false, error: 'חסרים description ו-amount' })
+      return
+    }
+    const creds = await loadMorningCredentials()
+    if (!creds) {
+      reply.code(400).send({ ok: false, error: 'חשבונית ירוקה לא מחוברת בשרת' })
+      return
+    }
+
+    let clientBlock: Record<string, unknown> = {}
+    const clientId = String(body.clientId || '').trim()
+    const db = getAdminDb()
+    if (clientId && db) {
+      const snap = await db.collection('clients').doc(clientId).get()
+      const row = snap.data() || {}
+      const gi = typeof row.greenInvoiceId === 'string' ? row.greenInvoiceId.trim() : ''
+      if (gi) clientBlock = { id: gi }
+      else {
+        clientBlock = {
+          name: String(body.clientName || row.name || '').trim(),
+          emails: [String(body.email || row.email || '').trim()].filter(Boolean),
+          taxId: String(body.taxId || row.taxId || '').trim() || undefined,
+        }
+      }
+    } else {
+      clientBlock = {
+        name: String(body.clientName || '').trim(),
+        emails: [String(body.email || '').trim()].filter(Boolean),
+        taxId: String(body.taxId || '').trim() || undefined,
+      }
+    }
+    if (!clientBlock.id && !clientBlock.name) {
+      reply.code(400).send({ ok: false, error: 'חסר לקוח (clientId או clientName)' })
+      return
+    }
+
+    const docType = Number(body.docType) === 305 ? 305 : 320
+    const payload = {
+      type: docType,
+      lang: 'he',
+      currency: 'ILS',
+      client: clientBlock,
+      income: [
+        {
+          description,
+          quantity: 1,
+          price: amount,
+          currency: 'ILS',
+          vatType: 1,
+        },
+      ],
+    }
+    try {
+      const client = new MorningClient(creds)
+      const created = await client.createDocument(payload)
+      reply.code(201).send({ ok: true, document: created })
+    } catch (e) {
+      const status = e instanceof MorningError ? e.status : 502
+      reply.code(status >= 400 && status < 600 ? status : 502).send({
+        ok: false,
+        error: e instanceof Error ? e.message : 'הנפקה נכשלה',
+        detail: e instanceof MorningError ? e.detail : undefined,
+      })
     }
   })
 }

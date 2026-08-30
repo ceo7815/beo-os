@@ -3,27 +3,18 @@ import { formatDateIL } from '../../lib/dates'
 import { hubSectionClass } from '../../lib/hubSectionBorder'
 import { useAgentWorkspace } from '../../hooks/useAgentWorkspace'
 import { currentYm } from '../../lib/agentRevenue'
-import type { Lead, LeadStatus } from '../../types'
+import type { Lead } from '../../types'
+import {
+  LEAD_STATUS_COLORS,
+  LEAD_STATUS_LABELS,
+  WARM_LEAD_PIPELINE,
+} from '../../lib/leadStatusUi'
 import { AgentLeadQuoteSnippet } from '../../components/agent/AgentLeadQuoteSnippet'
 import { Badge } from '../../components/shared/Badge'
 
-const statusLabels: Record<LeadStatus, string> = {
-  new: 'חדש',
-  specification: 'בתהליך אפיון',
-  quote_sent: 'נשלחה הצעת מחיר',
-  follow_up: 'יש לבצע פולואפ',
-  no_answer: 'אין מענה',
-  not_relevant: 'לא רלוונטי',
-  closed: 'נסגרה',
-}
-
-const OPEN_PIPELINE: ReadonlySet<LeadStatus> = new Set([
-  'new',
-  'specification',
-  'quote_sent',
-  'follow_up',
-  'no_answer',
-])
+const statusLabels = LEAD_STATUS_LABELS
+const statusColors = LEAD_STATUS_COLORS
+const OPEN_PIPELINE = WARM_LEAD_PIPELINE
 
 function leadActivityMonthYm(l: Lead): string | null {
   const at = l.lastActivityAt?.trim().slice(0, 10)
@@ -31,16 +22,6 @@ function leadActivityMonthYm(l: Lead): string | null {
   const c = l.createdAt?.trim().slice(0, 10)
   if (c && /^\d{4}-\d{2}-\d{2}$/.test(c)) return c.slice(0, 7)
   return null
-}
-
-const statusColors: Record<LeadStatus, string> = {
-  new: '#5828A0',
-  specification: '#7C3AED',
-  quote_sent: '#D97706',
-  follow_up: '#F59E0B',
-  no_answer: '#64748B',
-  not_relevant: '#DC2626',
-  closed: '#16A34A',
 }
 
 export function AgentLeadsPage() {
@@ -56,8 +37,11 @@ export function AgentLeadsPage() {
       return leadActivityMonthYm(l) === ymNow
     }).length
     const inProgress = myLeads.filter((l) => OPEN_PIPELINE.has(l.status)).length
-    const notClosed = myLeads.filter((l) => l.status !== 'closed').length
-    return { closedAll, closedMonth, inProgress, notClosed }
+    const coldWaiting = myLeads.filter((l) => l.status === 'cold').length
+    const notClosed = myLeads.filter(
+      (l) => l.status !== 'closed' && l.status !== 'cold',
+    ).length
+    return { closedAll, closedMonth, inProgress, coldWaiting, notClosed }
   }, [myLeads, ymNow])
 
   const kpis = useMemo(
@@ -78,9 +62,9 @@ export function AgentLeadsPage() {
         color: 'text-[var(--orange)]',
       },
       {
-        label: 'לידים שלא נסגרו',
-        value: String(leadKpis.notClosed),
-        color: 'text-[var(--text-dark)]',
+        label: 'לידים קרים ממתינים',
+        value: String(leadKpis.coldWaiting),
+        color: 'text-[#5B7C99]',
       },
     ],
     [leadKpis],
@@ -100,6 +84,15 @@ export function AgentLeadsPage() {
       )
     })
   }, [myLeads, q])
+
+  const warmFiltered = useMemo(
+    () => filtered.filter((l) => l.status !== 'cold'),
+    [filtered],
+  )
+  const coldFiltered = useMemo(
+    () => filtered.filter((l) => l.status === 'cold'),
+    [filtered],
+  )
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-5 px-4 py-5 md:px-8 md:py-8">
@@ -142,7 +135,7 @@ export function AgentLeadsPage() {
       </div>
 
       <section className={`rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${hubSectionClass(1)}`}>
-        {filtered.length === 0 ? (
+        {warmFiltered.length === 0 && coldFiltered.length === 0 ? (
           <p className="p-6 text-center text-sm text-[var(--text-mid)]">
             {myLeads.length === 0
               ? 'אין לידים המשויכים אליך או ללקוחותיך.'
@@ -150,6 +143,11 @@ export function AgentLeadsPage() {
           </p>
         ) : (
           <>
+            {warmFiltered.length === 0 ? (
+              <p className="p-4 text-center text-sm text-[var(--text-mid)]">
+                אין לידים חמים בטיפול — ראו מטה לידים קרים אם יש.
+              </p>
+            ) : null}
             <div className="hidden min-w-0 overflow-x-auto md:block">
               <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm" dir="rtl">
                 <thead className="bg-[var(--surface-muted)]">
@@ -166,7 +164,7 @@ export function AgentLeadsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((l) => {
+                  {warmFiltered.map((l) => {
                     const linked =
                       (l.clientId && myClients.find((c) => c.id === l.clientId)?.name) || '—'
                     return (
@@ -230,7 +228,7 @@ export function AgentLeadsPage() {
               </table>
             </div>
             <div className="space-y-3 p-3 md:hidden">
-              {filtered.map((l) => (
+              {warmFiltered.map((l) => (
                 <article
                   key={l.id}
                   className="rounded-xl border border-[var(--border)] bg-[var(--dash-panel-bg)] p-3"
@@ -265,6 +263,32 @@ export function AgentLeadsPage() {
           </>
         )}
       </section>
+
+      {coldFiltered.length > 0 ? (
+        <section className={`rounded-2xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${hubSectionClass(2)}`}>
+          <h2 className="mb-3 text-[15px] font-extrabold text-[#5B7C99]">לידים קרים</h2>
+          <p className="mb-3 text-[12px] text-[var(--text-mid)]">
+            פנייה משי — ממתין לתשובה. לא בצינור המכירות החם.
+          </p>
+          <ul className="space-y-2">
+            {coldFiltered.map((l) => (
+              <li
+                key={l.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#5B7C99]/30 bg-[#F8FAFC] px-3 py-2.5"
+              >
+                <div>
+                  <div className="font-semibold text-[var(--text-dark)]">{l.company || l.name}</div>
+                  <div className="text-[12px] text-[var(--text-mid)]" dir="ltr">
+                    {l.email || '—'}
+                    {l.phone ? ` · ${l.phone}` : ''}
+                  </div>
+                </div>
+                <Badge label={statusLabels.cold} color={statusColors.cold} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   )
 }

@@ -568,6 +568,17 @@ export class MorningClient {
         : items.length
     return { items, page, pages, total }
   }
+
+  /**
+   * הנפקת מסמך הכנסה (חשבונית / חשבונית-קבלה).
+   * type: 320 חשבונית מס, 305 חשבונית-קבלה, 400 קבלה.
+   */
+  async createDocument(payload: Record<string, unknown>): Promise<MorningDocument> {
+    return this.authedRequest<MorningDocument>('/documents', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  }
 }
 
 export class MorningError extends Error {

@@ -33,6 +33,8 @@ import type {
 import { Badge } from '../components/shared/Badge'
 import { LeadScheduleDateEditorModal } from '../components/leads/LeadScheduleDateEditorModal'
 import { EmptyState } from '../components/shared/EmptyState'
+import { NeedsMeNowQueue, type NeedsMeItem } from '../components/NeedsMeNowQueue'
+import { OnboardingChecklist } from '../components/OnboardingChecklist'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { hubSectionClass, hubSectionElevatedClass } from '../lib/hubSectionBorder'
 
@@ -175,6 +177,7 @@ function projectOpenTasksPhrase(n: number): string {
 const DASHBOARD_OPEN_STATUSES: ProjectStatus[] = ['active']
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  cold: 'ליד קר',
   new: 'חדש',
   specification: 'אפיון',
   quote_sent: 'הצעת מחיר',
@@ -185,6 +188,7 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 }
 
 const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
+  cold: '#5B7C99',
   new: '#5828A0',
   specification: '#7C3AED',
   quote_sent: '#D97706',
@@ -230,6 +234,7 @@ function leadPipelineSort(a: Lead, b: Lead, today: string): number {
   const tier = (l: Lead): number => {
     if (l.status === 'closed') return 90
     if (l.status === 'not_relevant') return 88
+    if (l.status === 'cold') return 70
     const sched = leadScheduleYmd(l) ?? ''
     if (sched && /^\d{4}-\d{2}-\d{2}$/.test(sched)) {
       if (sched < today) return 0
@@ -325,10 +330,19 @@ export function Dashboard() {
 
   const openLeadsPool = useMemo(() => {
     const open = leads.filter(
-      (l) => l.status !== 'closed' && l.status !== 'not_relevant',
+      (l) =>
+        l.status !== 'closed' &&
+        l.status !== 'not_relevant' &&
+        l.status !== 'cold',
     )
     if (privileged) return open
     return open.filter((l) => l.ownerId === myUid)
+  }, [leads, privileged, myUid])
+
+  const coldLeadsWaiting = useMemo(() => {
+    const cold = leads.filter((l) => l.status === 'cold')
+    if (privileged) return cold.length
+    return cold.filter((l) => l.ownerId === myUid).length
   }, [leads, privileged, myUid])
 
   const campaignsPipeline = useMemo(() => {
@@ -345,7 +359,10 @@ export function Dashboard() {
 
   const dashboardLeadsSource = useMemo(() => {
     const open = leads.filter(
-      (l) => l.status !== 'closed' && l.status !== 'not_relevant',
+      (l) =>
+        l.status !== 'closed' &&
+        l.status !== 'not_relevant' &&
+        l.status !== 'cold',
     )
     if (privileged) return open
     if (employeeShowOrgWideLeadsCampaigns) return open
@@ -478,6 +495,71 @@ export function Dashboard() {
 
   const topOverdueTask = myOverdueTasks[0]
 
+  const needsMeItems = useMemo((): NeedsMeItem[] => {
+    const items: NeedsMeItem[] = []
+    for (const t of myOverdueTasks.slice(0, 4)) {
+      items.push({
+        id: `task-${t.id}`,
+        tone: 'danger',
+        title: t.title,
+        detail: 'משימה באיחור',
+        meta: formatTaskDueDisplay(t.dueDate, t.dueTime),
+        to: '/tasks?focus=overdue',
+      })
+    }
+    const urgentLeads = openLeadsPool.filter((l) => {
+      const ymd = leadScheduleYmd(l) ?? ''
+      const u = leadScheduleUrgency(ymd, todayDash)
+      return u?.label === 'דחוף מאוד' || u?.label === 'דחוף היום'
+    })
+    for (const l of urgentLeads.slice(0, 4)) {
+      items.push({
+        id: `lead-${l.id}`,
+        tone: 'warning',
+        title: l.company || l.name,
+        detail: 'פולואפ ליד להיום / באיחור',
+        meta: leadScheduleYmd(l) || undefined,
+        to: '/leads?filter=open',
+      })
+    }
+    if (coldLeadsWaiting > 0) {
+      items.push({
+        id: 'cold-waiting',
+        tone: 'info',
+        title:
+          coldLeadsWaiting === 1
+            ? 'ליד קר אחד ממתין לתשובה'
+            : `${coldLeadsWaiting} לידים קרים ממתינים`,
+        detail: 'פניות שי — עדיין בלי תשובה אנושית',
+        to: '/leads?filter=cold',
+      })
+    }
+    for (const row of collectionOverdueList.slice(0, 3)) {
+      items.push({
+        id: `col-${row.id}`,
+        tone: 'danger',
+        title: clientById.get(row.clientId) ?? 'גבייה באיחור',
+        detail: 'מעקב גבייה',
+        to: '/collections',
+      })
+    }
+    items.push({
+      id: 'shai-approvals',
+      tone: 'brand',
+      title: 'אישורי שי',
+      detail: 'טיוטות מייל ממתינות לאישור',
+      to: '/ai-agents/leads-beo',
+    })
+    return items.slice(0, 10)
+  }, [
+    myOverdueTasks,
+    openLeadsPool,
+    todayDash,
+    coldLeadsWaiting,
+    collectionOverdueList,
+    clientById,
+  ])
+
   const openTasksHint = privileged
     ? 'משימות פתוחות גלויות לך — פירוט לפי אחריות'
     : 'משימות עליך לעומת משימות שיצרת לאחרים'
@@ -490,46 +572,8 @@ export function Dashboard() {
 
   return (
     <div className="beo-page space-y-5">
-      {(topOverdueTask || leadsDueUrgent > 0) ? (
-        <section className="space-y-2">
-          {topOverdueTask ? (
-            <button
-              type="button"
-              onClick={() => navigate('/tasks')}
-              className="hub-alert hub-alert--danger"
-            >
-              <div>
-                <p className="text-xs font-bold text-rose-700">דורש טיפול מיידי</p>
-                <p className="text-sm font-semibold text-[var(--text-dark)]">
-                  {topOverdueTask.title}
-                </p>
-              </div>
-              <span className="shrink-0 text-xs font-semibold text-rose-700">
-                יעד: {formatTaskDueDisplay(topOverdueTask.dueDate, topOverdueTask.dueTime)}
-              </span>
-            </button>
-          ) : null}
-          {leadsDueUrgent > 0 ? (
-            <button
-              type="button"
-              onClick={() => navigate('/leads')}
-              className="hub-alert hub-alert--warning"
-            >
-              <div>
-                <p className="text-xs font-bold text-amber-800">מעקב לידים</p>
-                <p className="text-sm font-semibold text-[var(--text-dark)]">
-                  {leadsDueUrgent === 1
-                    ? 'ליד אחד עם פולואפ להיום או באיחור'
-                    : `${leadsDueUrgent} לידים עם פולואפ להיום או באיחור`}
-                </p>
-              </div>
-              <span className="shrink-0 text-xs font-semibold text-amber-800">
-                לרשימת הלידים
-              </span>
-            </button>
-          ) : null}
-        </section>
-      ) : null}
+      <OnboardingChecklist />
+      <NeedsMeNowQueue items={needsMeItems} />
 
       <header className={`${hubSectionElevatedClass()} rounded-2xl p-5 md:p-6`}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -606,12 +650,32 @@ export function Dashboard() {
         <KpiCard
           value={openLeadsPool.length}
           label={privileged ? 'לידים בצינור' : 'הלידים שלי'}
-          hint="ללא סטטוס «נסגר»"
+          hint="לידים חמים בטיפול · בלי קרים"
           tone="brand"
           navigateTo="/leads?filter=open"
           navLabel="מעבר ללידים בצינור"
         />
       </section>
+
+      {coldLeadsWaiting > 0 ? (
+        <button
+          type="button"
+          onClick={() => navigate('/leads?filter=cold')}
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#5B7C99]/35 bg-[#F1F5F9] px-4 py-3 text-right transition hover:bg-[#E8EEF4]"
+        >
+          <div>
+            <p className="text-[11px] font-bold text-[#5B7C99]">לידים קרים ממתינים</p>
+            <p className="text-[13px] font-semibold text-[var(--text-dark)]">
+              {coldLeadsWaiting === 1
+                ? 'ליד קר אחד ממתין לתשובה משי'
+                : `${coldLeadsWaiting} לידים קרים ממתינים לתשובה`}
+            </p>
+          </div>
+          <span className="shrink-0 text-[22px] font-extrabold tabular-nums text-[#5B7C99]">
+            {coldLeadsWaiting}
+          </span>
+        </button>
+      ) : null}
 
       {employeeShowOrgWideLeadsCampaigns ? (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-center text-sm font-medium leading-relaxed text-[var(--text-mid)]">

@@ -1068,6 +1068,7 @@ export function docToLead(d: QueryDocumentSnapshot<DocumentData>): Lead {
   const rawStatus = String(x.status ?? 'new')
   /** ערכים ישנים handling / in_progress — ממופים ל־new (הסרת סטטוס «בטיפול» מהמערכת) */
   const status: Lead['status'] =
+    rawStatus === 'cold' ||
     rawStatus === 'specification' ||
     rawStatus === 'quote_sent' ||
     rawStatus === 'follow_up' ||

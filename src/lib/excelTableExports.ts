@@ -82,6 +82,7 @@ const CAMPAIGN_KIND_LABEL: Record<CampaignKind, string> = {
 // ── Lead labels ──
 
 const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
+  cold: 'ליד קר',
   new: 'חדש',
   specification: 'בתהליך אפיון',
   quote_sent: 'נשלחה הצעת מחיר',

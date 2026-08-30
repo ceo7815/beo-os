@@ -18,6 +18,26 @@ export type AgentProfileMeta = {
 const AVATAR_KEY = (id: string) => `beo-os:agent-avatar:${id}`
 
 export const AGENT_PROFILES: Record<string, AgentProfileMeta> = {
+  'johnny-beo': {
+    id: 'johnny-beo',
+    personName: 'ג׳וני',
+    title: 'מנכ״ל דיגיטלי / עוזר אישי',
+    tagline:
+      'הסוכן הראשי. טלגרם כולל קול. Beo OS מלא. Google Calendar. ceo@. חשבונית ירוקה. בוס על שי ועדי אחרי אישור שלך.',
+    email: 'ceo@beosystem.co.il',
+    emailNote: 'שליחה רק אחרי כן בטלגרם',
+    department: 'Beo Agents · Chief',
+    capabilities: [
+      'שיחה שוטפת בטלגרם, כולל הודעות קול דו־כיווניות',
+      'משימות, לידים, לקוחות, פרויקטים — לפי שדות Beo OS',
+      'יומן: Google Calendar מקור, שיקוף ל-OS, פגישות Meet',
+      'מייל מ-ceo@ אחרי אישור',
+      'הנפקת חשבונית ירוקה אחרי «תנפיק»',
+      'אישור שי/עדי מהצ׳אט אחרי כן מפורש',
+    ],
+    tools: ['OpenAI', 'Telegram', 'Beo OS', 'Gmail ceo@', 'Google Calendar', 'חשבונית ירוקה'],
+    defaultAvatarSrc: '/ai-agents/johnny-beo.jpg',
+  },
   'leads-beo': {
     id: 'leads-beo',
     personName: 'שי',
@@ -44,17 +64,19 @@ export const AGENT_PROFILES: Record<string, AgentProfileMeta> = {
     personName: 'עדי',
     title: 'מנהלת סושיאל ורשתות חברתיות',
     tagline:
-      'מנהלת הסושיאל של Beo — אינסטגרם ופייסבוק. מדברים איתה בטלגרם.',
+      'יומן ואישור ב-Beo OS. מעלה לאינסטגרם ולפייסבוק אחרי אישור. טלגרם לשיחה ועדכונים.',
     email: 'social@beosystem.com',
-    emailNote: 'פרסום דרך הצי · טלגרם לשיחה',
+    emailNote: 'פרסום רק אחרי אישור ב-Beo OS',
     department: 'Beo Agents · Social',
     capabilities: [
-      'ניהול סושיאל ורשתות של Beo',
-      'כתיבה ועיצוב לאינסטגרם ולפייסבוק',
-      'שיחה בטלגרם מול אור',
-      'תצוגה מקדימה לפני פרסום חי',
+      'יומן תוכן חודשי ב-Beo OS',
+      'אישור ותזמון לפני עלייה לרשתות',
+      'פרסום לאינסטגרם ולפייסבוק (Meta)',
+      'כותרת מותאמת לכל רשת, אותו ויזואל',
+      'טלגרם: שיחה חופשית ועדכונים — בלי אישור משם',
+      'תיבת תגובות לתצוגה בלבד',
     ],
-    tools: ['OpenAI', 'Telegram', 'Instagram (תצוגה)', 'Facebook (תצוגה)'],
+    tools: ['OpenAI', 'Telegram', 'Instagram', 'Facebook'],
     defaultAvatarSrc: '/ai-agents/social-beo.jpg',
   },
 }

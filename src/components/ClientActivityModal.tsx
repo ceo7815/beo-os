@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateIL, formatDateTimeIL, formatTaskDueDisplay, todayYmd } from '../lib/dates'
@@ -24,6 +24,7 @@ import type {
 } from '../types'
 
 const LEAD_STATUS_HE: Record<LeadStatus, string> = {
+  cold: 'ליד קר',
   new: 'חדש',
   specification: 'בתהליך אפיון',
   quote_sent: 'נשלחה הצעת מחיר',
@@ -159,6 +160,9 @@ export function ClientActivityModal(props: Props) {
   ])
 
   const today = todayYmd()
+  const [tab, setTab] = useState<'overview' | 'projects' | 'leads' | 'tasks' | 'money'>(
+    'overview',
+  )
 
   const projectNameById = useMemo(() => {
     const m = new Map<string, string>()
@@ -168,20 +172,42 @@ export function ClientActivityModal(props: Props) {
 
   if (!client) return null
 
+  const tabs = [
+    { id: 'overview' as const, label: 'סקירה' },
+    { id: 'projects' as const, label: `פרויקטים (${aggregated.projects.length})` },
+    { id: 'leads' as const, label: `לידים (${aggregated.leads.length})` },
+    { id: 'tasks' as const, label: `משימות (${aggregated.tasks.length})` },
+    { id: 'money' as const, label: 'כסף' },
+  ]
+
   return (
     <Modal
       isOpen={open}
       onClose={onClose}
-      title={`פעילות ושיוכים · ${client.name}`}
+      title={`לקוח 360° · ${client.name}`}
       size="xl"
       bodyClassName="max-h-[min(85vh,880px)] overflow-y-auto overflow-x-hidden"
     >
-      <p className="mb-4 text-[13px] leading-relaxed text-[var(--text-mid)]">
-        סיכום כל הרשומות במערכת המקושרות ללקוח — פרויקטים, משימות, לידים, קמפיינים, גבייה, חשבוניות,
-        וכספת סיסמאות (ללא חשיפת סיסמאות).
+      <p className="mb-3 text-[13px] leading-relaxed text-[var(--text-mid)]">
+        כרטיס מלא: לידים, פרויקטים, משימות, גבייה וחשבוניות — מקור אמת אחד.
       </p>
 
+      <nav className="beo-agent-tabs mb-4">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`beo-agent-tab ${tab === t.id ? 'is-active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
       <div className="space-y-4">
+        {(tab === 'overview' || tab === 'projects') && false ? null : null}
+        {tab === 'overview' ? (
         <section className={`rounded-2xl ${hubSectionClass(0)} p-4 shadow-none`}>
           <h3 className="mb-2 text-sm font-bold text-[var(--text-dark)]">פרטי לקוח</h3>
           <dl className="grid gap-2 text-[13px] sm:grid-cols-2">
@@ -205,7 +231,9 @@ export function ClientActivityModal(props: Props) {
             </div>
           </dl>
         </section>
+        ) : null}
 
+        {tab === 'overview' || tab === 'projects' ? (
         <section className={`rounded-2xl ${hubSectionClass(1)} p-4 shadow-none`}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-[var(--text-dark)]">פרויקטים</h3>
@@ -257,7 +285,9 @@ export function ClientActivityModal(props: Props) {
             </ul>
           )}
         </section>
+        ) : null}
 
+        {tab === 'overview' || tab === 'tasks' ? (
         <section className={`rounded-2xl ${hubSectionClass(2)} p-4 shadow-none`}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-[var(--text-dark)]">משימות</h3>
@@ -301,7 +331,9 @@ export function ClientActivityModal(props: Props) {
             </ul>
           )}
         </section>
+        ) : null}
 
+        {tab === 'overview' || tab === 'leads' ? (
         <section className={`rounded-2xl ${hubSectionClass(3)} p-4 shadow-none`}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-[var(--text-dark)]">לידים</h3>
@@ -344,7 +376,10 @@ export function ClientActivityModal(props: Props) {
             </ul>
           )}
         </section>
+        ) : null}
 
+        {tab === 'overview' || tab === 'money' ? (
+        <>
         <section className={`rounded-2xl ${hubSectionClass(0)} p-4 shadow-none`}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-[var(--text-dark)]">קמפיינים</h3>
@@ -492,6 +527,8 @@ export function ClientActivityModal(props: Props) {
             </ul>
           )}
         </section>
+        </>
+        ) : null}
       </div>
 
       <div className="mt-6 flex justify-end border-t border-[var(--border)] pt-4">

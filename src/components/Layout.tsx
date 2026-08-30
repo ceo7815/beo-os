@@ -10,9 +10,11 @@ import { ToastHost } from './shared/Toast'
 import { QuickActionsFloat } from './QuickActionsFloat'
 import { QuickTasksSlider } from './QuickTasksSlider'
 import { TaskDrawer } from './TaskDrawer'
+import { CommandPalette } from './CommandPalette'
 import { userIsAdmin } from './RequireAdmin'
 import { BRAND, brandLogoAlt, brandLogoSrc } from '../lib/brand'
 import { AI_AGENT_BOARDS } from '../lib/aiAgentsRegistry'
+import { getAgentProfile } from '../lib/aiAgentProfiles'
 import { useAiAgentsFleet } from '../hooks/useAiAgentsFleet'
 
 const workspaceLinks = [
@@ -484,12 +486,16 @@ export function Layout() {
                       </NavGlyph>
                     }
                   >
-                    <NavSubLink to="/ai-agents" label="סקירה" end />
+                    <NavSubLink to="/ai-agents" label="רשת סוכנים" end />
+                    <NavSubLink to="/ai-agents/overview" label="סקירה" />
                     {AI_AGENT_BOARDS.map((board) => {
                       const fromFleet = fleetUp
                         ? fleet?.agents.find((a) => a.id === board.id)
                         : undefined
-                      const label = fromFleet?.display_name ?? board.displayName
+                      const person = getAgentProfile(board.id)?.personName
+                      const label = person
+                        ? `${person} · ${board.displayName}`
+                        : fromFleet?.display_name ?? board.displayName
                       const running = Boolean(fromFleet?.running)
                       return (
                         <NavSubLink
@@ -498,7 +504,10 @@ export function Layout() {
                           label={label}
                           badge={
                             running ? (
-                              <span className="text-[10px] font-bold text-emerald-700">חי</span>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+                                <span className="beo-agent-live-dot" aria-hidden />
+                                חי
+                              </span>
                             ) : !fleetUp ? (
                               <span className="text-[10px] font-semibold text-[var(--text-light)]">
                                 לא זמין
@@ -589,6 +598,7 @@ export function Layout() {
           <QuickActionsFloat />
           <QuickTasksSlider />
           <TaskDrawer />
+          <CommandPalette />
           <Outlet />
         </main>
       </div>

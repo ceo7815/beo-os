@@ -25,7 +25,7 @@ import {
   type LeadsOverview,
   type LearningArm,
 } from '../../lib/leadsBeoApi'
-import { syncBeoAgentRepliesToCrm } from '../../lib/syncBeoLeadsCrm'
+import { syncBeoAgentRepliesToCrm, ensureColdLeadFromSent } from '../../lib/syncBeoLeadsCrm'
 import {
   AgentBoardShell,
   AgentConnectionsList,
@@ -36,15 +36,15 @@ import { AgentProfilePanel } from '../../components/ai-agents/AgentProfilePanel'
 import { displayToolsForAgent, formatUsd, AI_AGENT_COST_LABEL } from '../../lib/aiAgentsDisplay'
 
 const TABS = [
-  { id: 'profile', label: 'פרופיל' },
+  { id: 'approvals', label: 'אישורים', priority: true },
   { id: 'overview', label: 'סקירה' },
   { id: 'pipeline', label: 'צינור' },
-  { id: 'approvals', label: 'אישורים' },
   { id: 'leads', label: 'לידים' },
   { id: 'learning', label: 'למידה' },
   { id: 'connections', label: 'חיבורים' },
   { id: 'settings', label: 'הגדרות' },
   { id: 'costs', label: 'עלויות' },
+  { id: 'profile', label: 'פרופיל' },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -334,15 +334,15 @@ function ApprovalCard({
           type="button"
           disabled={busy}
           onClick={() => onApprove(subject, body, waBody)}
-          className="rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white disabled:opacity-60"
+          className="min-h-[44px] min-w-[9rem] rounded-xl bg-[var(--brand)] px-4 py-2.5 text-[14px] font-bold text-white disabled:opacity-60"
         >
-          אשר שליחת מייל
+          {busy ? 'שולח…' : 'אשר שליחת מייל'}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={onReject}
-          className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold disabled:opacity-60"
+          className="min-h-[44px] rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-[14px] font-semibold disabled:opacity-60"
         >
           דחה
         </button>
@@ -350,7 +350,7 @@ function ApprovalCard({
           type="button"
           disabled={busy}
           onClick={() => onSaveEdit(subject, body, waBody)}
-          className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold disabled:opacity-60"
+          className="min-h-[44px] rounded-xl border border-[var(--border)] bg-white px-3.5 py-2.5 text-[13px] font-semibold disabled:opacity-60"
         >
           שמור טיוטה
         </button>
@@ -373,14 +373,16 @@ export function LeadsBeoBoard({
 }) {
   const pushToast = useHubStore((s) => s.pushToast)
   const { user } = useAuth()
-  const { addLead } = useLeads()
-  const [tab, setTab] = useState<TabId>('profile')
+  const { leads, addLead, updateLead } = useLeads()
+  const [tab, setTab] = useState<TabId>('approvals')
   const [overview, setOverview] = useState<LeadsOverview | null>(null)
   const [items, setItems] = useState<LeadPipelineItem[]>([])
   const [approvals, setApprovals] = useState<LeadPipelineItem[]>([])
   const [labels, setLabels] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [selectedApprovalIds, setSelectedApprovalIds] = useState<Set<string>>(new Set())
+  const [batchBusy, setBatchBusy] = useState(false)
   const [runningDaily, setRunningDaily] = useState(false)
   const [redrafting, setRedrafting] = useState(false)
   const [queueingFu, setQueueingFu] = useState(false)
@@ -425,18 +427,31 @@ export function LeadsBeoBoard({
     if (!fleetUp || !user) return
     const sync = await syncBeoAgentRepliesToCrm({
       userId: user.uid,
+      leads,
       addLead,
+      updateLead,
     })
-    if (sync.created > 0) {
+    if (sync.upgraded > 0) {
+      pushToast(
+        sync.upgraded === 1
+          ? 'ענה · עבר ללידים רגילים'
+          : `${sync.upgraded} תשובות · עברו ללידים רגילים`,
+        'success',
+      )
+      await loadBoard()
+    } else if (sync.created > 0) {
       pushToast(
         sync.created === 1
-          ? 'תשובה אנושית — נוצר ליד בדף לידים'
+          ? 'ענה · נוצר ליד רגיל בדף לידים'
           : `${sync.created} תשובות אנושיות — נוצרו לידים`,
         'success',
       )
       await loadBoard()
+    } else if (sync.closed > 0) {
+      pushToast('עודכן ליד קר (Bounce / לא מעוניין)', 'success')
+      await loadBoard()
     }
-  }, [fleetUp, user, addLead, pushToast, loadBoard])
+  }, [fleetUp, user, leads, addLead, updateLead, pushToast, loadBoard])
 
   useEffect(() => {
     void loadBoard()
@@ -452,14 +467,33 @@ export function LeadsBeoBoard({
     body?: { email_subject?: string; email_body?: string; whatsapp_body?: string },
   ) => {
     setBusyId(id)
+    const pendingItem = approvals.find((row) => row.id === id) || items.find((row) => row.id === id)
     const result = await postLeadAction(id, action, body)
     if (result.ok) {
       if (action === 'approve' || action === 'reject') {
         hiddenIds.current.add(id)
         setApprovals((prev) => prev.filter((row) => row.id !== id))
       }
-      if (action === 'approve') {
-        pushToast('המייל נשלח מ-sales@beosystem.com — וואטסאפ שולחים מהטלפון', 'success')
+      if (action === 'approve' && user && pendingItem) {
+        const cold = await ensureColdLeadFromSent(
+          { ...pendingItem, status: 'sent' },
+          {
+            userId: user.uid,
+            leads,
+            addLead,
+            updateLead,
+            forceAfterApprove: true,
+          },
+        )
+        if (cold === 'created') {
+          pushToast('נשלח · נפתח ליד קר בדף לידים', 'success')
+        } else if (cold === 'updated') {
+          pushToast('נשלח · עודכן ליד קר קיים', 'success')
+        } else {
+          pushToast('המייל נשלח מ-sales@beosystem.com', 'success')
+        }
+      } else if (action === 'approve') {
+        pushToast('המייל נשלח מ-sales@beosystem.com', 'success')
       } else if (action === 'reject') {
         pushToast('הטיוטה נדחתה', 'success')
       } else {
@@ -544,25 +578,22 @@ export function LeadsBeoBoard({
   ]
 
   const statusBadge = !fleetUp ? (
-    <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-mid)]">
+    <span className="beo-agent-chip beo-agent-chip--muted inline-flex items-center gap-1.5">
+      <span className="beo-agent-live-dot is-warn" aria-hidden />
       לא זמין
     </span>
   ) : running ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
-      <span className="relative flex h-1.5 w-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-      </span>
-      חי
+    <span className="beo-agent-chip beo-agent-chip--live inline-flex items-center gap-1.5">
+      <span className="beo-agent-live-dot" aria-hidden />
+      חי · מחובר
     </span>
   ) : inFleet ? (
-    <span className="rounded-full bg-[var(--surface-muted)] px-2.5 py-1 text-[11px] font-bold text-[var(--text-mid)]">
+    <span className="beo-agent-chip beo-agent-chip--muted inline-flex items-center gap-1.5">
+      <span className="beo-agent-live-dot is-off" aria-hidden />
       כבוי
     </span>
   ) : (
-    <span className="rounded-full bg-[var(--brand-light)] px-2.5 py-1 text-[11px] font-bold text-[var(--brand-deep)]">
-      בקרוב
-    </span>
+    <span className="beo-agent-chip inline-flex items-center gap-1.5">בקרוב</span>
   )
 
   const tools = displayToolsForAgent(board.id, agent).map((t) =>
@@ -629,59 +660,141 @@ export function LeadsBeoBoard({
       ) : null}
 
       {tab === 'overview' ? (
-        <div className="space-y-5">
-          <div className={`${hubSectionClass(0)} rounded-2xl p-6 text-center`}>
-            <p className="mx-auto max-w-2xl text-[13px] leading-relaxed text-[var(--text-mid)]">
-              {board.purpose} שי כותב עברית לישראל. רק ציון {overview?.score_floor ?? 72}+ עולה לאישור.
-              שליחה א׳–ה׳ 09:00–17:00 אחרי אישור. תשובה אנושית → ליד כאן. כל יום שי לומד מה ענה.
-            </p>
-            {overview?.learning_headline ? (
-              <p className="mx-auto mt-4 max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/40 px-4 py-3 text-[13px] leading-relaxed text-[var(--text-dark)]">
-                למידה: {overview.learning_headline}
-              </p>
-            ) : null}
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-              <button
-                type="button"
-                disabled={!fleetUp || runningDaily}
-                onClick={() => void runDaily()}
-                className="rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-semibold text-white disabled:opacity-60"
-              >
-                {runningDaily ? 'מחפש עסקים…' : 'הרץ מחקר יומי (עד 10)'}
-              </button>
-              <button
-                type="button"
-                disabled={!fleetUp || redrafting}
-                onClick={() => void runRedraft()}
-                className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold disabled:opacity-60"
-              >
-                {redrafting ? 'משכתב…' : 'שכתב טיוטות ממתינות'}
-              </button>
-              <button
-                type="button"
-                disabled={!fleetUp || loading}
-                onClick={() => void loadBoard()}
-                className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-[13px] font-semibold"
-              >
-                רענון צינור
-              </button>
+        <div className="space-y-4">
+          <div className={`${hubSectionClass(0)} rounded-2xl p-5 md:p-6`}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">
+                  סקירה יומית
+                </h2>
+                <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-mid)]">
+                  {board.purpose} שי כותב עברית לישראל. רק ציון{' '}
+                  {overview?.score_floor ?? 72}+ עולה לאישור. שליחה א׳–ה׳ 09:00–17:00 אחרי
+                  אישור. תשובה אנושית → ליד רגיל. אחרי שליחה → ליד קר.
+                </p>
+                {overview?.learning_headline ? (
+                  <p className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50 px-3.5 py-2.5 text-[13px] leading-relaxed text-[var(--text-dark)]">
+                    למידה: {overview.learning_headline}
+                  </p>
+                ) : null}
+                <p className="mt-3 text-[12px] text-[var(--text-light)]">
+                  יעד: {overview?.daily_target ?? 10} מוכנים עד{' '}
+                  {overview?.target_ready_by ?? '17:00'} · {overview?.date || '—'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!fleetUp || runningDaily}
+                  onClick={() => void runDaily()}
+                  className="rounded-xl bg-[var(--brand)] px-3.5 py-2.5 text-[13px] font-bold text-white disabled:opacity-60"
+                >
+                  {runningDaily ? 'מחפש עסקים…' : 'הרץ מחקר יומי'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!fleetUp || redrafting}
+                  onClick={() => void runRedraft()}
+                  className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2.5 text-[13px] font-semibold disabled:opacity-60"
+                >
+                  {redrafting ? 'משכתב…' : 'שכתב טיוטות'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!fleetUp || loading}
+                  onClick={() => void loadBoard()}
+                  className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-2.5 text-[13px] font-semibold"
+                >
+                  רענון
+                </button>
+              </div>
             </div>
           </div>
+
+          <div className={`${hubSectionClass(1)} rounded-2xl p-4 md:p-5`}>
+            <h3 className="text-[13px] font-extrabold text-[var(--text-dark)]">
+              האם שי שווה? · היום
+            </h3>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { label: 'נשלח היום', value: overview?.sent_today ?? 0 },
+                { label: 'נענו', value: overview?.replied ?? 0 },
+                {
+                  label: 'המרה',
+                  value:
+                    (overview?.sent_today ?? 0) > 0
+                      ? `${Math.round(((overview?.replied ?? 0) / Math.max(overview?.sent_today ?? 1, 1)) * 100)}%`
+                      : '—',
+                },
+                { label: 'עלות חודש', value: monthCost },
+              ].map((cell) => (
+                <div key={cell.label} className="beo-agent-stat is-hot !min-h-0 !py-3">
+                  <div className="beo-agent-stat-value !text-[1.1rem]">{cell.value}</div>
+                  <div className="beo-agent-stat-label">{cell.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className={`${hubSectionClass(2)} rounded-2xl p-4 md:p-5`}>
+            <h3 className="text-[13px] font-extrabold text-[var(--text-dark)]">מסלול שי</h3>
+            <ol className="mt-3 flex flex-wrap gap-2">
+              {['מחקר', 'טיוטה', 'אישור', 'נשלח', 'ליד קר', 'תשובה', 'ליד חדש'].map(
+                (step, i) => (
+                  <li
+                    key={step}
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-[12px] font-bold text-[var(--text-dark)]"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--brand-light)] text-[10px] text-[var(--brand-deep)]">
+                      {i + 1}
+                    </span>
+                    {step}
+                  </li>
+                ),
+              )}
+            </ol>
+          </div>
+
           <AgentStatGrid
             items={[
-              { label: 'היום בדק', value: overview?.checked_today ?? 0 },
-              { label: 'דילג', value: overview?.skipped_today ?? 0 },
-              { label: 'ממתינים לאישור', value: overview?.pending_approval ?? 0 },
-              { label: 'פולואפים ממתינים', value: overview?.followups_pending ?? 0 },
-              { label: 'נשלח היום', value: overview?.sent_today ?? 0 },
-              { label: 'נענו / לידים', value: overview?.replied ?? 0 },
-              { label: 'כתובת לא נכונה', value: overview?.bounced ?? 0 },
+              {
+                label: 'היום בדק',
+                value: overview?.checked_today ?? 0,
+                onClick: () => setTab('pipeline'),
+                hint: 'לצינור',
+              },
+              {
+                label: 'דילג',
+                value: overview?.skipped_today ?? 0,
+                onClick: () => setTab('pipeline'),
+              },
+              {
+                label: 'ממתינים לאישור',
+                value: overview?.pending_approval ?? 0,
+                onClick: () => setTab('approvals'),
+                hint: 'לאישורים',
+                hot: (overview?.pending_approval ?? 0) > 0,
+              },
+              {
+                label: 'פולואפים ממתינים',
+                value: overview?.followups_pending ?? 0,
+                onClick: () => setTab('approvals'),
+                hint: 'לאישורים',
+              },
+              {
+                label: 'נשלח היום',
+                value: overview?.sent_today ?? 0,
+                onClick: () => setTab('pipeline'),
+              },
+              {
+                label: 'נענו / לידים',
+                value: overview?.replied ?? 0,
+                onClick: () => setTab('leads'),
+                hint: 'ללידים',
+                hot: (overview?.replied ?? 0) > 0,
+              },
             ]}
           />
-          <p className="text-center text-[12px] text-[var(--text-light)]">
-            יעד: {overview?.daily_target ?? 10} מוכנים עד {overview?.target_ready_by ?? '17:00'} ·{' '}
-            {overview?.date || '—'}
-          </p>
         </div>
       ) : null}
 
@@ -746,43 +859,55 @@ export function LeadsBeoBoard({
 
       {tab === 'approvals' ? (
         <div className="space-y-5">
-          <AgentStatGrid
-            items={[
-              {
-                label: 'ממתינים לאישור',
-                value: overview?.pending_approval ?? approvals.length,
-                accent: 'text-[var(--brand-deep)]',
-              },
-              {
-                label: 'נדחו',
-                value: items.filter((r) => r.status === 'rejected').length,
-              },
-              {
-                label: 'אושרו · ממתינים למייל',
-                value: items.filter((r) => r.status === 'approved').length,
-              },
-              {
-                label: 'פולואפים',
-                value: overview?.followups_pending ?? 0,
-                accent: 'text-amber-800',
-              },
-              {
-                label: 'נשלחו היום',
-                value: overview?.sent_today ?? items.filter((r) => r.status === 'sent').length,
-                accent: 'text-emerald-800',
-              },
-              {
-                label: 'נענו → ליד',
-                value: overview?.replied ?? items.filter((r) => r.status === 'replied').length,
-                accent: 'text-emerald-800',
-              },
-              {
-                label: 'כתובת לא נכונה',
-                value: overview?.bounced ?? items.filter((r) => r.status === 'bounced').length,
-                accent: 'text-amber-800',
-              },
-            ]}
-          />
+          <p className="text-center text-[13px] text-[var(--text-mid)]">
+            ממתינים לאישור:{' '}
+            <strong className="tabular-nums text-[var(--text-dark)]">
+              {overview?.pending_approval ?? approvals.length}
+            </strong>
+            {approvals.length > 0 ? ' · וואטסאפ למעלה בכרטיס, מייל מתחת, אחר כך אשר שליחה' : null}
+          </p>
+
+          {approvals.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2.5">
+              <label className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-dark)]">
+                <input
+                  type="checkbox"
+                  checked={
+                    approvals.length > 0 &&
+                    approvals.every((a) => selectedApprovalIds.has(a.id))
+                  }
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedApprovalIds(new Set(approvals.map((a) => a.id)))
+                    } else {
+                      setSelectedApprovalIds(new Set())
+                    }
+                  }}
+                />
+                בחירת הכל ({selectedApprovalIds.size})
+              </label>
+              <button
+                type="button"
+                disabled={batchBusy || selectedApprovalIds.size === 0}
+                onClick={() => {
+                  void (async () => {
+                    setBatchBusy(true)
+                    const ids = [...selectedApprovalIds]
+                    for (const id of ids) {
+                      await act(id, 'approve')
+                    }
+                    setSelectedApprovalIds(new Set())
+                    setBatchBusy(false)
+                  })()
+                }}
+                className="min-h-[40px] rounded-xl bg-[var(--brand)] px-3.5 py-2 text-[13px] font-bold text-white disabled:opacity-60"
+              >
+                {batchBusy
+                  ? 'מאשר…'
+                  : `אשר נבחרים (${selectedApprovalIds.size})`}
+              </button>
+            </div>
+          ) : null}
 
           {approvals.length === 0 ? (
             <div className={`${hubSectionClass(2)} space-y-4 rounded-2xl p-5`}>
@@ -822,27 +947,43 @@ export function LeadsBeoBoard({
                 </button>
               </div>
               {approvals.map((item) => (
-                <ApprovalCard
-                  key={item.id}
-                  item={item}
-                  labels={labels}
-                  busy={busyId === item.id}
-                  onApprove={(email_subject, email_body, whatsapp_body) =>
-                    void act(item.id, 'approve', {
-                      email_subject,
-                      email_body,
-                      whatsapp_body,
-                    })
-                  }
-                  onReject={() => void act(item.id, 'reject')}
-                  onSaveEdit={(email_subject, email_body, whatsapp_body) =>
-                    void act(item.id, 'edit', {
-                      email_subject,
-                      email_body,
-                      whatsapp_body,
-                    })
-                  }
-                />
+                <div key={item.id} className="relative">
+                  <label className="absolute start-3 top-3 z-10 flex items-center gap-1.5 rounded-lg bg-white/95 px-2 py-1 text-[11px] font-bold shadow-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedApprovalIds.has(item.id)}
+                      onChange={(e) => {
+                        setSelectedApprovalIds((prev) => {
+                          const next = new Set(prev)
+                          if (e.target.checked) next.add(item.id)
+                          else next.delete(item.id)
+                          return next
+                        })
+                      }}
+                    />
+                    בחירה
+                  </label>
+                  <ApprovalCard
+                    item={item}
+                    labels={labels}
+                    busy={busyId === item.id || batchBusy}
+                    onApprove={(email_subject, email_body, whatsapp_body) =>
+                      void act(item.id, 'approve', {
+                        email_subject,
+                        email_body,
+                        whatsapp_body,
+                      })
+                    }
+                    onReject={() => void act(item.id, 'reject')}
+                    onSaveEdit={(email_subject, email_body, whatsapp_body) =>
+                      void act(item.id, 'edit', {
+                        email_subject,
+                        email_body,
+                        whatsapp_body,
+                      })
+                    }
+                  />
+                </div>
               ))}
             </>
           )}
@@ -852,10 +993,16 @@ export function LeadsBeoBoard({
       {tab === 'leads' ? (
         <div className={`${hubSectionClass(3)} space-y-4 rounded-2xl p-5`}>
           <p className="text-[13px] leading-relaxed text-[var(--text-mid)]">
-            ליד ב-Beo OS נוצר רק אחרי תשובה אנושית בגימייל. מקור:{' '}
-            <strong>Beo AI Lead Agent</strong>, סטטוס <strong>new</strong>. מייל שחזר (כתובת שגויה)
-            לא נפתח כליד.
+            אחרי <strong>אישור שליחה</strong> נפתח <strong>ליד קר</strong> בדף לידים. רק תשובה
+            אנושית בגימייל מעבירה לליד רגיל (<strong>חדש</strong>). Bounce / לא מעוניין — לא
+            הופכים לליד חם. מקור: <strong>Beo AI Lead Agent</strong>.
           </p>
+          <Link
+            to="/leads?filter=cold"
+            className="inline-flex rounded-xl border border-[#5B7C99]/40 bg-[#F1F5F9] px-3.5 py-2 text-[13px] font-semibold text-[#5B7C99]"
+          >
+            מעבר ללידים קרים ב-Beo OS
+          </Link>
           {items.filter((row) => row.status === 'replied').length === 0 ? (
             <EmptyState
               title="עדיין אין תשובות"

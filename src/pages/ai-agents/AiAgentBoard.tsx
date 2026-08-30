@@ -3,6 +3,7 @@ import { getAiAgentBoard } from '../../lib/aiAgentsRegistry'
 import { useAiAgentsFleet } from '../../hooks/useAiAgentsFleet'
 import { SocialBeoBoard } from './SocialBeoBoard'
 import { LeadsBeoBoard } from './LeadsBeoBoard'
+import { JohnnyBeoBoard } from './JohnnyBeoBoard'
 
 export function AiAgentBoard() {
   const { id } = useParams<{ id: string }>()
@@ -22,6 +23,17 @@ export function AiAgentBoard() {
   }
 
   const agent = fleet?.agents.find((a) => a.id === board.id) ?? null
+
+  if (board.id === 'johnny-beo') {
+    return (
+      <JohnnyBeoBoard
+        board={board}
+        agent={agent}
+        fleetUp={fleetUp}
+        onFleetReload={reload}
+      />
+    )
+  }
 
   if (board.id === 'social-beo') {
     return (

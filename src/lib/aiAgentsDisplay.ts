@@ -30,6 +30,31 @@ export function displayToolsForAgent(
   boardId: string,
   agent: FleetAgent | null,
 ): DisplayTool[] {
+  if (boardId === 'johnny-beo') {
+    const tg = findConn(agent, 'telegram')
+    const oa = findConn(agent, 'openai')
+    const os = findConn(agent, 'beo_os')
+    const gm = findConn(agent, 'gmail')
+    const cal = findConn(agent, 'calendar')
+    return [
+      { kind: 'telegram', label: 'Telegram', connected: Boolean(tg?.connected), hint: 'שיחה + קול' },
+      { kind: 'openai', label: 'OpenAI', connected: Boolean(oa?.connected) },
+      { kind: 'beo_os', label: 'Beo OS', connected: Boolean(os?.connected) },
+      {
+        kind: 'gmail',
+        label: 'ceo@',
+        connected: Boolean(gm?.connected),
+        hint: gm?.connected ? undefined : 'ceo@beosystem.co.il',
+      },
+      {
+        kind: 'calendar',
+        label: 'Google Calendar',
+        connected: Boolean(cal?.connected),
+        hint: cal?.connected ? 'מקור היומן' : 'ממתין לטוקן',
+      },
+    ]
+  }
+
   if (boardId === 'social-beo') {
     const tg = findConn(agent, 'telegram')
     const oa = findConn(agent, 'openai')
@@ -41,7 +66,7 @@ export function displayToolsForAgent(
         kind: 'telegram',
         label: 'Telegram',
         connected: Boolean(tg?.connected),
-        hint: 'עדכונים בלבד',
+        hint: 'שיחה ועדכונים',
       },
       {
         kind: 'openai',

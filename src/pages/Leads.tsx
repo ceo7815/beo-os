@@ -18,7 +18,18 @@ import { Modal } from '../components/shared/Modal'
 import { ExportExcelButton } from '../components/shared/ExportExcelButton'
 import { hubSectionClass } from '../lib/hubSectionBorder'
 import { exportLeadsToExcel } from '../lib/excelTableExports'
-import { syncBeoAgentRepliesToCrm } from '../lib/syncBeoLeadsCrm'
+import {
+  LEAD_STATUS_COLORS,
+  LEAD_STATUS_LABELS,
+  LEAD_STATUSES_ORDERED,
+  isWarmLeadStatus,
+} from '../lib/leadStatusUi'
+import {
+  backfillColdLeadsFromSent,
+  syncBeoAgentRepliesToCrm,
+} from '../lib/syncBeoLeadsCrm'
+import { LeadConvertWizard } from '../components/leads/LeadConvertWizard'
+import { LeadsKanban } from '../components/leads/LeadsKanban'
 
 /** ערך נשמר ב־Firestore בשדה `source` כשבוחרים מהרשימה הקבועה */
 const LEAD_SOURCE_BEO_SYSTEMS = 'Beo systems'
@@ -108,55 +119,30 @@ function leadResolvedClient(
   return undefined
 }
 
-const statusLabels: Record<LeadStatus, string> = {
-  new: 'חדש',
-  specification: 'בתהליך אפיון',
-  quote_sent: 'נשלחה הצעת מחיר',
-  follow_up: 'יש לבצע פולואפ',
-  no_answer: 'אין מענה',
-  not_relevant: 'לא רלוונטי',
-  closed: 'נסגרה',
-}
+const statusLabels = LEAD_STATUS_LABELS
+const statusColors = LEAD_STATUS_COLORS
 
-const statusColors: Record<LeadStatus, string> = {
-  new: '#5828A0',
-  specification: '#7C3AED',
-  quote_sent: '#D97706',
-  follow_up: '#F59E0B',
-  no_answer: '#64748B',
-  not_relevant: '#DC2626',
-  closed: '#16A34A',
-}
-
-/** מסגרת מלאה לשורה בטבלה / כרטיס — אדום / ירוק / כתום */
+/** מסגרת מלאה לשורה בטבלה / כרטיס — אדום / ירוק / סגול-קר / סגול */
 function leadFrameInsetClass(status: LeadStatus): string {
   if (status === 'not_relevant') return 'shadow-[inset_0_0_0_2px_#DC2626]'
   if (status === 'closed') return 'shadow-[inset_0_0_0_2px_#16A34A]'
+  if (status === 'cold') return 'shadow-[inset_0_0_0_2px_#5B7C99]'
   return 'shadow-[inset_0_0_0_2px_#5828A0]'
 }
 
-/** רקע מאחורי הליד — בולט במיוחד ל־«לא רלוונטי» */
+/** רקע מאחורי הליד — בולט במיוחד ל־«לא רלוונטי» / ליד קר */
 function leadRowSurfaceClass(status: LeadStatus): string {
   if (status === 'not_relevant') return 'bg-[#FEF2F2]'
+  if (status === 'cold') return 'bg-[#F1F5F9]'
   return ''
 }
 
 function leadCardSurfaceClass(status: LeadStatus): string {
   if (status === 'not_relevant') return 'border-2 border-[#DC2626] bg-[#FEF2F2]'
   if (status === 'closed') return 'border-2 border-[#16A34A]'
+  if (status === 'cold') return 'border-2 border-[#5B7C99] bg-[#F8FAFC]'
   return 'border-2 border-[#5828A0]'
 }
-
-/** סדר תצוגה במסננים ובקוביות הסיכום */
-const LEAD_STATUSES_ORDERED: LeadStatus[] = [
-  'new',
-  'specification',
-  'quote_sent',
-  'follow_up',
-  'no_answer',
-  'not_relevant',
-  'closed',
-]
 
 type StatusFilter = 'all' | LeadStatus
 
@@ -184,10 +170,13 @@ export function Leads() {
   const { campaigns } = useCampaigns()
   const { clients, loading: clientsLoading, error: clientsError } = useClients()
   const { leads, addLead, updateLead, deleteLead } = useLeads()
+  // leads נטען ל-sync/backfill של שי
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  /** מסלול דשבורד: ללא נסגר / לא רלוונטי — תואם KPI «לידים בצינור» */
-  const [openPipelineOnly, setOpenPipelineOnly] = useState(false)
+  /** ברירת מחדל חכמה: צינור פתוח (בלי נסגר / לא רלוונטי / קר) */
+  const [openPipelineOnly, setOpenPipelineOnly] = useState(true)
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table')
+  const [convertLeadId, setConvertLeadId] = useState<string | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [name, setName] = useState('')
   const [company, setCompany] = useState('')
@@ -248,11 +237,39 @@ export function Leads() {
 
   useEffect(() => {
     if (!user) return
-    void syncBeoAgentRepliesToCrm({ userId: user.uid, addLead })
-  }, [user, addLead])
+    void (async () => {
+      await syncBeoAgentRepliesToCrm({
+        userId: user.uid,
+        leads,
+        addLead,
+        updateLead,
+      })
+      await backfillColdLeadsFromSent({
+        userId: user.uid,
+        leads,
+        addLead,
+        updateLead,
+      })
+    })()
+    // רק בכניסה / החלפת משתמש — לא בכל שינוי leads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, addLead, updateLead])
 
   useEffect(() => {
     const f = searchParams.get('filter')?.trim()
+    if (f === 'cold') {
+      setStatusFilter('cold')
+      setOpenPipelineOnly(false)
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev)
+          n.delete('filter')
+          return n
+        },
+        { replace: true },
+      )
+      return
+    }
     if (f !== 'open') return
     setOpenPipelineOnly(true)
     setStatusFilter('all')
@@ -423,6 +440,7 @@ export function Leads() {
 
   const statusCounts = useMemo(() => {
     const counts: Record<LeadStatus, number> = {
+      cold: 0,
       new: 0,
       specification: 0,
       quote_sent: 0,
@@ -442,7 +460,7 @@ export function Leads() {
     return leads
       .filter((l) => {
         if (openPipelineOnly) {
-          return l.status !== 'closed' && l.status !== 'not_relevant'
+          return isWarmLeadStatus(l.status)
         }
         return statusFilter === 'all' ? true : l.status === statusFilter
       })
@@ -1036,6 +1054,10 @@ export function Leads() {
             'דחיפות',
             l.status === 'not_relevant' ? (
               <span className="text-[12px] text-[var(--text-light)]">לא רלוונטי — ללא מעקב תזמון</span>
+            ) : l.status === 'cold' ? (
+              <span className="text-[12px] text-[var(--text-light)]">
+                ליד קר — ממתין לתשובה (בלי פולואפ מכירות)
+              </span>
             ) : !scheduleDate || !urgency ? (
               <button
                 type="button"
@@ -1124,7 +1146,7 @@ export function Leads() {
       ) : null}
 
       <section
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9"
         aria-label="סיכום לידים לפי סטטוס"
       >
         <button
@@ -1146,9 +1168,7 @@ export function Leads() {
           </span>
           <span className="text-[22px] font-extrabold tabular-nums text-[var(--text-dark)]">
             {openPipelineOnly
-              ? leads.filter(
-                  (l) => l.status !== 'closed' && l.status !== 'not_relevant',
-                ).length
+              ? leads.filter((l) => isWarmLeadStatus(l.status)).length
               : leads.length}
           </span>
         </button>
@@ -1379,6 +1399,30 @@ export function Leads() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        <div className="flex rounded-xl border border-[var(--border)] bg-white p-0.5">
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold ${
+              viewMode === 'table' ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-mid)]'
+            }`}
+          >
+            טבלה
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('kanban')
+              setOpenPipelineOnly(true)
+              setStatusFilter('all')
+            }}
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold ${
+              viewMode === 'kanban' ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-mid)]'
+            }`}
+          >
+            Kanban
+          </button>
+        </div>
         {openPipelineOnly ? (
           <div className="w-full basis-full rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-[12px] text-amber-950">
             <span className="font-bold">צינור פתוח</span>
@@ -1422,6 +1466,24 @@ export function Leads() {
         ))}
       </section>
 
+      {viewMode === 'kanban' ? (
+        <section className={`rounded-2xl ${hubSectionClass(0)} p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] md:p-4`}>
+          <p className="mb-3 text-[12px] text-[var(--text-mid)]">
+            גרירה בין עמודות משנה סטטוס. לידים קרים / נסגרים לא מוצגים ב-Kanban.
+          </p>
+          <LeadsKanban
+            leads={filtered}
+            onOpenActions={(id) => setOpenActionLeadId(id)}
+            onMoveStatus={(id, status) => {
+              void updateLead(id, {
+                status,
+                lastActivityText: `סטטוס שונה ל: ${statusLabels[status]} (Kanban)`,
+                lastActivityAt: new Date().toISOString(),
+              })
+            }}
+          />
+        </section>
+      ) : (
       <section className={`rounded-2xl ${hubSectionClass(formOpen ? 1 : 0)} shadow-[0_2px_8px_rgba(0,0,0,0.06)]`}>
         <div className="md:hidden">
           <div className="space-y-3 p-3 sm:p-5">
@@ -1633,6 +1695,13 @@ export function Leads() {
                           </span>
                         )
                       }
+                      if (l.status === 'cold') {
+                        return (
+                          <span className="text-[11px] text-[var(--text-light)]">
+                            ליד קר — ממתין לתשובה (בלי פולואפ מכירות)
+                          </span>
+                        )
+                      }
                       const scheduleDate = leadScheduleYmd(l)
                       const urgency = scheduleDate
                         ? urgencyForLead(scheduleDate)
@@ -1696,10 +1765,17 @@ export function Leads() {
           </table>
         </div>
       </section>
+      )}
 
       {filtered.length === 0 ? (
         <p className="text-sm text-[var(--text-mid)]">אין לידים להצגה</p>
       ) : null}
+
+      <LeadConvertWizard
+        lead={leads.find((l) => l.id === convertLeadId) ?? null}
+        open={Boolean(convertLeadId)}
+        onClose={() => setConvertLeadId(null)}
+      />
 
       <Modal
         isOpen={Boolean(openActionLeadId && actionMenuLead)}
@@ -1834,6 +1910,16 @@ export function Leads() {
               className="w-full rounded-[8px] border border-[var(--border-orange-soft)] bg-[var(--orange-light)] px-2 py-1.5 text-[10px] font-semibold text-[var(--orange)]"
             >
               שמירת מעקב
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConvertLeadId(actionMenuLead.id)
+                setOpenActionLeadId(null)
+              }}
+              className="w-full rounded-[8px] border border-[var(--brand)]/30 bg-[var(--brand-light)] px-2 py-1.5 text-[10px] font-bold text-[var(--brand-deep)]"
+            >
+              המר ללקוח + פרויקט
             </button>
             <button
               type="button"

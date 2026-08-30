@@ -12,13 +12,13 @@ export type AiAgentBoardDef = {
 
 export const AI_AGENT_BOARDS: readonly AiAgentBoardDef[] = [
   {
-    id: 'social-beo',
-    displayName: 'Beo Social',
-    handle: 'social.beo',
-    role: 'עדי · סושיאל ורשתות',
+    id: 'johnny-beo',
+    displayName: 'Beo Chief',
+    handle: 'johnny.beo',
+    role: 'ג׳וני · מנכ״ל דיגיטלי',
     purpose:
-      'עדי, מנהלת סושיאל ורשתות חברתיות של Beo. אינסטגרם, פייסבוק, וטלגרם מול אור.',
-    path: '/ai-agents/social-beo',
+      'ג׳וני. הסוכן הראשי — עוזר אישי בטלגרם (כולל קול). שולט ב-Beo OS, Google Calendar, ceo@, חשבונית ירוקה. מאשר את שי ועדי אחרי כן בצ׳אט.',
+    path: '/ai-agents/johnny-beo',
   },
   {
     id: 'leads-beo',
@@ -29,6 +29,15 @@ export const AI_AGENT_BOARDS: readonly AiAgentBoardDef[] = [
       'מוצא עסקים בישראל עם מייל מהאתר, טיוטות לאישור כאן, שולח מ-sales@ אחרי אישור. וואטסאפ לטלפון שלהם (אתה שולח) ופולואפ אחד באותו שרשור.',
     path: '/ai-agents/leads-beo',
     plannedByDefault: true,
+  },
+  {
+    id: 'social-beo',
+    displayName: 'Beo Social',
+    handle: 'social.beo',
+    role: 'עדי · סושיאל ורשתות',
+    purpose:
+      'עדי. יומן ואישור ב-Beo OS, פרסום לאינסטגרם ופייסבוק, טלגרם לשיחה ועדכונים.',
+    path: '/ai-agents/social-beo',
   },
 ] as const
 

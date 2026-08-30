@@ -38,7 +38,16 @@ function db() {
 const TASK_STATUSES = ['todo', 'doing', 'done', 'blocked'] as const
 const PRIORITIES = ['high', 'medium', 'low'] as const
 const PROJECT_KINDS = ['client', 'internal'] as const
-const LEAD_STATUSES = ['new', 'specification', 'quote_sent', 'follow_up', 'no_answer', 'not_relevant', 'closed'] as const
+const LEAD_STATUSES = [
+  'cold',
+  'new',
+  'specification',
+  'quote_sent',
+  'follow_up',
+  'no_answer',
+  'not_relevant',
+  'closed',
+] as const
 const CAMPAIGN_KINDS = ['internal', 'client'] as const
 const CAMPAIGN_PLATFORMS = ['instagram', 'google_ads', 'facebook', 'tiktok', 'linkedin', 'other'] as const
 const CAMPAIGN_STATUSES = ['planning', 'active', 'paused', 'completed'] as const

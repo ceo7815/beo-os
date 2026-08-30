@@ -437,6 +437,7 @@ export interface RecurringTaskTemplate {
   createdBy: string
 }
 export type LeadStatus =
+  | 'cold'
   | 'new'
   | 'specification'
   | 'quote_sent'

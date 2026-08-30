@@ -31,6 +31,7 @@ import { HourlyServiceDetail } from './pages/HourlyServiceDetail'
 import { HourlyServiceShare } from './pages/HourlyServiceShare'
 import { Vault } from './pages/Vault'
 import { AiAgents } from './pages/AiAgents'
+import { AiAgentsOverview } from './pages/ai-agents/AiAgentsOverview'
 import { AiAgentBoard } from './pages/ai-agents/AiAgentBoard'
 
 export default function App() {
@@ -136,6 +137,14 @@ export default function App() {
                     element={
                       <RequireAdmin>
                         <AiAgents />
+                      </RequireAdmin>
+                    }
+                  />
+                  <Route
+                    path="ai-agents/overview"
+                    element={
+                      <RequireAdmin>
+                        <AiAgentsOverview />
                       </RequireAdmin>
                     }
                   />

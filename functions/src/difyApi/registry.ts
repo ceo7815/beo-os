@@ -31,6 +31,7 @@ const PROJECT_STATUSES = ['active', 'paused', 'done'] as const
 const PROJECT_KINDS = ['client', 'internal'] as const
 const PROJECT_BILLING = ['one-time', 'retainer'] as const
 const LEAD_STATUSES = [
+  'cold',
   'new',
   'specification',
   'quote_sent',
