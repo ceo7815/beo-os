@@ -376,13 +376,6 @@ export function Dashboard() {
     return running.filter((c) => c.performerUserId === myUid)
   }, [campaigns, privileged, myUid, employeeShowOrgWideLeadsCampaigns])
 
-  const leadsDueUrgent = useMemo(() => {
-    return openLeadsPool.filter((l) => {
-      const ymd = leadScheduleYmd(l) ?? ''
-      return /^\d{4}-\d{2}-\d{2}$/.test(ymd) && ymd <= todayDash
-    }).length
-  }, [openLeadsPool, todayDash])
-
   const topLeadsDashboard = useMemo(() => {
     return [...dashboardLeadsSource]
       .sort((a, b) => leadPipelineSort(a, b, todayDash))
@@ -492,8 +485,6 @@ export function Dashboard() {
     }
     return m
   }, [visibleTasks])
-
-  const topOverdueTask = myOverdueTasks[0]
 
   const needsMeItems = useMemo((): NeedsMeItem[] => {
     const items: NeedsMeItem[] = []
