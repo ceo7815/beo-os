@@ -37,20 +37,30 @@ export function displayToolsForAgent(
     const gm = findConn(agent, 'gmail')
     const cal = findConn(agent, 'calendar')
     return [
-      { kind: 'telegram', label: 'Telegram', connected: Boolean(tg?.connected), hint: 'שיחה + קול' },
+      {
+        kind: 'telegram',
+        label: 'Telegram',
+        connected: Boolean(tg?.connected),
+        hint: tg?.connected ? 'שיחה + קול' : 'xCloud: JOHNNY_TELEGRAM_BOT_TOKEN',
+      },
       { kind: 'openai', label: 'OpenAI', connected: Boolean(oa?.connected) },
-      { kind: 'beo_os', label: 'Beo OS', connected: Boolean(os?.connected) },
+      {
+        kind: 'beo_os',
+        label: 'Beo OS',
+        connected: Boolean(os?.connected),
+        hint: os?.connected ? undefined : 'xCloud: BOT_API_KEY + JOHNNY_ACTOR_USER_ID',
+      },
       {
         kind: 'gmail',
         label: 'ceo@',
         connected: Boolean(gm?.connected),
-        hint: gm?.connected ? undefined : 'ceo@beosystem.co.il',
+        hint: gm?.connected ? undefined : 'xCloud: CEO_GMAIL_REFRESH_TOKEN',
       },
       {
         kind: 'calendar',
         label: 'Google Calendar',
         connected: Boolean(cal?.connected),
-        hint: cal?.connected ? 'מקור היומן' : 'ממתין לטוקן',
+        hint: cal?.connected ? 'מקור היומן' : 'אותו טוקן כמו ceo@',
       },
     ]
   }
@@ -77,13 +87,17 @@ export function displayToolsForAgent(
         kind: 'instagram',
         label: 'Instagram',
         connected: preview ? false : Boolean(ig?.connected),
-        hint: preview ? 'תצוגה מקדימה' : undefined,
+        hint: preview
+          ? 'תצוגה מקדימה'
+          : ig?.connected
+            ? undefined
+            : 'xCloud: META_PAGE_ID + TOKEN + META_IG_USER_ID',
       },
       {
         kind: 'facebook',
         label: 'Facebook',
         connected: preview ? false : Boolean(fb?.connected),
-        hint: preview ? 'תצוגה מקדימה' : undefined,
+        hint: preview ? 'תצוגה מקדימה' : fb?.connected ? undefined : 'טוקני Meta של Beo, לא ליבה. SOCIAL_DRY_RUN=0',
       },
     ]
   }

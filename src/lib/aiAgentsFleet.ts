@@ -4,6 +4,7 @@ export type AgentConnection = {
   kind: string
   label: string
   connected: boolean
+  note?: string
 }
 
 export type FleetAgent = {
