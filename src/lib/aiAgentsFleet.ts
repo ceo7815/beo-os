@@ -32,7 +32,7 @@ export type FleetResponse = {
 }
 
 export const FLEET_DOWN_HE =
-  'צי הסוכנים לא רץ. צריך להפעיל את Beo-agents control על פורט 8788'
+  'צי הסוכנים לא זמין. בדקו חיבור ל-agents.beosystem.com (פרוקסי Vite /api/beo-agents).'
 
 async function readJsonSafe(res: Response): Promise<unknown> {
   try {

@@ -26,7 +26,7 @@ function guard(
 
 function handleDbError(e: unknown, reply: FastifyReply): boolean {
   if (e instanceof FinanceAgentDbNotReadyError) {
-    reply.code(503).send({ ok: false, error: 'firebase_not_configured', message: e.message })
+    reply.code(503).send({ ok: false, error: 'supabase_not_configured', message: e.message })
     return true
   }
   return false

@@ -102,7 +102,7 @@ export function SocialBeoBoard({
 
   const live = agent?.status === 'live'
   const running = Boolean(agent?.running)
-  const tools = displayToolsForAgent(board.id, agent)
+  const tools = displayToolsForAgent(board.id, agent, { dryRun: overview?.dry_run })
 
   const load = useCallback(async () => {
     if (!fleetUp) {
@@ -223,7 +223,7 @@ export function SocialBeoBoard({
       banner={
         !fleetUp ? (
           <div className={`${hubSectionClass(0)} rounded-2xl px-4 py-2.5 text-[13px] text-[var(--text-mid)]`}>
-            הצי לא זמין — היומן והפרסום דורשים Beo-agents על פורט 8788.
+            צי הסוכנים לא זמין (agents.beosystem.com). בדקו את הפרוקסי /api/beo-agents.
           </div>
         ) : overview?.dry_run ? (
           <div className={`${hubSectionClass(0)} rounded-2xl px-4 py-2.5 text-[13px] text-[var(--text-mid)]`}>

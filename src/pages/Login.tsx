@@ -28,7 +28,7 @@ const LOGIN_LOGO_SRC = `${brandLogoSrc()}?v=3`
 
 export function Login() {
   const navigate = useNavigate()
-  const { user, loading, firebaseReady, signInWithEmail } = useAuth()
+  const { user, loading, authReady, signInWithEmail } = useAuth()
 
   useEffect(() => {
     if (!loading && user) navigate('/', { replace: true })
@@ -75,7 +75,7 @@ export function Login() {
     }
   }
 
-  if (!firebaseReady) {
+  if (!authReady) {
     return (
       <div
         dir="rtl"

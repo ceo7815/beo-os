@@ -261,7 +261,7 @@ export async function runLeadsDaily(
     }
     return { ok: true, message: data.message, added_pending: data.added_pending }
   } catch {
-    return { ok: false, error: 'הרצה יומית נכשלה — בדקו ש-8788 רץ' }
+    return { ok: false, error: 'הרצה יומית נכשלה — בדקו את צי agents.beosystem.com' }
   }
 }
 

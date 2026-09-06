@@ -130,7 +130,7 @@ export function AiAgentsOverview() {
               className={`beo-agent-chip ${fleetUp ? 'beo-agent-chip--live' : 'beo-agent-chip--muted'}`}
             >
               <LiveDot state={fleetUp ? 'on' : 'warn'} />
-              {fleetUp ? 'צי מחובר' : 'צי מקומי לא זמין'}
+              {fleetUp ? 'צי מחובר' : 'צי לא זמין'}
             </span>
             <button
               type="button"

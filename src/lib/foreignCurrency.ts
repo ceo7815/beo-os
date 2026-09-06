@@ -13,6 +13,73 @@ export const CURRENCY_SYMBOL: Record<string, string> = {
   ILS: '₪',
 }
 
+export type IlsRateQuote = {
+  rate: number
+  source: 'boi' | 'frankfurter'
+  asOf?: string
+}
+
+function roundRate(n: number): number {
+  return Math.round(n * 10000) / 10000
+}
+
+async function fetchBoiIlsRate(from: 'USD' | 'EUR'): Promise<IlsRateQuote | null> {
+  try {
+    const res = await fetch('https://boi.org.il/PublicApi/GetExchangeRates', {
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as {
+      exchangeRates?: Array<{
+        key?: string
+        currentExchangeRate?: number
+        unit?: number
+        lastUpdate?: string
+      }>
+    }
+    const row = json.exchangeRates?.find((r) => String(r.key).toUpperCase() === from)
+    const raw = Number(row?.currentExchangeRate)
+    const unit = Number(row?.unit) || 1
+    if (!Number.isFinite(raw) || raw <= 0 || unit <= 0) return null
+    return {
+      rate: roundRate(raw / unit),
+      source: 'boi',
+      asOf: row?.lastUpdate,
+    }
+  } catch {
+    return null
+  }
+}
+
+async function fetchFrankfurterIlsRate(
+  from: 'USD' | 'EUR',
+): Promise<IlsRateQuote | null> {
+  const urls = [
+    `https://api.frankfurter.app/latest?from=${from}&to=ILS`,
+    `https://api.frankfurter.dev/v1/latest?from=${from}&to=ILS`,
+  ]
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+      if (!res.ok) continue
+      const json = (await res.json()) as { rates?: { ILS?: number }; date?: string }
+      const rate = Number(json.rates?.ILS)
+      if (!Number.isFinite(rate) || rate <= 0) continue
+      return { rate: roundRate(rate), source: 'frankfurter', asOf: json.date }
+    } catch {
+      /* try next */
+    }
+  }
+  return null
+}
+
+/** שער שוק עדכני מטבע → ₪ (בנק ישראל, ואם נכשל — Frankfurter). בלי fallback קשיח. */
+export async function fetchIlsMarketRate(
+  from: 'USD' | 'EUR',
+): Promise<IlsRateQuote | null> {
+  return (await fetchBoiIlsRate(from)) ?? (await fetchFrankfurterIlsRate(from))
+}
+
 const SYMBOL_TO_CODE: Record<string, string> = {
   $: 'USD',
   '€': 'EUR',

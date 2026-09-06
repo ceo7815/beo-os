@@ -25,10 +25,11 @@ function findConn(agent: FleetAgent | null, kind: string) {
   return honestConnections(agent).find((c) => c.kind.toLowerCase() === kind)
 }
 
-/** כלים להצגה בקובייה / פס חיבורים — כנים לפי צי + כללי preview. */
+/** כלים להצגה בקובייה / פס חיבורים — כנים לפי צי + כללי preview/dry_run. */
 export function displayToolsForAgent(
   boardId: string,
   agent: FleetAgent | null,
+  opts?: { dryRun?: boolean },
 ): DisplayTool[] {
   if (boardId === 'johnny-beo') {
     const tg = findConn(agent, 'telegram')
@@ -36,31 +37,49 @@ export function displayToolsForAgent(
     const os = findConn(agent, 'beo_os')
     const gm = findConn(agent, 'gmail')
     const cal = findConn(agent, 'calendar')
+    const web = findConn(agent, 'web')
+    const rivhit = findConn(agent, 'rivhit')
     return [
       {
         kind: 'telegram',
         label: 'Telegram',
         connected: Boolean(tg?.connected),
-        hint: tg?.connected ? 'שיחה + קול' : 'xCloud: JOHNNY_TELEGRAM_BOT_TOKEN',
+        hint: tg?.connected ? 'המשרד · שיחה + קול' : 'בוט נפרד משי · xCloud: JOHNNY_TELEGRAM_BOT_TOKEN',
       },
       { kind: 'openai', label: 'OpenAI', connected: Boolean(oa?.connected) },
       {
         kind: 'beo_os',
         label: 'Beo OS',
         connected: Boolean(os?.connected),
-        hint: os?.connected ? undefined : 'xCloud: BOT_API_KEY + JOHNNY_ACTOR_USER_ID',
+        hint: os?.connected
+          ? 'קריאה/כתיבה ל-OS אחרי כן בטלגרם'
+          : 'בצי: BOT_API_KEY + BEO_OS_URL + JOHNNY_ACTOR_USER_ID',
       },
       {
         kind: 'gmail',
         label: 'ceo@',
         connected: Boolean(gm?.connected),
-        hint: gm?.connected ? undefined : 'xCloud: CEO_GMAIL_REFRESH_TOKEN',
+        hint: gm?.connected
+          ? 'שליחה רק אחרי אישור'
+          : 'בצי: CEO_GMAIL_REFRESH_TOKEN (לא מ-OS)',
       },
       {
         kind: 'calendar',
-        label: 'Google Calendar',
+        label: 'Google Calendar + Meet',
         connected: Boolean(cal?.connected),
-        hint: cal?.connected ? 'מקור היומן' : 'אותו טוקן כמו ceo@',
+        hint: cal?.connected ? 'מקור היומן · Meet עם הפגישה' : 'אותו טוקן כמו ceo@ בצי',
+      },
+      {
+        kind: 'web',
+        label: 'חיפוש אינטרנט',
+        connected: Boolean(web?.connected ?? true),
+        hint: 'כמו ChatGPT — בלי מפתח נוסף',
+      },
+      {
+        kind: 'rivhit',
+        label: 'ריווחית אונליין',
+        connected: Boolean(rivhit?.connected),
+        hint: rivhit?.connected ? undefined : 'עתידי — בלי נתונים עד חיבור',
       },
     ]
   }
@@ -71,6 +90,7 @@ export function displayToolsForAgent(
     const ig = findConn(agent, 'instagram')
     const fb = findConn(agent, 'facebook')
     const preview = (agent?.publish ?? 'preview').toLowerCase() === 'preview'
+    const dryRun = Boolean(opts?.dryRun) || preview
     return [
       {
         kind: 'telegram',
@@ -86,9 +106,9 @@ export function displayToolsForAgent(
       {
         kind: 'instagram',
         label: 'Instagram',
-        connected: preview ? false : Boolean(ig?.connected),
-        hint: preview
-          ? 'תצוגה מקדימה'
+        connected: dryRun ? false : Boolean(ig?.connected),
+        hint: dryRun
+          ? 'מצב תרגול · SOCIAL_DRY_RUN'
           : ig?.connected
             ? undefined
             : 'xCloud: META_PAGE_ID + TOKEN + META_IG_USER_ID',
@@ -96,8 +116,12 @@ export function displayToolsForAgent(
       {
         kind: 'facebook',
         label: 'Facebook',
-        connected: preview ? false : Boolean(fb?.connected),
-        hint: preview ? 'תצוגה מקדימה' : fb?.connected ? undefined : 'טוקני Meta של Beo, לא ליבה. SOCIAL_DRY_RUN=0',
+        connected: dryRun ? false : Boolean(fb?.connected),
+        hint: dryRun
+          ? 'מצב תרגול · SOCIAL_DRY_RUN'
+          : fb?.connected
+            ? undefined
+            : 'טוקני Meta של Beo · SOCIAL_DRY_RUN=0',
       },
     ]
   }
@@ -116,7 +140,9 @@ export function displayToolsForAgent(
       kind: 'gmail',
       label: 'Gmail',
       connected: Boolean(gm?.connected),
-      hint: gm?.connected ? undefined : 'sales@beosystem.com',
+      hint: gm?.connected
+        ? 'שליחה רק אחרי אישור ב-OS'
+        : 'xCloud: GMAIL_REFRESH_TOKEN',
     },
     {
       kind: 'telegram',

@@ -18,6 +18,7 @@ import { useHubStore } from '../store/useStore'
 export interface AuthContextValue {
   user: AppUser | null
   loading: boolean
+  /** @deprecated השתמשו ב-authReady — אין Firebase ב-Beo OS */
   firebaseReady: boolean
   authReady: boolean
   signInWithEmail: (email: string, password: string) => Promise<void>

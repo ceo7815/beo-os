@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { env, morningConfigured } from '../config/env.js'
 import { supabaseServiceConfigured } from '../lib/supabaseAdmin.js'
+import { rivhitConfigured } from '../lib/rivhitClient.js'
 
 export async function registerHealthRoutes(app: FastifyInstance): Promise<void> {
   const handler = async () => {
@@ -17,6 +18,7 @@ export async function registerHealthRoutes(app: FastifyInstance): Promise<void> 
               : 'url_only_missing_service_role'
             : 'not_configured',
         botApiKey: env.botApiKey ? 'configured' : 'not_configured',
+        rivhit: rivhitConfigured() ? 'configured' : 'not_configured',
         morning: morningConfigured() ? 'configured' : 'not_configured',
       },
     }

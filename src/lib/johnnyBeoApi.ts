@@ -14,6 +14,11 @@ export type JohnnyOverview = {
   adi_pending?: number
   mailbox?: string
   calendar_master?: string
+  meet?: boolean
+  voice?: boolean
+  web_search?: boolean
+  rivhit?: boolean
+  approve_writes?: boolean
   actions?: Array<{ at?: string; kind?: string; detail?: string }>
 }
 

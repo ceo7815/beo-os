@@ -607,7 +607,7 @@ export function AgentFleetGraph({
         <div className="flex flex-wrap items-center gap-2">
           <span className={`beo-net-pill ${fleetUp ? 'is-live' : 'is-dim'}`}>
             <span className="beo-net-pill-dot" />
-            {fleetUp ? 'Mesh online' : 'Local fleet offline'}
+            {fleetUp ? 'צי מחובר' : 'צי לא זמין'}
           </span>
           <button
             type="button"

@@ -1,11 +1,11 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
-/** מסלולים שדורשים התחברות Firebase */
+/** מסלולים שדורשים התחברות Supabase Auth */
 export function RequireAuth() {
-  const { user, loading, firebaseReady } = useAuth()
+  const { user, loading, authReady } = useAuth()
 
-  if (!firebaseReady) {
+  if (!authReady) {
     return <Navigate to="/login" replace />
   }
 

@@ -17,7 +17,7 @@ export const AI_AGENT_BOARDS: readonly AiAgentBoardDef[] = [
     handle: 'johnny.beo',
     role: 'ג׳וני · מנכ״ל דיגיטלי',
     purpose:
-      'ג׳וני. הסוכן הראשי — עוזר אישי בטלגרם (כולל קול). שולט ב-Beo OS, Google Calendar, ceo@, חשבונית ירוקה. מאשר את שי ועדי אחרי כן בצ׳אט.',
+      'ג׳וני חי בטלגרם בלבד — כמו עובד שמדברים איתו על הכל. הלוח הזה סטטוס וחיבורים, לא צ׳אט.',
     path: '/ai-agents/johnny-beo',
   },
   {

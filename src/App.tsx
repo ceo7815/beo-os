@@ -8,15 +8,8 @@ import { StaffRoutesGuard } from './components/StaffRoutesGuard'
 import { Clients } from './pages/Clients'
 import { Collections } from './pages/Collections'
 import { Dashboard } from './pages/Dashboard'
-import { Expenses } from './pages/Expenses'
 import { Finance } from './pages/Finance'
-import { FinanceProjects } from './pages/FinanceProjects'
-import { FinanceReconciliation } from './pages/FinanceReconciliation'
-import { FinanceDocuments } from './pages/FinanceDocuments'
-import { FinanceCashflow } from './pages/FinanceCashflow'
-import { FinanceRetainers } from './pages/FinanceRetainers'
-import { FinanceFixedExpenses } from './pages/FinanceFixedExpenses'
-import { Income } from './pages/Income'
+import { BeoExpenses } from './pages/BeoExpenses'
 import { Campaigns } from './pages/Campaigns'
 import { Leads } from './pages/Leads'
 import { Login } from './pages/Login'
@@ -57,69 +50,20 @@ export default function App() {
                     }
                   />
                   <Route
-                    path="finance/income"
-                    element={
-                      <RequireAdmin>
-                        <Income />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route
                     path="finance/expenses"
                     element={
                       <RequireAdmin>
-                        <Expenses />
+                        <BeoExpenses />
                       </RequireAdmin>
                     }
                   />
-                  <Route
-                    path="finance/reconciliation"
-                    element={
-                      <RequireAdmin>
-                        <FinanceReconciliation />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route
-                    path="finance/documents"
-                    element={
-                      <RequireAdmin>
-                        <FinanceDocuments />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route
-                    path="finance/projects"
-                    element={
-                      <RequireAdmin>
-                        <FinanceProjects />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route
-                    path="finance/cashflow"
-                    element={
-                      <RequireAdmin>
-                        <FinanceCashflow />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route
-                    path="finance/fixed-expenses"
-                    element={
-                      <RequireAdmin>
-                        <FinanceFixedExpenses />
-                      </RequireAdmin>
-                    }
-                  />
-                  <Route
-                    path="finance/retainers"
-                    element={
-                      <RequireAdmin>
-                        <FinanceRetainers />
-                      </RequireAdmin>
-                    }
-                  />
+                  <Route path="finance/income" element={<Navigate to="/finance" replace />} />
+                  <Route path="finance/reconciliation" element={<Navigate to="/finance" replace />} />
+                  <Route path="finance/documents" element={<Navigate to="/finance" replace />} />
+                  <Route path="finance/projects" element={<Navigate to="/finance" replace />} />
+                  <Route path="finance/cashflow" element={<Navigate to="/finance" replace />} />
+                  <Route path="finance/fixed-expenses" element={<Navigate to="/finance/expenses" replace />} />
+                  <Route path="finance/retainers" element={<Navigate to="/finance" replace />} />
                   <Route path="suppliers" element={<Suppliers />} />
                   <Route path="campaigns" element={<Campaigns />} />
                   <Route path="leads" element={<Leads />} />

@@ -114,7 +114,8 @@ export function JohnnyBeoBoard({
               { label: 'טיוטות שי', value: overview?.shay_pending ?? '—' },
               { label: 'פוסטים עדי', value: overview?.adi_pending ?? '—' },
               { label: 'Beo OS', value: overview?.os_connected ? 'מחובר' : 'ממתין למפתח' },
-              { label: 'יומן', value: overview?.calendar ? 'Google' : 'ממתין לטוקן' },
+              { label: 'יומן + Meet', value: overview?.calendar ? 'Google' : 'ממתין לטוקן' },
+              { label: 'ריווחית', value: overview?.rivhit ? 'מחובר' : 'עתידי' },
             ]}
           />
           {overview?.pending?.summary ? (
@@ -124,15 +125,16 @@ export function JohnnyBeoBoard({
             </div>
           ) : null}
           <div className={`${hubSectionClass(1)} space-y-3 rounded-2xl p-5`}>
-            <h2 className="text-[16px] font-extrabold">המשרד בטלגרם</h2>
+            <h2 className="text-[16px] font-extrabold">אין שיחה כאן</h2>
             <p className="text-[13px] leading-relaxed text-[var(--text-mid)]">
-              ג׳וני עובד איתך בטלגרם — טקסט והודעות קול. Beo OS הוא מערכת החברה. Google Calendar הוא
-              מקור היומן. מייל מ-{overview?.mailbox || 'ceo@beosystem.co.il'}. חשבונית ירוקה אחרי «תנפיק».
+              מדברים עם ג׳וני רק בטלגרם — טקסט וקול. הלוח הזה סטטוס וחיבורים בלבד. Beo OS הוא
+              ספרי החברה שהוא קורא וכותב משם (אחרי כן שלך בטלגרם). מייל ויומן/Meet מגיעים מטוקן
+              Gmail בצי agents — לא ממסך זה.
             </p>
             <ul className="list-disc space-y-1 pe-5 text-[13px] text-[var(--text-mid)]">
-              <li>תפתח משימה / ליד / פגישה — קורה מיד, לפי שדות OS</li>
-              <li>תאשר לשי לשלוח / לעדי לפרסם — הוא שואל, אתה כותב כן</li>
-              <li>חשבונית ומייל יוצא — רק אחרי אישור מפורש</li>
+              <li>Beo OS מחובר בצי רק אחרי BOT_API_KEY זהה + BEO_OS_URL</li>
+              <li>כל כתיבה לחברה — רק אחרי כן בטלגרם</li>
+              <li>ceo@ / יומן — CEO_GMAIL_REFRESH_TOKEN בצי</li>
             </ul>
           </div>
           <div className={`${hubSectionClass(2)} space-y-2 rounded-2xl p-5`}>
@@ -171,7 +173,7 @@ export function JohnnyBeoBoard({
               connected: c.connected,
               note: c.hint,
             }))}
-            emptyHint={!fleetUp ? 'הצי כבוי.' : 'אין חיבורים.'}
+            emptyHint={!fleetUp ? 'צי הסוכנים לא זמין.' : 'אין חיבורים.'}
           />
           {live ? (
             <div className="flex justify-center">
@@ -203,12 +205,11 @@ export function JohnnyBeoBoard({
         <div className={`${hubSectionClass(1)} space-y-3 rounded-2xl p-5 text-[13px] leading-relaxed text-[var(--text-mid)]`}>
           <h2 className="text-[15px] font-extrabold text-[var(--text-dark)]">איך ג׳וני עובד</h2>
           <ul className="list-disc space-y-2 pe-5">
-            <li>הסוכן הראשי. שי ועדי עובדים דרכו — אישור שליחה/פרסום אחרי כן בטלגרם.</li>
-            <li>Beo OS: משימות, לידים, לקוחות, פרויקטים, פגישות — לפי השדות במערכת.</li>
-            <li>Google Calendar הוא מקור היומן. פגישת Meet נוצרת שם ומשתקפת ל-OS.</li>
-            <li>מייל רק מ-ceo@beosystem.co.il. sales@ שייך לשי.</li>
-            <li>חשבונית ירוקה: טיוטה, אז «תנפיק».</li>
-            <li>הודעות קול: אתה מדבר — הוא עונה בקול.</li>
+            <li>אין צ׳אט עם ג׳וני ב-Beo OS. מדברים רק בטלגרם.</li>
+            <li>Beo OS: קריאה/כתיבה דרך /api/bot-data אחרי BOT_API_KEY בצי.</li>
+            <li>כל כתיבה אחרי כן בטלגרם.</li>
+            <li>יומן + Meet + ceo@ — מ-CEO_GMAIL_REFRESH_TOKEN בצי, לא מכאן.</li>
+            <li>חשבונית ירוקה: POST /api/bot-morning/documents אחרי MORNING_* בשרת OS.</li>
           </ul>
         </div>
       ) : null}

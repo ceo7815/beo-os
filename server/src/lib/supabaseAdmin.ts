@@ -7,7 +7,9 @@ function isAnonJwt(key: string): boolean {
   const parts = key.split('.')
   if (parts.length < 2) return false
   try {
-    const json = Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    const json = Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
+      'utf8',
+    )
     const payload = JSON.parse(json) as { role?: string }
     return payload.role === 'anon'
   } catch {
@@ -34,5 +36,29 @@ export function getServiceSupabase(): SupabaseClient | null {
 }
 
 export function supabaseServiceConfigured(): boolean {
-  return Boolean(env.supabaseUrl && env.supabaseServiceRoleKey && !isAnonJwt(env.supabaseServiceRoleKey))
+  return Boolean(
+    env.supabaseUrl && env.supabaseServiceRoleKey && !isAnonJwt(env.supabaseServiceRoleKey),
+  )
+}
+
+/**
+ * לקוח Supabase עם JWT של המשתמש — עובר RLS (staff).
+ * מאפשר כתיבת finance_documents גם בלי SERVICE_ROLE.
+ */
+export function getUserSupabase(accessToken: string): SupabaseClient | null {
+  const url = env.supabaseUrl
+  const anon = env.supabaseAnonKey
+  if (!url || !anon || !accessToken) return null
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  })
+}
+
+export function readBearerFromRequest(authorization?: string): string | null {
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) return null
+  const token = authorization.slice('Bearer '.length).trim()
+  return token || null
 }

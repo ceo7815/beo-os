@@ -717,14 +717,31 @@ export interface Client {
   legalName?: string
   /** ח.פ / עוסק מורשה */
   taxId?: string
+  /** מספר ת״ז */
+  idNumber?: string
+  /** מספר זר */
+  foreignId?: string
   addressLine?: string
   city?: string
+  zipcode?: string
+  country?: string
+  /** טלפון נוסף */
+  phone2?: string
+  fax?: string
+  /** לקוח משלם (טקסט/שם) */
+  payingCustomerName?: string
+  /** מטבע — ברירת מחדל ILS */
+  currency?: string
+  /** הפניה לפרויקט בריווחית (מס׳) */
+  rivhitProjectRef?: string
   /** הערות פנימיות על העסק */
   businessNotes?: string
   /** יתרת חוב פתוחה מהכנסות (תשלום חלקי) — ₪ */
   financeBalance?: number
   /** מזהה הלקוח בחשבונית ירוקה — כשסונכרן משם */
   greenInvoiceId?: string
+  /** מזהה לקוח בריווחית אונליין */
+  rivhitCustomerId?: number
   /** מקור הלקוח — 'green_invoice' = סונכרן מחשבונית ירוקה */
   source?: 'manual' | 'green_invoice'
 }

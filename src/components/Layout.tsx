@@ -162,7 +162,9 @@ export function Layout() {
 
   const financeNavActive =
     location.pathname.startsWith('/finance') ||
-    location.pathname.startsWith('/collections')
+    location.pathname.startsWith('/collections') ||
+    location.pathname.startsWith('/clients') ||
+    location.pathname.startsWith('/suppliers')
   const operationsNavActive =
     location.pathname.startsWith('/projects') ||
     location.pathname.startsWith('/campaigns') ||
@@ -363,7 +365,7 @@ export function Layout() {
                   </NavGlyph>
                 }
               >
-                <NavSubSectionLabel>מכירות ולקוחות</NavSubSectionLabel>
+                <NavSubSectionLabel>מכירות</NavSubSectionLabel>
                 <NavSubLink to="/campaigns" label="קמפיינים" />
                 <NavSubLink to="/leads" label="לידים" />
 
@@ -379,28 +381,6 @@ export function Layout() {
                 <NavSubSectionLabel>כלים</NavSubSectionLabel>
                 <NavSubLink to="/prompts" label="ספריית פרומפטים" />
               </NavExpandableGroup>
-              <NavLink
-                to="/clients"
-                className={({ isActive }) =>
-                  `${navBase} ${isActive ? 'is-active' : ''}`
-                }
-              >
-                <NavGlyph>
-                  <path d="M3 21h18M6 21V10l6-3 6 3v11M9 10v11M9 7l3-1.5L15 7" />
-                </NavGlyph>
-                לקוחות
-              </NavLink>
-              <NavLink
-                to="/suppliers"
-                className={({ isActive }) =>
-                  `${navBase} ${isActive ? 'is-active' : ''}`
-                }
-              >
-                <NavGlyph>
-                  <path d="M1 4h15v11H1zM16 9h3l4 4v6h-7V9zM5 19a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM17 19a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" />
-                </NavGlyph>
-                ספקים
-              </NavLink>
               {showFinanceNav ? (
                 <NavExpandableGroup
                   label="פיננסים"
@@ -414,15 +394,10 @@ export function Layout() {
                     </NavGlyph>
                   }
                 >
-                  <NavSubLink to="/finance" label="סקירה פיננסית" />
-                  <NavSubLink to="/finance/income" label="הכנסות" />
+                  <NavSubLink to="/finance" label="ריווחית · מסמכים" />
                   <NavSubLink to="/finance/expenses" label="הוצאות" />
-                  <NavSubLink to="/finance/reconciliation" label="התאמות בנקים" />
-                  <NavSubLink to="/finance/documents" label="תיק חשבוניות" />
-                  <NavSubLink to="/finance/projects" label="פרויקטים" />
-                  <NavSubLink to="/finance/cashflow" label="תזרים" />
-                  <NavSubLink to="/finance/fixed-expenses" label="הוצאות קבועות" />
-                  <NavSubLink to="/finance/retainers" label="ריטיינרים" />
+                  <NavSubLink to="/suppliers" label="ספקים" />
+                  <NavSubLink to="/clients" label="לקוחות" />
                   <NavSubLink
                     to="/collections"
                     label="גבייה"

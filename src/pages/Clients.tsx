@@ -23,8 +23,21 @@ function isValidEmail(email: string): boolean {
 interface ClientFormState {
   name: string
   contact: string
+  addressLine: string
+  city: string
+  zipcode: string
+  country: string
   phone: string
+  phone2: string
+  fax: string
   email: string
+  idNumber: string
+  taxId: string
+  foreignId: string
+  salesAgentUserId: string
+  rivhitProjectRef: string
+  payingCustomerName: string
+  currency: string
   department: string
   status: ClientStatus
   assignedEmployeeUserIds: string[]
@@ -33,8 +46,21 @@ interface ClientFormState {
 const emptyForm: ClientFormState = {
   name: '',
   contact: '',
+  addressLine: '',
+  city: '',
+  zipcode: '',
+  country: 'ישראל',
   phone: '',
+  phone2: '',
+  fax: '',
   email: '',
+  idNumber: '',
+  taxId: '',
+  foreignId: '',
+  salesAgentUserId: '',
+  rivhitProjectRef: '',
+  payingCustomerName: '',
+  currency: 'ILS',
   department: '',
   status: 'active',
   assignedEmployeeUserIds: [],
@@ -137,8 +163,21 @@ export function Clients() {
     setForm({
       name: c.name,
       contact: c.contact,
+      addressLine: c.addressLine ?? '',
+      city: c.city ?? '',
+      zipcode: c.zipcode ?? '',
+      country: c.country ?? 'ישראל',
       phone: c.phone,
+      phone2: c.phone2 ?? '',
+      fax: c.fax ?? '',
       email: c.email,
+      idNumber: c.idNumber ?? '',
+      taxId: c.taxId ?? '',
+      foreignId: c.foreignId ?? '',
+      salesAgentUserId: c.salesAgentUserId ?? '',
+      rivhitProjectRef: c.rivhitProjectRef ?? '',
+      payingCustomerName: c.payingCustomerName ?? '',
+      currency: c.currency ?? 'ILS',
       department: c.department ?? '',
       status: c.status,
       assignedEmployeeUserIds: c.assignedEmployeeUserIds?.length
@@ -149,35 +188,44 @@ export function Clients() {
     setModalOpen(true)
   }
 
-  const submit = () => {
+  const submit = async () => {
     const nextErrors: { name?: string; email?: string } = {}
-    if (!form.name.trim()) nextErrors.name = 'שם החברה חובה'
-    if (!isValidEmail(form.email)) nextErrors.email = 'אימייל לא תקין'
-    setErrors(nextErrors)
-    if (Object.keys(nextErrors).length > 0) {
-      pushToast('נא לתקן שגיאות בטופס', 'error')
+    if (!form.name.trim()) nextErrors.name = 'שם משפחה/עסק חובה (כמו בריווחית)'
+    if (form.email.trim() && !isValidEmail(form.email)) nextErrors.email = 'אימייל לא תקין'
+    if (Object.keys(nextErrors).length) {
+      setErrors(nextErrors)
       return
     }
     const departmentTrim = form.department.trim()
+    const payload = {
+      name: form.name.trim(),
+      contact: form.contact.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      addressLine: form.addressLine.trim() || undefined,
+      city: form.city.trim() || undefined,
+      zipcode: form.zipcode.trim() || undefined,
+      country: form.country.trim() || undefined,
+      phone2: form.phone2.trim() || undefined,
+      fax: form.fax.trim() || undefined,
+      idNumber: form.idNumber.trim() || undefined,
+      taxId: form.taxId.trim() || undefined,
+      foreignId: form.foreignId.trim() || undefined,
+      salesAgentUserId: form.salesAgentUserId || undefined,
+      rivhitProjectRef: form.rivhitProjectRef.trim() || undefined,
+      payingCustomerName: form.payingCustomerName.trim() || undefined,
+      currency: form.currency || 'ILS',
+      ...(departmentTrim ? { department: departmentTrim } : { department: null as null }),
+      status: form.status,
+      assignedEmployeeUserIds: form.assignedEmployeeUserIds,
+    }
     if (editingId) {
-      const patch: Parameters<typeof updateClient>[1] = {
-        name: form.name.trim(),
-        contact: form.contact.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        department: departmentTrim ? departmentTrim : null,
-        status: form.status,
-      }
-      patch.assignedEmployeeUserIds = form.assignedEmployeeUserIds
-      updateClient(editingId, patch)
+      await updateClient(editingId, payload)
     } else {
-      addClient({
-        name: form.name.trim(),
-        contact: form.contact.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
+      const { department, ...rest } = payload
+      await addClient({
+        ...rest,
         ...(departmentTrim ? { department: departmentTrim } : {}),
-        status: form.status,
         ...(form.assignedEmployeeUserIds.length
           ? { assignedEmployeeUserIds: form.assignedEmployeeUserIds }
           : {}),
@@ -506,14 +554,32 @@ export function Clients() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editingId ? 'עריכת לקוח' : 'לקוח חדש'}
+        title={editingId ? 'עריכת לקוח' : 'הוספת לקוח חדש'}
       >
-        <div className="space-y-3">
+        <div className="max-h-[70vh] space-y-2.5 overflow-y-auto pe-1">
+          <p className="text-[12px] text-[var(--text-mid)]">
+            שדות תואמים לריווחית. חובה רק{' '}
+            <strong>שם משפחה/עסק</strong>. מספר כרטיס בריווחית נוצר אוטומטית בסנכרון.
+          </p>
+
+          {editingId ? (
+            <div>
+              <label className="mb-1 block text-xs text-[var(--text-mid)]">מספר כרטיס (ריווחית)</label>
+              <input
+                value={
+                  clients.find((c) => c.id === editingId)?.rivhitCustomerId?.toString() ||
+                  'עדיין לא סונכרן'
+                }
+                readOnly
+                className="bg-black/[0.03]"
+              />
+            </div>
+          ) : null}
+
           <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              שם חברה *
-            </label>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">שם משפחה/עסק *</label>
             <input
+              placeholder="שם משפחה/עסק"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
@@ -521,42 +587,85 @@ export function Clients() {
               <p className="mt-1 text-xs text-[var(--danger)]">{errors.name}</p>
             ) : null}
           </div>
+
           <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              איש קשר
-            </label>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">שם פרטי</label>
             <input
+              placeholder="שם פרטי"
               value={form.contact}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, contact: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))}
             />
           </div>
+
           <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">טלפון</label>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">רחוב</label>
             <input
+              placeholder="רחוב"
+              value={form.addressLine}
+              onChange={(e) => setForm((f) => ({ ...f, addressLine: e.target.value }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs text-[var(--text-mid)]">עיר</label>
+              <input
+                placeholder="עיר"
+                value={form.city}
+                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[var(--text-mid)]">מיקוד</label>
+              <input
+                placeholder="מיקוד"
+                value={form.zipcode}
+                onChange={(e) => setForm((f) => ({ ...f, zipcode: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">מדינה</label>
+            <input
+              placeholder="מדינה"
+              value={form.country}
+              onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">מספר טלפון</label>
+            <input
+              placeholder="מספר טלפון"
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
             />
           </div>
+
           <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              מחלקה (לדשבורד גבייה)
-            </label>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">מספר טלפון נוסף</label>
             <input
-              value={form.department}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, department: e.target.value }))
-              }
-              placeholder="למשל: שיווק, הייטק, חשבונאות…"
+              placeholder="מספר טלפון נוסף"
+              value={form.phone2}
+              onChange={(e) => setForm((f) => ({ ...f, phone2: e.target.value }))}
             />
           </div>
+
           <div>
-            <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              אימייל *
-            </label>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">מספר פקס</label>
+            <input
+              placeholder="מספר פקס"
+              value={form.fax}
+              onChange={(e) => setForm((f) => ({ ...f, fax: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">כתובת דוא״ל</label>
             <input
               type="email"
+              placeholder="כתובת דוא״ל"
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
@@ -564,6 +673,94 @@ export function Clients() {
               <p className="mt-1 text-xs text-[var(--danger)]">{errors.email}</p>
             ) : null}
           </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">מספר ת״ז</label>
+            <input
+              placeholder="מספר ת״ז"
+              value={form.idNumber}
+              onChange={(e) => setForm((f) => ({ ...f, idNumber: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">עוסק מורשה</label>
+            <input
+              placeholder="עוסק מורשה / ח.פ"
+              value={form.taxId}
+              onChange={(e) => setForm((f) => ({ ...f, taxId: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">מספר זר</label>
+            <input
+              placeholder="מספר זר"
+              value={form.foreignId}
+              onChange={(e) => setForm((f) => ({ ...f, foreignId: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">סוכן</label>
+            <select
+              value={form.salesAgentUserId}
+              onChange={(e) => setForm((f) => ({ ...f, salesAgentUserId: e.target.value }))}
+            >
+              <option value="">—</option>
+              {teamMembers
+                .filter((u) => u.active !== false)
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name, 'he'))
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">פרויקט (מס׳ בריווחית)</label>
+            <input
+              placeholder="פרויקט"
+              value={form.rivhitProjectRef}
+              onChange={(e) => setForm((f) => ({ ...f, rivhitProjectRef: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">לקוח משלם</label>
+            <input
+              placeholder="לקוח משלם"
+              value={form.payingCustomerName}
+              onChange={(e) => setForm((f) => ({ ...f, payingCustomerName: e.target.value }))}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">מטבע</label>
+            <select
+              value={form.currency}
+              onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
+            >
+              <option value="ILS">ש״ח</option>
+              <option value="USD">USD</option>
+              <option value="EUR">EURO</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--text-mid)]">
+              מחלקה (פנימי Beo · לדשבורד גבייה)
+            </label>
+            <input
+              value={form.department}
+              onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+              placeholder="למשל: שיווק, הייטק…"
+            />
+          </div>
+
           <div>
             <label className="mb-1 block text-xs text-[var(--text-mid)]">סטטוס</label>
             <select
@@ -579,9 +776,10 @@ export function Clients() {
               <option value="inactive">לא פעיל</option>
             </select>
           </div>
+
           <div>
             <label className="mb-1 block text-xs text-[var(--text-mid)]">
-              עובדים משויכים ללקוח
+              עובדים משויכים ללקוח (פנימי Beo)
             </label>
             <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border border-[var(--border-orange-soft)] bg-[var(--bg-input)] p-2 text-sm">
               {employeeAssignOptions.length === 0 ? (
@@ -608,6 +806,7 @@ export function Clients() {
               )}
             </div>
           </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -617,7 +816,7 @@ export function Clients() {
               ביטול
             </button>
             <button type="button" onClick={submit} className="hub-btn-primary text-sm">
-              שמור
+              {editingId ? 'שמור' : 'הוסף'}
             </button>
           </div>
         </div>

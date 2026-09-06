@@ -561,7 +561,7 @@ export function LeadsBeoBoard({
 
   const inFleet = Boolean(agent)
   const running = Boolean(agent?.running)
-  const connections = agent?.connections ?? [
+  const rawConnections = agent?.connections ?? [
     {
       kind: 'telegram',
       label: 'Telegram',
@@ -573,9 +573,18 @@ export function LeadsBeoBoard({
       kind: 'gmail',
       label: 'Gmail',
       connected: Boolean(overview?.gmail_connected),
-      note: 'שליחה אחרי אישור — מחכים ל-API של התיבה',
     },
   ]
+  const connections = rawConnections.map((c) => {
+    if ((c.kind ?? '').toLowerCase() !== 'gmail') return c
+    const connected =
+      overview?.gmail_connected !== undefined ? Boolean(overview.gmail_connected) : c.connected
+    return {
+      ...c,
+      connected,
+      note: connected ? 'שליחה רק אחרי אישור ב-OS' : 'xCloud: GMAIL_REFRESH_TOKEN',
+    }
+  })
 
   const statusBadge = !fleetUp ? (
     <span className="beo-agent-chip beo-agent-chip--muted inline-flex items-center gap-1.5">
@@ -600,8 +609,10 @@ export function LeadsBeoBoard({
     t.kind === 'gmail'
       ? {
           ...t,
-          connected: Boolean(overview?.gmail_connected),
-          hint: overview?.gmail_connected ? undefined : 'sales@beosystem.com',
+          connected: overview?.gmail_connected ?? t.connected,
+          hint: (overview?.gmail_connected ?? t.connected)
+            ? 'שליחה רק אחרי אישור ב-OS'
+            : 'xCloud: GMAIL_REFRESH_TOKEN',
         }
       : t.kind === 'telegram'
         ? {
@@ -629,8 +640,8 @@ export function LeadsBeoBoard({
           <div
             className={`${hubSectionClass(0)} rounded-2xl border border-[var(--brand)]/20 bg-[var(--brand-light)]/40 px-4 py-2.5 text-[13px] leading-relaxed text-[var(--text-dark)]`}
           >
-            הצי כבוי (פורט 8788). הלוח מוכן — הפעילו Beo-agents control כדי לטעון טיוטות ולאשר
-            שליחה.
+            צי הסוכנים לא זמין (agents.beosystem.com). הלוח מוכן — בדקו את הפרוקסי
+            /api/beo-agents כדי לטעון טיוטות ולאשר שליחה.
           </div>
         ) : null
       }
@@ -679,7 +690,7 @@ export function LeadsBeoBoard({
                 ) : null}
                 <p className="mt-3 text-[12px] text-[var(--text-light)]">
                   יעד: {overview?.daily_target ?? 10} מוכנים עד{' '}
-                  {overview?.target_ready_by ?? '17:00'} · {overview?.date || '—'}
+                  {overview?.target_ready_by ?? '10:00'} · {overview?.date || '—'}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1117,8 +1128,8 @@ export function LeadsBeoBoard({
               פולואפ אחד אחרי ~48 שעות בלי תשובה — טיוטה לאישור כאן, באותו שרשור Gmail. לא ספאם.
             </li>
             <li>
-              10 פניות ראשונות בכל יום עבודה (א׳–ה׳) עד 17:00. פולואפים מחוץ למכסה. שליחה אחרי
-              אישור כאן.
+              10 פניות ראשונות מוכנות עד 10:00 בכל יום עבודה (א׳–ה׳). חלון שליחה 09:00–17:00 אחרי
+              אישור כאן. פולואפים מחוץ למכסה.
             </li>
             <li>
               וואטסאפ: טיוטה לטלפון שלהם בכרטיס — אתה שולח מהמספר של Beo. במייל נשאר קישור אלינו.
