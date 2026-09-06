@@ -18,7 +18,7 @@ import {
   unauthorized,
   type ApiResult,
 } from '../lib/hubApiHttpUtil.js'
-import { getAdminDb } from '../lib/firebaseAdmin.js'
+import { getServiceSupabase } from '../lib/supabaseAdmin.js'
 import { MorningClient, MorningError } from '../lib/morningClient.js'
 import { loadMorningCredentials } from '../lib/morningCredentials.js'
 
@@ -29,6 +29,18 @@ import { loadMorningCredentials } from '../lib/morningCredentials.js'
 
 function send(reply: FastifyReply, result: ApiResult): void {
   reply.code(result.status).send(result.body)
+}
+
+function sendCaught(reply: FastifyReply, e: unknown): boolean {
+  if (e instanceof HubApiDbNotReadyError) {
+    reply.code(503).send({ ok: false, error: 'supabase_not_configured', message: e.message })
+    return true
+  }
+  if (e instanceof Error) {
+    reply.code(400).send({ ok: false, error: e.message })
+    return true
+  }
+  return false
 }
 
 export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> {
@@ -55,11 +67,7 @@ export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> 
       const result = await handleGet(entity, parseId(query), query)
       send(reply, result)
     } catch (e) {
-      if (e instanceof HubApiDbNotReadyError) {
-        reply.code(503).send({ ok: false, error: 'firebase_not_configured', message: e.message })
-        return
-      }
-      throw e
+      if (!sendCaught(reply, e)) throw e
     }
   })
 
@@ -82,11 +90,7 @@ export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> 
       const result = await handlePost(entity, parseId(query), body, parseSub(query))
       send(reply, result)
     } catch (e) {
-      if (e instanceof HubApiDbNotReadyError) {
-        reply.code(503).send({ ok: false, error: 'firebase_not_configured', message: e.message })
-        return
-      }
-      throw e
+      if (!sendCaught(reply, e)) throw e
     }
   })
 
@@ -109,11 +113,7 @@ export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> 
       const result = await handlePatch(entity, parseId(query), body)
       send(reply, result)
     } catch (e) {
-      if (e instanceof HubApiDbNotReadyError) {
-        reply.code(503).send({ ok: false, error: 'firebase_not_configured', message: e.message })
-        return
-      }
-      throw e
+      if (!sendCaught(reply, e)) throw e
     }
   })
 
@@ -135,11 +135,7 @@ export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> 
       const result = await handleDelete(entity, parseId(query))
       send(reply, result)
     } catch (e) {
-      if (e instanceof HubApiDbNotReadyError) {
-        reply.code(503).send({ ok: false, error: 'firebase_not_configured', message: e.message })
-        return
-      }
-      throw e
+      if (!sendCaught(reply, e)) throw e
     }
   })
 
@@ -163,17 +159,17 @@ export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> 
 
     let clientBlock: Record<string, unknown> = {}
     const clientId = String(body.clientId || '').trim()
-    const db = getAdminDb()
-    if (clientId && db) {
-      const snap = await db.collection('clients').doc(clientId).get()
-      const row = snap.data() || {}
-      const gi = typeof row.greenInvoiceId === 'string' ? row.greenInvoiceId.trim() : ''
+    const sb = getServiceSupabase()
+    if (clientId && sb) {
+      const { data: row } = await sb.from('clients').select('*').eq('id', clientId).maybeSingle()
+      const gi =
+        typeof row?.green_invoice_id === 'string' ? row.green_invoice_id.trim() : ''
       if (gi) clientBlock = { id: gi }
       else {
         clientBlock = {
-          name: String(body.clientName || row.name || '').trim(),
-          emails: [String(body.email || row.email || '').trim()].filter(Boolean),
-          taxId: String(body.taxId || row.taxId || '').trim() || undefined,
+          name: String(body.clientName || row?.name || '').trim(),
+          emails: [String(body.email || row?.email || '').trim()].filter(Boolean),
+          taxId: String(body.taxId || row?.tax_id || '').trim() || undefined,
         }
       }
     } else {

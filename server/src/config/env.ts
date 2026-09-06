@@ -36,6 +36,8 @@ export const env = {
   corsOrigins: readOrigins(readString('CORS_ORIGINS')),
   supabaseUrl: readString('SUPABASE_URL') || readString('VITE_SUPABASE_URL'),
   supabaseAnonKey: readString('SUPABASE_ANON_KEY') || readString('VITE_SUPABASE_ANON_KEY'),
+  /** service_role — רק בשרת, ל-/api/bot-data (לא בדפדפן) */
+  supabaseServiceRoleKey: readString('SUPABASE_SERVICE_ROLE_KEY'),
   firebaseServiceAccountPath: readString('FIREBASE_SERVICE_ACCOUNT_PATH'),
   /** JSON גולמי — לפרודקשן ב-xCloud (משתנה סביבה אחד) */
   firebaseServiceAccountJson: readString('FIREBASE_SERVICE_ACCOUNT_JSON'),
