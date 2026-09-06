@@ -1,10 +1,16 @@
 import { NavLink } from 'react-router-dom'
 
+export type FinanceTabBadges = {
+  unmatched?: number
+  overdue?: number
+}
+
 /**
  * ניווט פיננסים v2 — ריווחית בלבד.
  * המסכים הישנים (ירוקה / התאמות / תזרים) הוסרו מהניווט.
+ * `badges` נשאר אופציונלי לתאימות עם דפים ישנים שעדיין מעבירים אותו.
  */
-export function FinanceTabs() {
+export function FinanceTabs(_props?: { badges?: FinanceTabBadges }) {
   const tabs = [
     { to: '/finance', label: 'ריווחית', hint: 'לקוח · הזמנה · חשבונית מס קבלה', end: true },
   ] as const
@@ -33,9 +39,4 @@ export function FinanceTabs() {
       ))}
     </nav>
   )
-}
-
-export type FinanceTabBadges = {
-  unmatched?: number
-  overdue?: number
 }
