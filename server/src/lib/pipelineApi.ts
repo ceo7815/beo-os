@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   buildPipelineSummary,
+  israelToday,
   numOrNull,
   type DealSnap,
   type LeadSnap,
@@ -39,7 +40,7 @@ function str(row: Record<string, unknown>, key: string): string | null {
   return typeof v === 'string' && v.trim() ? v : null
 }
 
-export async function loadPipelineSummary(sb: Sb, today = new Date().toISOString().slice(0, 10)): Promise<PipelineSummary> {
+export async function loadPipelineSummary(sb: Sb, today = israelToday()): Promise<PipelineSummary> {
   const { error: expireError } = await sb.rpc('expire_stale_quotes')
   if (expireError && !isMissing(expireError) && !/expire_stale_quotes/i.test(expireError.message)) {
     // Missing function before the migration is fine. Other errors should not hide the summary.
@@ -85,6 +86,7 @@ export async function loadPipelineSummary(sb: Sb, today = new Date().toISOString
     agreedAmount: numOrNull(row.agreed_amount),
     leadId: str(row, 'lead_id'),
     createdAt: str(row, 'created_at'),
+    signedAt: str(row, 'signed_at'),
   }))
   const payments: PaymentSnap[] = paymentRows.map((row) => ({
     id: String(row.id),

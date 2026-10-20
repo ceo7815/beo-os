@@ -27,6 +27,7 @@ import {
   balanceDue,
   dealFaceAmount,
   dealStageOf,
+  dealWeight,
   findDuplicateLead,
   leadFaceAmount,
   leadWeight,
@@ -70,7 +71,6 @@ export function Pipeline() {
   const today = todayYmd()
 
   const [view, setView] = useState<'kanban' | 'table'>('kanban')
-  const [weighted, setWeighted] = useState(false)
   const [source, setSource] = useState('')
   const [ownerId, setOwnerId] = useState('')
   const [temperature, setTemperature] = useState('')
@@ -167,9 +167,10 @@ export function Pipeline() {
         count += 1
       }
       for (const deal of bucket.deals) {
-        const face = dealFaceAmount(toDealSnap(deal))
+        const snap = toDealSnap(deal)
+        const face = dealFaceAmount(snap)
         amount += face
-        weightedAmount += face
+        weightedAmount += face * dealWeight(snap)
         count += 1
       }
     }
@@ -216,6 +217,7 @@ export function Pipeline() {
         l.name,
         STAGE_LABELS[stage] || LEAD_STATUS_LABELS[l.status],
         leadFaceAmount(toLeadSnap(l), quoteSnaps),
+        Math.round(leadFaceAmount(toLeadSnap(l), quoteSnaps) * leadWeight(toLeadSnap(l))),
         leadSourceLabel(l.source),
         ownerName(l.ownerId),
         l.nextActionAt?.slice(0, 10) || l.nextFollowUpDate || '',
@@ -229,6 +231,7 @@ export function Pipeline() {
         clientName.get(d.clientId) || '',
         STAGE_LABELS[stage] || stage,
         dealFaceAmount(toDealSnap(d)),
+        Math.round(dealFaceAmount(toDealSnap(d)) * dealWeight(toDealSnap(d))),
         '',
         ownerName(d.salesAgentUserId),
         d.paidInFullAt || d.depositPaidAt || '',
@@ -248,7 +251,7 @@ export function Pipeline() {
       sheets: [
         {
           sheetName: 'צנרת',
-          headers: ['סוג', 'שם', 'איש קשר / לקוח', 'שלב', 'סכום', 'מקור', 'אחראי', 'תאריך הבא', 'טמפרטורה'],
+          headers: ['סוג', 'שם', 'איש קשר / לקוח', 'שלב', 'סכום', 'הערכה', 'מקור', 'אחראי', 'תאריך הבא', 'טמפרטורה'],
           rows,
         },
       ],
@@ -264,8 +267,8 @@ export function Pipeline() {
         <div>
           <h1 className="text-[26px] font-extrabold text-[var(--text-dark)]">צנרת מכירות</h1>
           <p className="mt-1 text-[13px] text-[var(--text-mid)]">
-            {openMoney.count} פתוחים · {ils(weighted ? openMoney.weightedAmount : openMoney.amount)}
-            {weighted ? ' (משוקלל)' : ''} · «לא נסגר» ו«שולם» לא נספרים בסכום הפתוח
+            {openMoney.count} פתוחים · {ils(openMoney.amount)} · הערכה {ils(openMoney.weightedAmount)}
+            · «לא נסגר» ו«שולם» לא נספרים בסכום הפתוח
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -348,10 +351,6 @@ export function Pipeline() {
         <Filter label="עד">
           <input type="date" className="mt-1" value={to} onChange={(e) => setTo(e.target.value)} />
         </Filter>
-        <label className="flex items-center gap-2 pb-2 text-[12px] font-semibold">
-          <input type="checkbox" checked={weighted} onChange={(e) => setWeighted(e.target.checked)} />
-          שקלול לפי סיכוי
-        </label>
         <div className="ms-auto flex rounded-xl border border-[var(--border)] bg-white p-0.5">
           <button type="button" className={`rounded-lg px-3 py-1.5 text-[12px] font-bold ${view === 'kanban' ? 'bg-[var(--brand)] text-white' : ''}`} onClick={() => setView('kanban')}>לוח</button>
           <button type="button" className={`rounded-lg px-3 py-1.5 text-[12px] font-bold ${view === 'table' ? 'bg-[var(--brand)] text-white' : ''}`} onClick={() => setView('table')}>טבלה</button>
@@ -365,7 +364,7 @@ export function Pipeline() {
               key={col.id}
               title={col.label}
               muted={!col.open}
-              cards={cardsFor(columns.get(col.id), col.id, quoteSnaps, paymentSnaps, weighted, ownerName, today)}
+              cards={cardsFor(columns.get(col.id), col.id, quoteSnaps, paymentSnaps, ownerName, today)}
               onDropCard={(card) => onDrop(col, card)}
               onOpen={(kind, id) => setSelected({ kind, id })}
             />
@@ -373,7 +372,7 @@ export function Pipeline() {
           <Column
             title="לא נסגר"
             muted
-            cards={cardsFor(columns.get('archive'), 'archive', quoteSnaps, paymentSnaps, weighted, ownerName, today)}
+            cards={cardsFor(columns.get('archive'), 'archive', quoteSnaps, paymentSnaps, ownerName, today)}
             onDropCard={(card) => onDrop({ id: 'archive', kind: 'archive' }, card)}
             onOpen={(kind, id) => setSelected({ kind, id })}
           />
@@ -475,6 +474,7 @@ function toDealSnap(d: Deal): DealSnap {
     agreedAmount: d.agreedAmount ?? null,
     leadId: d.leadId,
     createdAt: d.createdAt,
+    signedAt: d.signedAt,
   }
 }
 
@@ -495,17 +495,18 @@ function cardsFor(
   colId: string,
   quotes: QuoteSnap[],
   payments: PaymentSnap[],
-  weighted: boolean,
   ownerName: (id?: string) => string,
   today: string,
-): { cards: Card[]; total: number } {
-  if (!bucket) return { cards: [], total: 0 }
+): { cards: Card[]; total: number; estimate: number } {
+  if (!bucket) return { cards: [], total: 0, estimate: 0 }
   const cards: Card[] = []
   let total = 0
+  let estimate = 0
   for (const l of bucket.leads) {
-    const face = leadFaceAmount(toLeadSnap(l), quotes)
-    const shown = weighted ? face * leadWeight(toLeadSnap(l)) : face
-    total += shown
+    const snap = toLeadSnap(l)
+    const face = leadFaceAmount(snap, quotes)
+    total += face
+    estimate += face * leadWeight(snap)
     const due = (l.nextActionAt || l.nextFollowUpDate || '').slice(0, 10)
     cards.push({
       key: `lead:${l.id}`,
@@ -513,15 +514,17 @@ function cardsFor(
       id: l.id,
       title: l.company || l.name,
       sub: l.company && l.name !== l.company ? l.name : leadSourceLabel(l.source),
-      amount: shown,
+      amount: face,
       due,
       overdue: Boolean(due && due <= today && colId !== 'archive'),
       owner: ownerName(l.ownerId),
     })
   }
   for (const d of bucket.deals) {
-    const face = dealFaceAmount(toDealSnap(d))
+    const snap = toDealSnap(d)
+    const face = dealFaceAmount(snap)
     total += face
+    estimate += face * dealWeight(snap)
     const overdue = payments.some((p) => p.dealId === d.id && paymentIsOverdue(p, today))
     cards.push({
       key: `deal:${d.id}`,
@@ -535,7 +538,7 @@ function cardsFor(
       owner: ownerName(d.salesAgentUserId),
     })
   }
-  return { cards, total }
+  return { cards, total, estimate }
 }
 
 function Column({
@@ -547,7 +550,7 @@ function Column({
 }: {
   title: string
   muted?: boolean
-  cards: { cards: Card[]; total: number }
+  cards: { cards: Card[]; total: number; estimate: number }
   onDropCard: (card: string) => void
   onOpen: (kind: 'lead' | 'deal', id: string) => void
 }) {
@@ -566,7 +569,8 @@ function Column({
           <h3 className="text-[12px] font-extrabold text-[var(--text-dark)]">{title}</h3>
           <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold tabular-nums">{cards.cards.length}</span>
         </div>
-        <p className="mt-1 text-[12px] font-bold tabular-nums text-[var(--text-mid)]">{ils(cards.total)}</p>
+        <p className="mt-1 text-[12px] font-bold tabular-nums text-[var(--text-dark)]">{ils(cards.total)}</p>
+        <p className="text-[11px] font-semibold tabular-nums text-[var(--text-mid)]">הערכה {ils(cards.estimate)}</p>
       </header>
       <ul className="flex max-h-[min(70vh,560px)] flex-col gap-2 overflow-y-auto p-2">
         {cards.cards.length === 0 ? (
@@ -625,14 +629,32 @@ function PipelineTable({
       rows.push({
         kind: 'lead',
         id: l.id,
-        cells: ['ליד', l.company || l.name, STAGE_LABELS[col] || l.status, ils(leadFaceAmount(toLeadSnap(l), quoteSnaps)), leadSourceLabel(l.source), ownerName(l.ownerId), lostReasonLabel(l.lostReason)],
+        cells: [
+          'ליד',
+          l.company || l.name,
+          STAGE_LABELS[col] || l.status,
+          ils(leadFaceAmount(toLeadSnap(l), quoteSnaps)),
+          ils(leadFaceAmount(toLeadSnap(l), quoteSnaps) * leadWeight(toLeadSnap(l))),
+          leadSourceLabel(l.source),
+          ownerName(l.ownerId),
+          lostReasonLabel(l.lostReason),
+        ],
       })
     }
     for (const d of bucket.deals) {
       rows.push({
         kind: 'deal',
         id: d.id,
-        cells: ['עסקה', d.title, STAGE_LABELS[col] || dealStageOf(toDealSnap(d)), ils(dealFaceAmount(toDealSnap(d))), clientName.get(d.clientId) || '', ownerName(d.salesAgentUserId), ils(balanceDue(toDealSnap(d), paymentSnaps))],
+        cells: [
+          'עסקה',
+          d.title,
+          STAGE_LABELS[col] || dealStageOf(toDealSnap(d)),
+          ils(dealFaceAmount(toDealSnap(d))),
+          ils(dealFaceAmount(toDealSnap(d)) * dealWeight(toDealSnap(d))),
+          clientName.get(d.clientId) || '',
+          ownerName(d.salesAgentUserId),
+          ils(balanceDue(toDealSnap(d), paymentSnaps)),
+        ],
       })
     }
   }
@@ -641,7 +663,7 @@ function PipelineTable({
       <table className="w-full min-w-[720px] text-right text-[13px]">
         <thead className="bg-[var(--surface-muted)] text-[11px] font-bold text-[var(--text-light)]">
           <tr>
-            {['סוג', 'שם', 'שלב', 'סכום', 'מקור / לקוח', 'אחראי', 'הערה'].map((h) => (
+            {['סוג', 'שם', 'שלב', 'סכום', 'הערכה', 'מקור / לקוח', 'אחראי', 'הערה'].map((h) => (
               <th key={h} className="px-3 py-2">{h}</th>
             ))}
           </tr>

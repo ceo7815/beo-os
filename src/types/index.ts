@@ -670,7 +670,7 @@ export interface Lead {
   clientNeeds?: string
   /** ₪ before VAT */
   estimatedValue?: number
-  /** 0–100. Missing means “use the face value” in weighted totals. */
+  /** 0–100. Missing uses the stage default (new 10 … negotiation 70, won 100, lost 0). */
   probability?: number
   temperature?: LeadTemperature
   nextAction?: string
@@ -860,6 +860,12 @@ export interface Deal {
   deliveredAt?: string
   /** YYYY-MM-DD */
   paidInFullAt?: string
+  /**
+   * When the deal last entered `signed`, or first entered a won stage if it
+   * skipped signed. Not copied from createdAt. Cancelled deals keep the date
+   * and are left out of “won this month”.
+   */
+  signedAt?: string
   notes?: string
   createdAt: string
   updatedAt?: string

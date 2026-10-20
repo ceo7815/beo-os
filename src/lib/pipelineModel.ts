@@ -58,6 +58,39 @@ export const STAGE_LABELS: Record<string, string> = {
   archive: 'לא נסגר',
 }
 
+/**
+ * Used when a lead has no probability of its own.
+ * follow_up is the older status that still sits between contacted and replied.
+ * Archive statuses and cancelled deals stay at 0 so an empty probability cannot inflate them.
+ * Won deal stages are 100.
+ */
+export const STAGE_DEFAULT_PROBABILITY: Record<string, number> = {
+  new: 10,
+  contacted: 15,
+  follow_up: 20,
+  replied: 25,
+  meeting_scheduled: 35,
+  specification: 45,
+  quote_sent: 50,
+  negotiation: 70,
+  closed: 100,
+  signed: 100,
+  deposit_paid: 100,
+  in_progress: 100,
+  delivered: 100,
+  paid_in_full: 100,
+  lost: 0,
+  not_relevant: 0,
+  no_answer: 0,
+  nurture: 0,
+  cold: 0,
+  cancelled: 0,
+}
+
+export function stageDefaultProbability(stage: string): number {
+  return STAGE_DEFAULT_PROBABILITY[stage] ?? 0
+}
+
 export type LeadSnap = {
   id: string
   status: string
@@ -89,6 +122,8 @@ export type DealSnap = {
   agreedAmount?: number | null
   leadId?: string | null
   createdAt?: string | null
+  /** When the deal last entered signed, or first entered a won stage. */
+  signedAt?: string | null
 }
 
 export type PaymentSnap = {
@@ -124,9 +159,15 @@ export type PipelineSummary = {
   currency: 'ILS'
   stages: StageSummary[]
   openPipelineAmount: number
+  /** Weighted open total. Label this הערכה in any UI. */
   openPipelineWeighted: number
+  /** Hebrew label for every weighted figure in this payload. */
+  estimateLabel: 'הערכה'
   openCount: number
+  /** Deals whose signing date falls in this month, excluding cancelled. */
   wonThisMonth: { count: number; amount: number }
+  /** deal_payments marked paid with paid_at in this month. */
+  collectedThisMonth: { count: number; amount: number }
   followUpsDue: { count: number; items: { id: string; due: string }[] }
   overduePayments: { count: number; amount: number }
   upcomingPayments: { count: number; amount: number }
@@ -166,6 +207,25 @@ export function monthPrefix(today: string): string {
   return today.slice(0, 7)
 }
 
+/** Calendar date in Asia/Jerusalem. Date-only strings are kept as written. */
+export function israelYmd(value: string | null | undefined, now?: Date): string | null {
+  if (!value && !now) return null
+  if (value && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return value.trim()
+  const ms = value ? Date.parse(value) : now!.getTime()
+  if (!Number.isFinite(ms)) return ymd(value)
+  const formatted = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(ms))
+  return /^\d{4}-\d{2}-\d{2}$/.test(formatted) ? formatted : ymd(value)
+}
+
+export function israelToday(now = new Date()): string {
+  return israelYmd(null, now) ?? now.toISOString().slice(0, 10)
+}
+
 function quoteSortKey(q: QuoteSnap): string {
   return q.sentAt || q.createdAt || ''
 }
@@ -187,9 +247,19 @@ export function leadFaceAmount(lead: LeadSnap, quotes: QuoteSnap[]): number {
   return live[0]?.amountPreVat ?? 0
 }
 
+function probabilityPercent(explicit: number | null | undefined, stage: string): number {
+  if (explicit == null || !Number.isFinite(explicit)) return stageDefaultProbability(stage)
+  return Math.min(100, Math.max(0, explicit))
+}
+
+/** Explicit probability wins. A missing one uses the stage default, never 100%. */
 export function leadWeight(lead: LeadSnap): number {
-  if (lead.probability == null || !Number.isFinite(lead.probability)) return 1
-  return Math.min(100, Math.max(0, lead.probability)) / 100
+  return probabilityPercent(lead.probability, lead.status) / 100
+}
+
+/** Won stages count in full. Cancelled counts as zero. */
+export function dealWeight(deal: DealSnap): number {
+  return stageDefaultProbability(dealStageOf(deal)) / 100
 }
 
 export function dealFaceAmount(deal: DealSnap): number {
@@ -316,14 +386,16 @@ export function buildPipelineSummary(input: {
   for (const deal of deals) {
     const stage = dealStageOf(deal)
     const amount = dealFaceAmount(deal)
+    const weighted = amount * dealWeight(deal)
     const row = byStage.get(stage)
     if (row) {
       row.count += 1
       row.amount += amount
-      row.weightedAmount += amount
+      row.weightedAmount += weighted
     }
-    const created = deal.createdAt?.slice(0, 7)
-    if (created === month && stage !== 'cancelled') {
+    const cancelled = stage === 'cancelled' || deal.status === 'cancelled'
+    const signedOn = israelYmd(deal.signedAt)
+    if (!cancelled && signedOn != null && signedOn.slice(0, 7) === month) {
       wonCount += 1
       wonAmount += amount
     }
@@ -333,11 +405,18 @@ export function buildPipelineSummary(input: {
   let overdueAmount = 0
   let upcomingCount = 0
   let upcomingAmount = 0
+  let collectedCount = 0
+  let collectedAmount = 0
   const horizon = addDays(today, 14)
   for (const p of payments) {
+    const amount = Number.isFinite(p.amount) ? p.amount : 0
+    const paidOn = israelYmd(p.paidAt)
+    if (p.status === 'paid' && paidOn != null && paidOn.slice(0, 7) === month) {
+      collectedCount += 1
+      collectedAmount += amount
+    }
     if (p.status === 'paid') continue
     const due = ymd(p.dueDate)
-    const amount = Number.isFinite(p.amount) ? p.amount : 0
     if (paymentIsOverdue(p, today)) {
       overdueCount += 1
       overdueAmount += amount
@@ -359,8 +438,10 @@ export function buildPipelineSummary(input: {
     stages,
     openPipelineAmount: roundMoney(openStages.reduce((s, r) => s + r.amount, 0)),
     openPipelineWeighted: roundMoney(openStages.reduce((s, r) => s + r.weightedAmount, 0)),
+    estimateLabel: 'הערכה',
     openCount: openStages.reduce((s, r) => s + r.count, 0),
     wonThisMonth: { count: wonCount, amount: roundMoney(wonAmount) },
+    collectedThisMonth: { count: collectedCount, amount: roundMoney(collectedAmount) },
     followUpsDue: {
       count: followItems.length,
       items: followItems.sort((a, b) => a.due.localeCompare(b.due)).slice(0, 50),

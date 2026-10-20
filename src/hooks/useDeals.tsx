@@ -91,6 +91,7 @@ export function rowToDeal(row: Record<string, unknown>): Deal {
     depositPaidAt: ymdOrUndef(row.deposit_paid_at),
     deliveredAt: row.delivered_at ? String(row.delivered_at) : undefined,
     paidInFullAt: ymdOrUndef(row.paid_in_full_at),
+    signedAt: row.signed_at ? String(row.signed_at) : undefined,
     notes: typeof row.notes === 'string' && row.notes.trim() ? row.notes : undefined,
     createdAt: row.created_at ? String(row.created_at) : new Date().toISOString(),
     updatedAt: row.updated_at ? String(row.updated_at) : undefined,
@@ -141,6 +142,17 @@ function dealToRow(data: Record<string, unknown>): Record<string, unknown> {
     out.amount_total = out.agreed_amount
   }
   return applyStageSideEffects(out)
+}
+
+/**
+ * Local stand-in for the database signing stamp. The trigger owns the stored
+ * value; this only keeps the open screen honest until realtime refreshes.
+ */
+function signedAtAfter(prev: { stage?: string; signedAt?: string }, patch: { stage?: string }): string | undefined {
+  if (!patch.stage || patch.stage === 'cancelled') return prev.signedAt
+  if (patch.stage === 'signed' && prev.stage !== 'signed') return new Date().toISOString()
+  if (!prev.signedAt && prev.stage !== patch.stage) return new Date().toISOString()
+  return prev.signedAt
 }
 
 /** Mirrors the database trigger so the screen stays right even before the migration runs. */
@@ -208,6 +220,7 @@ type DealPatch = Partial<
     | 'depositPaidAt'
     | 'deliveredAt'
     | 'paidInFullAt'
+    | 'signedAt'
   >
 >
 
@@ -374,7 +387,13 @@ export function DealsProvider({ children }: { children: ReactNode }) {
           if (Object.keys(row).length === 0) return
           const { error: qErr } = await sb.from('deals').update(row).eq('id', id)
           if (qErr) throw qErr
-          setDeals((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)))
+          setDeals((prev) =>
+            prev.map((d) => {
+              if (d.id !== id) return d
+              const signedAt = signedAtAfter(d, patch)
+              return signedAt ? { ...d, ...patch, signedAt } : { ...d, ...patch }
+            }),
+          )
           toastFsSuccess('העסקה עודכנה')
           return
         }

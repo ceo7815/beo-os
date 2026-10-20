@@ -71,7 +71,11 @@ export const env = {
    * A listed source must present its own secret.
    */
   intakeSourceSecrets: readString('INTAKE_SOURCE_SECRETS'),
-  /** profiles.id used when a public intake has no ownerId. */
+  /**
+   * profiles.id of the default lead owner (Or). Set at deploy.
+   * The code does not hardcode a user id. Public intake refuses to create a
+   * lead when this is empty and the request has no ownerId.
+   */
   defaultLeadOwnerId: readString('DEFAULT_LEAD_OWNER_ID'),
   /** First-contact task is due this many hours after intake. */
   leadContactWithinHours: Math.max(1, readInt('LEAD_CONTACT_WITHIN_HOURS', 4)),

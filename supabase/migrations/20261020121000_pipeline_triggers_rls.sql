@@ -123,6 +123,22 @@ begin
       new.delivered_at := now();
     end if;
 
+    -- Signing date for "won this month". Moving forward (deposit, delivery, paid)
+    -- keeps the existing timestamp. Re-entering signed refreshes it.
+    -- A deal opened straight at deposit_paid still gets a date, once.
+    if new.stage = 'signed' then
+      if tg_op = 'INSERT' then
+        if new.signed_at is null then
+          new.signed_at := now();
+        end if;
+      elsif new.signed_at is not distinct from old.signed_at then
+        new.signed_at := now();
+      end if;
+    elsif new.stage in ('deposit_paid', 'in_progress', 'delivered', 'paid_in_full')
+      and new.signed_at is null then
+      new.signed_at := now();
+    end if;
+
     if tg_op = 'UPDATE' and auth.uid() is not null and new.stage is distinct from old.stage then
       insert into public.deal_stage_history (deal_id, from_stage, to_stage, changed_by)
       values (new.id, old.stage, new.stage, auth.uid());

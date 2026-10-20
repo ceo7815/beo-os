@@ -2,6 +2,15 @@
 -- Run this file first. Do not run against production until Or approves.
 -- Existing columns, statuses, and rows are left in place.
 -- New lead statuses and deal stages are plain text (no enum swap) so old values keep working.
+--
+-- Prerequisite: a database that already has the live Beo OS tables. This repo
+-- has no earlier migration that creates them. A Supabase branch cloned from
+-- production is the right base. An empty database will fail.
+-- Required before this file: public.leads (id, status, source, owner_id, email),
+-- public.deals (id, status, agreed_amount, lead_id), public.projects (id),
+-- public.clients (id), public.invoices (id), public.tasks (id).
+-- The next file also expects public.profiles (id), auth.uid(), and the
+-- Supabase roles authenticated and service_role.
 
 -- ── leads: intake, value, follow-up ──────────────────────────────────────────
 alter table public.leads add column if not exists estimated_value numeric(14, 2);
@@ -101,6 +110,7 @@ alter table public.deals add column if not exists deposit_amount numeric(14, 2);
 alter table public.deals add column if not exists deposit_paid_at date;
 alter table public.deals add column if not exists delivered_at timestamptz;
 alter table public.deals add column if not exists paid_in_full_at date;
+alter table public.deals add column if not exists signed_at timestamptz;
 alter table public.deals add column if not exists updated_at timestamptz default now();
 
 -- New inserts default to signed. Existing rows stay null until someone sets a stage
@@ -116,12 +126,14 @@ alter table public.deals
   );
 
 create index if not exists deals_stage_idx on public.deals (stage);
+create index if not exists deals_signed_at_idx on public.deals (signed_at);
 create index if not exists deals_lead_idx on public.deals (lead_id);
 create index if not exists deals_project_idx on public.deals (project_id);
 create index if not exists deals_quote_idx on public.deals (quote_id);
 
 comment on column public.deals.stage is 'Delivery stage. deals.status stays the commission status (active/completed/cancelled).';
 comment on column public.deals.amount_total is '₪ agreed total. Kept in sync with agreed_amount when either is written.';
+comment on column public.deals.signed_at is 'When the deal last entered stage signed, or first entered a won stage if it skipped signed. Not backfilled from created_at.';
 
 -- ── projects ↔ deal / lead ───────────────────────────────────────────────────
 alter table public.projects add column if not exists deal_id uuid references public.deals (id) on delete set null;

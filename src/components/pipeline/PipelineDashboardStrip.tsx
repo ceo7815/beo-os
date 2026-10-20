@@ -51,6 +51,7 @@ export function PipelineDashboardStrip() {
           agreedAmount: d.agreedAmount ?? null,
           leadId: d.leadId,
           createdAt: d.createdAt,
+          signedAt: d.signedAt,
         })),
         payments: payments.map((p) => ({
           id: p.id,
@@ -58,6 +59,7 @@ export function PipelineDashboardStrip() {
           amount: p.amount,
           status: p.status,
           dueDate: p.dueDate,
+          paidAt: p.paidAt,
         })),
         recurring: charges.map((c) => ({
           id: c.id,
@@ -73,7 +75,9 @@ export function PipelineDashboardStrip() {
 
   const cards = [
     { label: 'צנרת פתוחה', value: ils(summary.openPipelineAmount), hint: `${summary.openCount} רשומות`, to: '/pipeline' },
-    { label: 'נסגר החודש', value: ils(summary.wonThisMonth.amount), hint: `${summary.wonThisMonth.count} עסקאות`, to: '/pipeline' },
+    { label: 'הערכה', value: ils(summary.openPipelineWeighted), hint: 'לפי סיכוי השלב', to: '/pipeline' },
+    { label: 'נחתם החודש', value: ils(summary.wonThisMonth.amount), hint: `${summary.wonThisMonth.count} עסקאות`, to: '/pipeline' },
+    { label: 'נגבה החודש', value: ils(summary.collectedThisMonth.amount), hint: `${summary.collectedThisMonth.count} תשלומים`, to: '/receivables' },
     { label: 'פולואפ להיום', value: String(summary.followUpsDue.count), hint: 'לידים פתוחים', to: '/pipeline' },
     { label: 'תשלומים באיחור', value: ils(summary.overduePayments.amount), hint: `${summary.overduePayments.count} שורות`, to: '/receivables' },
     { label: 'הכנסה חודשית חוזרת', value: ils(summary.mrr), hint: 'ריטיינר ואחסון', to: '/receivables' },
@@ -91,7 +95,7 @@ export function PipelineDashboardStrip() {
           </p>
         ) : null}
       </div>
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {cards.map((c) => (
           <button
             key={c.label}
