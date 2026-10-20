@@ -11,6 +11,8 @@ import {
   RETAINER_ACCENT,
 } from '../lib/projectRetainer'
 import { useClients } from '../hooks/useClients'
+import { useDeals } from '../hooks/useDeals'
+import { STAGE_LABELS } from '../lib/pipelineModel'
 import { useProjects } from '../hooks/useProjects'
 import { useSuppliers } from '../hooks/useSuppliers'
 import { useTasks } from '../hooks/useTasks'
@@ -188,6 +190,11 @@ export function ProjectDetail() {
   const project = useMemo(
     () => projects.find((p) => p.id === id),
     [projects, id],
+  )
+  const { deals, updateDeal } = useDeals()
+  const linkedDeal = useMemo(
+    () => deals.find((d) => (project?.dealId && d.id === project.dealId) || (id && d.projectId === id)),
+    [deals, project?.dealId, id],
   )
 
   const client = useMemo(
@@ -384,6 +391,34 @@ export function ProjectDetail() {
           </div>
         ) : null}
       </header>
+
+      {linkedDeal ? (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-white px-4 py-3">
+          <div>
+            <p className="text-[11px] font-bold text-[var(--text-light)]">עסקה מקושרת</p>
+            <p className="text-[15px] font-extrabold text-[var(--text-dark)]">
+              {linkedDeal.title} · {STAGE_LABELS[linkedDeal.stage || 'signed'] || linkedDeal.stage}
+              {linkedDeal.agreedAmount != null ? ` · ₪${Math.round(linkedDeal.agreedAmount).toLocaleString('he-IL')}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-xl border border-[var(--border)] px-3 py-2 text-[12px] font-bold"
+              onClick={() => void updateDeal(linkedDeal.id, { stage: 'delivered' })}
+            >
+              סמן נמסר
+            </button>
+            <button
+              type="button"
+              className="rounded-xl bg-[var(--brand)] px-3 py-2 text-[12px] font-bold text-white"
+              onClick={() => void updateDeal(linkedDeal.id, { stage: 'paid_in_full' })}
+            >
+              סמן שולם
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {isAdmin ? (
         <section>

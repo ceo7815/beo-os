@@ -40,6 +40,8 @@ function rowToProject(row: Record<string, unknown>): Project {
       ? (row.retainer_log as Project['retainerLog'])
       : [],
     clientId: row.client_id ? String(row.client_id) : undefined,
+    dealId: row.deal_id ? String(row.deal_id) : undefined,
+    leadId: row.lead_id ? String(row.lead_id) : undefined,
     supplierId: row.supplier_id ? String(row.supplier_id) : undefined,
     status: (row.status as ProjectStatus) || 'active',
     priority: (row.priority as Priority) || 'medium',
@@ -72,6 +74,8 @@ const PROJECT_KEYS: Record<string, string> = {
   startDate: 'start_date',
   retainerLog: 'retainer_log',
   clientId: 'client_id',
+  dealId: 'deal_id',
+  leadId: 'lead_id',
   supplierId: 'supplier_id',
   status: 'status',
   priority: 'priority',
@@ -96,6 +100,8 @@ function projectToRow(data: Record<string, unknown>): Record<string, unknown> {
     out[col] = v
   }
   if ('client_id' in out) out.client_id = uuidOrNull(String(out.client_id ?? ''))
+  if ('deal_id' in out) out.deal_id = uuidOrNull(String(out.deal_id ?? ''))
+  if ('lead_id' in out) out.lead_id = uuidOrNull(String(out.lead_id ?? ''))
   if ('supplier_id' in out) out.supplier_id = uuidOrNull(String(out.supplier_id ?? ''))
   if ('owner_id' in out) out.owner_id = uuidOrNull(String(out.owner_id ?? ''))
   if (typeof out.description === 'string') out.description = emptyToNull(out.description)
@@ -174,6 +180,8 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
           startDate: billing === 'retainer' ? data.startDate?.slice(0, 10) : data.startDate,
           retainerLog: billing === 'retainer' ? (data.retainerLog ?? []) : [],
           clientId: data.clientId,
+          dealId: data.dealId,
+          leadId: data.leadId,
           supplierId: data.supplierId,
           status: data.status,
           priority: data.priority,

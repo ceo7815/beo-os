@@ -7,9 +7,13 @@ import type { Lead, LeadStatus } from '../../types'
 
 const KANBAN_COLS: LeadStatus[] = [
   'new',
+  'contacted',
+  'follow_up',
+  'replied',
+  'meeting_scheduled',
   'specification',
   'quote_sent',
-  'follow_up',
+  'negotiation',
   'no_answer',
 ]
 

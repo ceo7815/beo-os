@@ -64,6 +64,26 @@ export const env = {
   },
   /** מפתח API ל-/api/bot-data (בוטים/סוכנים חיצוניים - למשל ceo-digital-ai) */
   botApiKey: readString('BOT_API_KEY'),
+  /** Shared secret for POST /api/intake/lead. Per-source overrides win when set. */
+  intakeWebhookSecret: readString('INTAKE_WEBHOOK_SECRET'),
+  /**
+   * JSON object of source → secret, e.g. {"meta_ads":"...","google_ads":"..."}.
+   * A listed source must present its own secret.
+   */
+  intakeSourceSecrets: readString('INTAKE_SOURCE_SECRETS'),
+  /**
+   * profiles.id of the default lead owner (Or). Set at deploy.
+   * The code does not hardcode a user id. Public intake refuses to create a
+   * lead when this is empty and the request has no ownerId.
+   */
+  defaultLeadOwnerId: readString('DEFAULT_LEAD_OWNER_ID'),
+  /** First-contact task is due this many hours after intake. */
+  leadContactWithinHours: Math.max(1, readInt('LEAD_CONTACT_WITHIN_HOURS', 4)),
+  /** Optional secret for beo-offer view/decision pings. Bot key is also accepted. */
+  offerPingSecret: readString('OFFER_PING_SECRET'),
+  beoAgentsBaseUrl: readString('BEO_AGENTS_BASE_URL', 'https://agents.beosystem.com').replace(/\/$/, ''),
+  /** 0 = off. When set, the server polls Shay's reply endpoint on this interval. */
+  shaySyncIntervalMinutes: readInt('SHAY_SYNC_INTERVAL_MINUTES', 0),
   /** טוקן API של ריווחית אונליין (מסך הגדרות ממשקים → הצג API) */
   rivhitApiToken: readString('RIVHIT_API_TOKEN'),
   /**

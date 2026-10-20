@@ -33,10 +33,16 @@ const PROJECT_BILLING = ['one-time', 'retainer'] as const
 const LEAD_STATUSES = [
   'cold',
   'new',
+  'contacted',
+  'follow_up',
+  'replied',
+  'meeting_scheduled',
   'specification',
   'quote_sent',
-  'follow_up',
+  'negotiation',
   'no_answer',
+  'nurture',
+  'lost',
   'not_relevant',
   'closed',
 ] as const

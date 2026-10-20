@@ -12,6 +12,8 @@ import { Finance } from './pages/Finance'
 import { BeoExpenses } from './pages/BeoExpenses'
 import { Campaigns } from './pages/Campaigns'
 import { Leads } from './pages/Leads'
+import { Pipeline } from './pages/Pipeline'
+import { Receivables } from './pages/Receivables'
 import { Login } from './pages/Login'
 import { ProjectDetail } from './pages/ProjectDetail'
 import { Projects } from './pages/Projects'
@@ -67,6 +69,8 @@ export default function App() {
                   <Route path="suppliers" element={<Suppliers />} />
                   <Route path="campaigns" element={<Campaigns />} />
                   <Route path="leads" element={<Leads />} />
+                  <Route path="pipeline" element={<Pipeline />} />
+                  <Route path="receivables" element={<Receivables />} />
                   <Route path="projects" element={<Projects />} />
                   <Route path="projects/:id" element={<ProjectDetail />} />
                   <Route path="tasks" element={<Tasks />} />

@@ -1,4 +1,5 @@
 import { boardStatusHe, priorityHe } from './boardTaskLabels'
+import { LEAD_STATUS_LABELS } from './leadStatusUi'
 import type { CashflowLedgerRow } from './cashflowCompute'
 import { formatDateIL, todayYmd } from './dates'
 import { downloadRtlExcel, roundExcelMoney } from './excelExport'
@@ -49,7 +50,6 @@ import type {
   HourlyService,
   HourlyServiceEntry,
   Lead,
-  LeadStatus,
   Priority,
   Project,
   ProjectStatus,
@@ -81,16 +81,7 @@ const CAMPAIGN_KIND_LABEL: Record<CampaignKind, string> = {
 
 // ── Lead labels ──
 
-const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
-  cold: 'ליד קר',
-  new: 'חדש',
-  specification: 'בתהליך אפיון',
-  quote_sent: 'נשלחה הצעת מחיר',
-  follow_up: 'יש לבצע פולואפ',
-  no_answer: 'אין מענה',
-  not_relevant: 'לא רלוונטי',
-  closed: 'נסגרה',
-}
+const LEAD_STATUS_LABEL = LEAD_STATUS_LABELS
 
 // ── Project labels ──
 
@@ -661,6 +652,10 @@ export function exportLeadsToExcel(input: {
     l.lastActivityText?.trim() ?? '',
     l.lastActivityAt ? formatDateIL(l.lastActivityAt) : '',
     l.notRelevantReason?.trim() ?? '',
+    l.estimatedValue ?? '',
+    l.lostReason?.trim() ?? '',
+    l.temperature ?? '',
+    l.nextAction?.trim() ?? '',
     formatDateIL(l.createdAt),
     l.id,
   ])
@@ -684,6 +679,10 @@ export function exportLeadsToExcel(input: {
           'פעילות אחרונה',
           'תאריך פעילות',
           'סיבת לא רלוונטי',
+          'שווי משוער',
+          'סיבת אי-סגירה',
+          'טמפרטורה',
+          'פעולה הבאה',
           'נוצר',
           'מזהה',
         ],

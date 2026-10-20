@@ -51,6 +51,16 @@ export function uuidList(ids: string[] | undefined | null): string[] {
   return ids.map((id) => uuidOrNull(id)).filter((id): id is string => Boolean(id))
 }
 
+export function isMissingRelation(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false
+  const msg = error.message ?? ''
+  return (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    /does not exist|schema cache|could not find the table/i.test(msg)
+  )
+}
+
 export function isDeleteSentinel(value: unknown): boolean {
   return Boolean(value && typeof value === 'object' && '_methodName' in (value as object))
 }

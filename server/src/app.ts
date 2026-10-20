@@ -10,6 +10,7 @@ import { registerMorningRoutes } from './routes/morning.js'
 import { registerBotApiRoutes } from './routes/botApi.js'
 import { registerFinanceAgentRoutes } from './routes/financeAgent.js'
 import { registerRivhitFinanceRoutes } from './routes/rivhitFinance.js'
+import { registerPipelineExtraRoutes } from './routes/pipelineExtras.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -32,6 +33,7 @@ export async function buildApp() {
   await registerApiRoutes(app)
   await registerMorningRoutes(app)
   await registerBotApiRoutes(app)
+  await registerPipelineExtraRoutes(app)
   await registerFinanceAgentRoutes(app)
   await registerFinanceDocumentRoutes(app)
   await registerRivhitFinanceRoutes(app)

@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { addDaysYmd, formatDateIL, formatTaskDueDisplay, todayYmd } from '../lib/dates'
 import { leadScheduleUrgency, leadScheduleYmd } from '../lib/leadSchedule'
+import {
+  isWarmLeadStatus,
+  LEAD_STATUS_COLORS,
+  LEAD_STATUS_LABELS_SHORT as LEAD_STATUS_LABELS,
+} from '../lib/leadStatusUi'
 import { priorityColor } from '../lib/priorityColor'
 import { useClients } from '../hooks/useClients'
 import { useCollectionTracking } from '../hooks/useCollectionTracking'
@@ -25,7 +30,6 @@ import type {
   CampaignPlatform,
   CampaignStatus,
   Lead,
-  LeadStatus,
   Priority,
   Project,
   ProjectStatus,
@@ -35,6 +39,7 @@ import { LeadScheduleDateEditorModal } from '../components/leads/LeadScheduleDat
 import { EmptyState } from '../components/shared/EmptyState'
 import { NeedsMeNowQueue, type NeedsMeItem } from '../components/NeedsMeNowQueue'
 import { OnboardingChecklist } from '../components/OnboardingChecklist'
+import { PipelineDashboardStrip } from '../components/pipeline/PipelineDashboardStrip'
 import { ProgressBar } from '../components/shared/ProgressBar'
 import { hubSectionClass, hubSectionElevatedClass } from '../lib/hubSectionBorder'
 
@@ -176,28 +181,6 @@ function projectOpenTasksPhrase(n: number): string {
 /** פרויקטים שמוצגים בדשבורד — רק במצב פעיל (שוטפים וחד-פעמיים) */
 const DASHBOARD_OPEN_STATUSES: ProjectStatus[] = ['active']
 
-const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
-  cold: 'ליד קר',
-  new: 'חדש',
-  specification: 'אפיון',
-  quote_sent: 'הצעת מחיר',
-  follow_up: 'פולואפ',
-  no_answer: 'אין מענה',
-  not_relevant: 'לא רלוונטי',
-  closed: 'נסגר',
-}
-
-const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
-  cold: '#5B7C99',
-  new: '#5828A0',
-  specification: '#7C3AED',
-  quote_sent: '#D97706',
-  follow_up: '#F59E0B',
-  no_answer: '#64748B',
-  not_relevant: '#DC2626',
-  closed: '#16A34A',
-}
-
 const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
   planning: 'בתכנון',
   active: 'פעיל',
@@ -233,21 +216,15 @@ function isPrivilegedRole(role: string): boolean {
 function leadPipelineSort(a: Lead, b: Lead, today: string): number {
   const tier = (l: Lead): number => {
     if (l.status === 'closed') return 90
-    if (l.status === 'not_relevant') return 88
+    if (l.status === 'not_relevant' || l.status === 'lost') return 88
+    if (l.status === 'nurture') return 80
     if (l.status === 'cold') return 70
     const sched = leadScheduleYmd(l) ?? ''
     if (sched && /^\d{4}-\d{2}-\d{2}$/.test(sched)) {
       if (sched < today) return 0
       if (sched === today) return 1
     }
-    const warm: LeadStatus[] = [
-      'follow_up',
-      'new',
-      'quote_sent',
-      'specification',
-      'no_answer',
-    ]
-    return warm.includes(l.status) ? 5 : 8
+    return isWarmLeadStatus(l.status) ? 5 : 8
   }
   const d = tier(a) - tier(b)
   if (d !== 0) return d
@@ -564,6 +541,7 @@ export function Dashboard() {
   return (
     <div className="beo-page space-y-5">
       <OnboardingChecklist />
+      <PipelineDashboardStrip />
       <NeedsMeNowQueue items={needsMeItems} />
 
       <header className={`${hubSectionElevatedClass()} rounded-2xl p-5 md:p-6`}>
@@ -587,6 +565,9 @@ export function Dashboard() {
             </button>
             <button type="button" onClick={() => navigate('/projects')} className="hub-chip-link">
               פרויקטים
+            </button>
+            <button type="button" onClick={() => navigate('/pipeline')} className="hub-chip-link">
+              צנרת
             </button>
             <button type="button" onClick={() => navigate('/leads')} className="hub-chip-link">
               לידים
