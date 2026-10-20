@@ -297,6 +297,9 @@ begin
     end;
 
     if not exists (select 1 from pg_policy where polrelid = target) then
+      -- profiles must allow the signed-in user to read their own row with a
+      -- policy that does not itself query profiles. A profiles policy of
+      -- "exists (select from profiles ...)" recurses and hides every new table.
       execute format('alter table %s enable row level security', target);
       execute format(
         'create policy %I on %s for all to authenticated using (
