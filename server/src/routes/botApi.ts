@@ -4,6 +4,7 @@ import {
   handleDelete,
   handleGet,
   handlePatch,
+  handlePipeline,
   handlePost,
   normalizeEntity,
   HubApiDbNotReadyError,
@@ -54,6 +55,16 @@ export async function registerBotApiRoutes(app: FastifyInstance): Promise<void> 
 
     if (isSchemaCatalogRequest(query)) {
       send(reply, { status: 200, body: { ok: true, catalog: apiCatalog() } })
+      return
+    }
+
+    const rawEntity = parseEntity(query).trim().toLowerCase().replace(/_/g, '')
+    if (rawEntity === 'pipeline' || rawEntity === 'pipelinesummary') {
+      try {
+        send(reply, await handlePipeline())
+      } catch (e) {
+        if (!sendCaught(reply, e)) throw e
+      }
       return
     }
 

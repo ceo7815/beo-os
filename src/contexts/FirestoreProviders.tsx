@@ -4,6 +4,9 @@ import { HubRealtimeNotifications } from '../components/HubRealtimeNotifications
 import { ClientsProvider } from '../hooks/useClients'
 import { CollectionTrackingProvider } from '../hooks/useCollectionTracking'
 import { DealsProvider } from '../hooks/useDeals'
+import { QuotesProvider } from '../hooks/useQuotes'
+import { DealPaymentsProvider } from '../hooks/useDealPayments'
+import { RecurringChargesProvider } from '../hooks/useRecurringCharges'
 import { AdminFinanceProviders } from './AdminFinanceProviders'
 import { InvoicesProvider } from '../hooks/useInvoices'
 import { ProjectsProvider } from '../hooks/useProjects'
@@ -29,6 +32,9 @@ export function FirestoreProviders() {
             <InvoicesProvider>
               <AdminFinanceProviders>
                 <DealsProvider>
+                  <QuotesProvider>
+                  <DealPaymentsProvider>
+                  <RecurringChargesProvider>
                   <CampaignsProvider>
                     <LeadsProvider>
                       <TasksProvider>
@@ -42,6 +48,9 @@ export function FirestoreProviders() {
                       </TasksProvider>
                     </LeadsProvider>
                   </CampaignsProvider>
+                  </RecurringChargesProvider>
+                  </DealPaymentsProvider>
+                  </QuotesProvider>
                 </DealsProvider>
               </AdminFinanceProviders>
             </InvoicesProvider>

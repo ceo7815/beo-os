@@ -5,6 +5,7 @@ import { formatDateIL, formatDateTimeIL, formatTaskDueDisplay, todayYmd } from '
 import { getCollectionTrackingStatus } from '../lib/collectionTrackingStatus'
 import { boardStatusHe, priorityHe } from '../lib/boardTaskLabels'
 import { hubSectionClass } from '../lib/hubSectionBorder'
+import { LEAD_STATUS_LABELS } from '../lib/leadStatusUi'
 import { isAdminRole } from './RequireAdmin'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useCollectionTracking } from '../hooks/useCollectionTracking'
@@ -19,20 +20,10 @@ import type {
   CampaignStatus,
   Client,
   InvoiceStatus,
-  LeadStatus,
   ProjectStatus,
 } from '../types'
 
-const LEAD_STATUS_HE: Record<LeadStatus, string> = {
-  cold: 'ליד קר',
-  new: 'חדש',
-  specification: 'בתהליך אפיון',
-  quote_sent: 'נשלחה הצעת מחיר',
-  follow_up: 'יש לבצע פולואפ',
-  no_answer: 'אין מענה',
-  not_relevant: 'לא רלוונטי',
-  closed: 'נסגרה',
-}
+const LEAD_STATUS_HE = LEAD_STATUS_LABELS
 
 const CAMPAIGN_STATUS_HE: Record<CampaignStatus, string> = {
   planning: 'בתכנון',

@@ -169,6 +169,8 @@ export function Layout() {
     location.pathname.startsWith('/projects') ||
     location.pathname.startsWith('/campaigns') ||
     location.pathname.startsWith('/leads') ||
+    location.pathname.startsWith('/pipeline') ||
+    location.pathname.startsWith('/receivables') ||
     location.pathname.startsWith('/tasks') ||
     location.pathname.startsWith('/hourly-services') ||
     location.pathname.startsWith('/prompts')
@@ -366,6 +368,8 @@ export function Layout() {
                 }
               >
                 <NavSubSectionLabel>מכירות</NavSubSectionLabel>
+                <NavSubLink to="/pipeline" label="צנרת מכירות" />
+                <NavSubLink to="/receivables" label="תקבולים" />
                 <NavSubLink to="/campaigns" label="קמפיינים" />
                 <NavSubLink to="/leads" label="לידים" />
 

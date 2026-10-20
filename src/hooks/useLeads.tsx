@@ -12,7 +12,13 @@ import { isSupabaseConfigured } from '../lib/backend'
 import { requireSupabase } from '../lib/supabase'
 import { isDeleteSentinel, subscribeTable, uuidOrNull } from '../lib/sbLive'
 import { toastFsError, toastFsSuccess } from '../lib/fsToast'
-import type { Lead, LeadStatus } from '../types'
+import type { Lead, LeadStatus, LeadTemperature } from '../types'
+
+function numOrUndef(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() && Number.isFinite(Number(v))) return Number(v)
+  return undefined
+}
 
 function rowToLead(row: Record<string, unknown>): Lead {
   return {
@@ -22,10 +28,34 @@ function rowToLead(row: Record<string, unknown>): Lead {
     phone: typeof row.phone === 'string' ? row.phone : undefined,
     email: typeof row.email === 'string' ? row.email : undefined,
     clientId: row.client_id ? String(row.client_id) : undefined,
+    salesAgentUserId: row.sales_agent_user_id ? String(row.sales_agent_user_id) : undefined,
     source: typeof row.source === 'string' ? row.source : undefined,
+    sourceDetail: typeof row.source_detail === 'string' ? row.source_detail : undefined,
+    utmSource: typeof row.utm_source === 'string' ? row.utm_source : undefined,
+    utmMedium: typeof row.utm_medium === 'string' ? row.utm_medium : undefined,
+    utmCampaign: typeof row.utm_campaign === 'string' ? row.utm_campaign : undefined,
+    utmContent: typeof row.utm_content === 'string' ? row.utm_content : undefined,
+    utmTerm: typeof row.utm_term === 'string' ? row.utm_term : undefined,
+    landingPage: typeof row.landing_page === 'string' ? row.landing_page : undefined,
+    firstMessage: typeof row.first_message === 'string' ? row.first_message : undefined,
+    consent: typeof row.consent === 'boolean' ? row.consent : undefined,
+    domain: typeof row.domain === 'string' ? row.domain : undefined,
     status: (row.status as LeadStatus) || 'new',
     ownerId: row.owner_id ? String(row.owner_id) : '',
     clientNeeds: typeof row.client_needs === 'string' ? row.client_needs : undefined,
+    estimatedValue: numOrUndef(row.estimated_value),
+    probability: numOrUndef(row.probability),
+    temperature:
+      row.temperature === 'hot' || row.temperature === 'warm' || row.temperature === 'cold'
+        ? (row.temperature as LeadTemperature)
+        : undefined,
+    nextAction: typeof row.next_action === 'string' ? row.next_action : undefined,
+    nextActionAt: row.next_action_at ? String(row.next_action_at) : undefined,
+    lastContactAt: row.last_contact_at ? String(row.last_contact_at) : undefined,
+    meetingAt: row.meeting_at ? String(row.meeting_at) : undefined,
+    repliedAt: row.replied_at ? String(row.replied_at) : undefined,
+    lostReason: typeof row.lost_reason === 'string' ? row.lost_reason : undefined,
+    lostReasonNote: typeof row.lost_reason_note === 'string' ? row.lost_reason_note : undefined,
     lastActivityText:
       typeof row.last_activity_text === 'string' ? row.last_activity_text : undefined,
     lastActivityAt: row.last_activity_at ? String(row.last_activity_at) : undefined,
@@ -56,10 +86,31 @@ const LEAD_KEYS: Record<string, string> = {
   phone: 'phone',
   email: 'email',
   clientId: 'client_id',
+  salesAgentUserId: 'sales_agent_user_id',
   source: 'source',
+  sourceDetail: 'source_detail',
+  utmSource: 'utm_source',
+  utmMedium: 'utm_medium',
+  utmCampaign: 'utm_campaign',
+  utmContent: 'utm_content',
+  utmTerm: 'utm_term',
+  landingPage: 'landing_page',
+  firstMessage: 'first_message',
+  consent: 'consent',
+  domain: 'domain',
   status: 'status',
   ownerId: 'owner_id',
   clientNeeds: 'client_needs',
+  estimatedValue: 'estimated_value',
+  probability: 'probability',
+  temperature: 'temperature',
+  nextAction: 'next_action',
+  nextActionAt: 'next_action_at',
+  lastContactAt: 'last_contact_at',
+  meetingAt: 'meeting_at',
+  repliedAt: 'replied_at',
+  lostReason: 'lost_reason',
+  lostReasonNote: 'lost_reason_note',
   lastActivityText: 'last_activity_text',
   lastActivityAt: 'last_activity_at',
   nextFollowUpDate: 'next_follow_up_date',
@@ -86,6 +137,9 @@ function leadToRow(data: Record<string, unknown>): Record<string, unknown> {
   }
   if (typeof out.client_id === 'string') out.client_id = uuidOrNull(out.client_id as string)
   if (typeof out.owner_id === 'string') out.owner_id = uuidOrNull(out.owner_id as string)
+  if ('sales_agent_user_id' in out) {
+    out.sales_agent_user_id = uuidOrNull(String(out.sales_agent_user_id ?? ''))
+  }
   return out
 }
 

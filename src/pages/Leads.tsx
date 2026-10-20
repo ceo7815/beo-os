@@ -7,6 +7,7 @@ import { formatFirebaseErrorDetail } from '../lib/formatFirebaseError'
 import { leadScheduleCaption, leadScheduleUrgency, leadScheduleYmd } from '../lib/leadSchedule'
 import { uploadLeadQuotePdf } from '../lib/leadQuoteStorage'
 import { useLeads } from '../hooks/useLeads'
+import { useQuotes } from '../hooks/useQuotes'
 import { useCampaigns } from '../hooks/useCampaigns'
 import { useClients } from '../hooks/useClients'
 import { useUsers } from '../hooks/useUsers'
@@ -22,7 +23,9 @@ import {
   LEAD_STATUS_COLORS,
   LEAD_STATUS_LABELS,
   LEAD_STATUSES_ORDERED,
+  LOST_REASON_OPTIONS,
   isWarmLeadStatus,
+  lostReasonLabel,
 } from '../lib/leadStatusUi'
 import {
   backfillColdLeadsFromSent,
@@ -30,6 +33,16 @@ import {
 } from '../lib/syncBeoLeadsCrm'
 import { LeadConvertWizard } from '../components/leads/LeadConvertWizard'
 import { LeadsKanban } from '../components/leads/LeadsKanban'
+
+function offerSlug(url: string): string | null {
+  try {
+    const parts = new URL(url).pathname.split('/').filter(Boolean)
+    const i = parts.indexOf('offer')
+    return i >= 0 && parts[i + 1] ? parts[i + 1] : null
+  } catch {
+    return null
+  }
+}
 
 /** ערך נשמר ב־Firestore בשדה `source` כשבוחרים מהרשימה הקבועה */
 const LEAD_SOURCE_BEO_SYSTEMS = 'Beo systems'
@@ -124,23 +137,24 @@ const statusColors = LEAD_STATUS_COLORS
 
 /** מסגרת מלאה לשורה בטבלה / כרטיס — אדום / ירוק / סגול-קר / סגול */
 function leadFrameInsetClass(status: LeadStatus): string {
-  if (status === 'not_relevant') return 'shadow-[inset_0_0_0_2px_#DC2626]'
+  if (status === 'not_relevant' || status === 'lost') return 'shadow-[inset_0_0_0_2px_#DC2626]'
   if (status === 'closed') return 'shadow-[inset_0_0_0_2px_#16A34A]'
-  if (status === 'cold') return 'shadow-[inset_0_0_0_2px_#5B7C99]'
+  if (status === 'cold' || status === 'nurture') return 'shadow-[inset_0_0_0_2px_#5B7C99]'
+  if (status === 'replied') return 'shadow-[inset_0_0_0_2px_#0891B2]'
   return 'shadow-[inset_0_0_0_2px_#5828A0]'
 }
 
 /** רקע מאחורי הליד — בולט במיוחד ל־«לא רלוונטי» / ליד קר */
 function leadRowSurfaceClass(status: LeadStatus): string {
-  if (status === 'not_relevant') return 'bg-[#FEF2F2]'
-  if (status === 'cold') return 'bg-[#F1F5F9]'
+  if (status === 'not_relevant' || status === 'lost') return 'bg-[#FEF2F2]'
+  if (status === 'cold' || status === 'nurture') return 'bg-[#F1F5F9]'
   return ''
 }
 
 function leadCardSurfaceClass(status: LeadStatus): string {
-  if (status === 'not_relevant') return 'border-2 border-[#DC2626] bg-[#FEF2F2]'
+  if (status === 'not_relevant' || status === 'lost') return 'border-2 border-[#DC2626] bg-[#FEF2F2]'
   if (status === 'closed') return 'border-2 border-[#16A34A]'
-  if (status === 'cold') return 'border-2 border-[#5B7C99] bg-[#F8FAFC]'
+  if (status === 'cold' || status === 'nurture') return 'border-2 border-[#5B7C99] bg-[#F8FAFC]'
   return 'border-2 border-[#5828A0]'
 }
 
@@ -170,6 +184,7 @@ export function Leads() {
   const { campaigns } = useCampaigns()
   const { clients, loading: clientsLoading, error: clientsError } = useClients()
   const { leads, addLead, updateLead, deleteLead } = useLeads()
+  const { quotes, addQuote } = useQuotes()
   // leads נטען ל-sync/backfill של שי
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -207,6 +222,8 @@ export function Leads() {
   const [notRelevantReasonErrorById, setNotRelevantReasonErrorById] = useState<
     Record<string, string>
   >({})
+  const [lostReasonDraftById, setLostReasonDraftById] = useState<Record<string, string>>({})
+  const [lostReasonNoteDraftById, setLostReasonNoteDraftById] = useState<Record<string, string>>({})
   const [clientNeedsViewerLeadId, setClientNeedsViewerLeadId] = useState<string | null>(null)
   const [clientNeedsEditDraft, setClientNeedsEditDraft] = useState('')
   const [activityHistoryLeadId, setActivityHistoryLeadId] = useState<string | null>(null)
@@ -294,6 +311,14 @@ export function Leads() {
       setNotRelevantReasonDraftById((p) => ({
         ...p,
         [openActionLeadId]: lead.notRelevantReason ?? '',
+      }))
+      setLostReasonDraftById((p) => ({
+        ...p,
+        [openActionLeadId]: lead.lostReason ?? 'price',
+      }))
+      setLostReasonNoteDraftById((p) => ({
+        ...p,
+        [openActionLeadId]: lead.lostReasonNote ?? '',
       }))
       setNotRelevantReasonErrorById((p) => {
         const n = { ...p }
@@ -439,18 +464,12 @@ export function Leads() {
     [...new Set([l.clientId?.trim(), l.source?.trim()].filter(Boolean) as string[])].join(' · ')
 
   const statusCounts = useMemo(() => {
-    const counts: Record<LeadStatus, number> = {
-      cold: 0,
-      new: 0,
-      specification: 0,
-      quote_sent: 0,
-      follow_up: 0,
-      no_answer: 0,
-      not_relevant: 0,
-      closed: 0,
-    }
+    const counts = Object.fromEntries(LEAD_STATUSES_ORDERED.map((s) => [s, 0])) as Record<
+      LeadStatus,
+      number
+    >
     for (const l of leads) {
-      counts[l.status]++
+      if (counts[l.status] != null) counts[l.status]++
     }
     return counts
   }, [leads])
@@ -576,13 +595,25 @@ export function Leads() {
       }))
       return
     }
+    const lostReason = (lostReasonDraftById[leadId] ?? lead.lostReason ?? '').trim()
+    if (statusDraft === 'lost' && !lostReason) {
+      setNotRelevantReasonErrorById((p) => ({
+        ...p,
+        [leadId]: 'חובה לבחור למה הליד לא נסגר.',
+      }))
+      return
+    }
     setNotRelevantReasonErrorById((p) => {
       const n = { ...p }
       delete n[leadId]
       return n
     })
 
-    if (!text && !followUpDate && !statusChanged && !reasonChanged) return
+    const lostNote = (lostReasonNoteDraftById[leadId] ?? '').trim()
+    const lostChanged =
+      statusDraft === 'lost' &&
+      (lostReason !== (lead.lostReason ?? '').trim() || lostNote !== (lead.lostReasonNote ?? '').trim())
+    if (!text && !followUpDate && !statusChanged && !reasonChanged && !lostChanged) return
 
     const nowIso = new Date().toISOString()
     const nextFollowUp = followUpDate ? followUpDate.slice(0, 10) : undefined
@@ -633,6 +664,13 @@ export function Leads() {
       payload.notRelevantReason = notRelReason
     } else if (lead.notRelevantReason) {
       payload.notRelevantReason = deleteField()
+    }
+    if (statusDraft === 'lost') {
+      payload.lostReason = lostReason
+      payload.lostReasonNote = lostNote || undefined
+    }
+    if (statusDraft === 'replied' && !lead.repliedAt) {
+      payload.repliedAt = nowIso
     }
     if (text) {
       payload.lastActivityText = text
@@ -703,6 +741,24 @@ export function Leads() {
       base.quotePdfFileName = deleteField()
     }
     await updateLead(leadId, base)
+    if (channel === 'visual_link' && opts.visualUrl) {
+      const slug = offerSlug(opts.visualUrl)
+      const already = quotes.some((q) => (slug && q.slug === slug) || q.url === opts.visualUrl)
+      if (!already) {
+        await addQuote({
+          leadId,
+          title: lead.company || lead.name,
+          slug: slug || undefined,
+          url: opts.visualUrl,
+          status: 'sent',
+          sentAt: nowIso,
+          amountPreVat: lead.estimatedValue,
+          period: 'one_time',
+          source: 'beo-offer',
+          validUntil: quoteReturnByDate.slice(0, 10),
+        })
+      }
+    }
     setQuoteModalLeadId(null)
     setOpenActionLeadId(null)
   }
@@ -1859,6 +1915,38 @@ export function Leads() {
                 ) : null}
               </div>
             ) : null}
+            {(actionStatusDraftById[actionMenuLead.id] ?? actionMenuLead.status) === 'lost' ? (
+              <div className="rounded-[10px] border border-[#FECACA] bg-[#FEF2F2] p-3">
+                <p className="mb-1 text-[10px] font-bold text-[var(--text-dark)]">
+                  למה לא נסגר? <span className="text-[#B91C1C]">*</span>
+                </p>
+                <select
+                  className="w-full"
+                  value={lostReasonDraftById[actionMenuLead.id] ?? 'price'}
+                  onChange={(e) =>
+                    setLostReasonDraftById((prev) => ({ ...prev, [actionMenuLead.id]: e.target.value }))
+                  }
+                >
+                  {LOST_REASON_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+                <textarea
+                  rows={2}
+                  className="mt-2 w-full"
+                  placeholder="פירוט חופשי"
+                  value={lostReasonNoteDraftById[actionMenuLead.id] ?? ''}
+                  onChange={(e) =>
+                    setLostReasonNoteDraftById((prev) => ({ ...prev, [actionMenuLead.id]: e.target.value }))
+                  }
+                />
+                {notRelevantReasonErrorById[actionMenuLead.id] ? (
+                  <p className="mt-1.5 text-[10px] font-semibold text-[#B91C1C]">
+                    {notRelevantReasonErrorById[actionMenuLead.id]}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <p className="mb-1 mt-3 text-[10px] font-bold text-[var(--text-light)]">
               מנהל לקוח (עובד מהמערכת)
             </p>
@@ -2292,6 +2380,17 @@ export function Leads() {
                     leadDetailsLead.notRelevantReason?.trim() ? (
                       <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-[var(--text-mid)]">
                         {leadDetailsLead.notRelevantReason.trim()}
+                      </p>
+                    ) : null}
+                    {leadDetailsLead.status === 'lost' && leadDetailsLead.lostReason ? (
+                      <p className="text-[12px] text-[var(--text-mid)]">
+                        {lostReasonLabel(leadDetailsLead.lostReason)}
+                        {leadDetailsLead.lostReasonNote ? ` · ${leadDetailsLead.lostReasonNote}` : ''}
+                      </p>
+                    ) : null}
+                    {leadDetailsLead.estimatedValue != null ? (
+                      <p className="text-[12px] font-semibold">
+                        שווי משוער ₪{leadDetailsLead.estimatedValue.toLocaleString('he-IL')}
                       </p>
                     ) : null}
                   </div>

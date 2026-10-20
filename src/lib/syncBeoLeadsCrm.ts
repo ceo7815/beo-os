@@ -202,19 +202,34 @@ async function runReplySync(opts: {
     }
 
     if (kind !== 'human') continue
-    if (row.os_lead_created && existing && existing.status !== 'cold') continue
+    const preReply =
+      !existing ||
+      existing.status === 'cold' ||
+      existing.status === 'new' ||
+      existing.status === 'contacted' ||
+      existing.status === 'follow_up' ||
+      existing.status === 'no_answer'
+    if (existing && !preReply) {
+      if (!row.os_lead_created) {
+        await postLeadAction(row.id, 'edit', { os_lead_created: true })
+      }
+      continue
+    }
 
-    if (existing?.status === 'cold') {
+    if (existing) {
+      const nowIso = new Date().toISOString()
       await updateLead(existing.id, {
-        status: 'new',
+        status: 'replied',
+        repliedAt: existing.repliedAt || nowIso,
         clientNeeds: row.reply_preview || existing.clientNeeds,
-        lastActivityText: 'ענה · עבר ללידים רגילים',
-        lastActivityAt: new Date().toISOString(),
+        lastActivityText: 'ענה · חזר אלינו',
+        lastActivityAt: nowIso,
+        lastContactAt: nowIso,
       })
       await postLeadAction(row.id, 'edit', { os_lead_created: true })
       upgraded += 1
       const idx = working.findIndex((l) => l.id === existing.id)
-      if (idx >= 0) working[idx] = { ...working[idx], status: 'new' }
+      if (idx >= 0) working[idx] = { ...working[idx], status: 'replied' }
       continue
     }
 
@@ -231,11 +246,14 @@ async function runReplySync(opts: {
       phone: row.phone || undefined,
       email: row.email || undefined,
       source: BEO_AI_LEAD_SOURCE,
-      status: 'new',
+      sourceDetail: 'shay',
+      status: 'replied',
+      repliedAt: new Date().toISOString(),
       ownerId: userId,
       clientNeeds: row.reply_preview || undefined,
-      lastActivityText: 'ענה · נוצר ליד רגיל',
+      lastActivityText: 'ענה · חזר אלינו',
       lastActivityAt: new Date().toISOString(),
+      lastContactAt: new Date().toISOString(),
     })
     await postLeadAction(row.id, 'edit', { os_lead_created: true })
     created += 1

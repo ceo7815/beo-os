@@ -439,12 +439,33 @@ export interface RecurringTaskTemplate {
 export type LeadStatus =
   | 'cold'
   | 'new'
+  | 'contacted'
+  | 'follow_up'
+  | 'replied'
+  | 'meeting_scheduled'
   | 'specification'
   | 'quote_sent'
-  | 'follow_up'
+  | 'negotiation'
   | 'no_answer'
+  | 'nurture'
+  | 'lost'
   | 'not_relevant'
   | 'closed'
+
+export type LeadTemperature = 'hot' | 'warm' | 'cold'
+
+/** Preferred intake sources. `source` itself stays free text so older values keep working. */
+export type LeadSourceKind =
+  | 'meta_ads'
+  | 'google_ads'
+  | 'organic_seo'
+  | 'whatsapp'
+  | 'cold_email'
+  | 'facebook_groups'
+  | 'referral'
+  | 'phone'
+  | 'manual'
+  | 'other'
 
 /** אופן שליחת הצעת המחיר כשהסטטוס «נשלחה הצעת מחיר» */
 export type LeadQuoteChannel = 'green_invoice' | 'pdf_file' | 'visual_link'
@@ -633,9 +654,32 @@ export interface Lead {
   /** סוכן שקיבל/מלווה את ההצעה — מוצג בפורטל סוכן */
   salesAgentUserId?: string
   source?: string
+  sourceDetail?: string
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  utmContent?: string
+  utmTerm?: string
+  landingPage?: string
+  firstMessage?: string
+  /** True only after an explicit opt-in. Missing means unknown. */
+  consent?: boolean
+  domain?: string
   status: LeadStatus
   ownerId: string
   clientNeeds?: string
+  /** ₪ before VAT */
+  estimatedValue?: number
+  /** 0–100. Missing means “use the face value” in weighted totals. */
+  probability?: number
+  temperature?: LeadTemperature
+  nextAction?: string
+  nextActionAt?: string
+  lastContactAt?: string
+  meetingAt?: string
+  repliedAt?: string
+  lostReason?: string
+  lostReasonNote?: string
   lastActivityText?: string
   lastActivityAt?: string
   nextFollowUpDate?: string
@@ -751,6 +795,23 @@ export type DealKind = 'retainer_monthly' | 'retainer_yearly' | 'one_time'
 
 export type DealStatus = 'active' | 'completed' | 'cancelled'
 
+/** Delivery stage. `status` stays the commission status. */
+export type DealStage =
+  | 'signed'
+  | 'deposit_paid'
+  | 'in_progress'
+  | 'delivered'
+  | 'paid_in_full'
+  | 'cancelled'
+
+export type QuoteStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'rejected' | 'expired'
+export type QuotePeriod = 'one_time' | 'monthly' | 'yearly'
+
+export type DealPaymentKind = 'deposit' | 'milestone' | 'installment' | 'retainer' | 'hosting'
+export type DealPaymentStatus = 'scheduled' | 'invoiced' | 'paid' | 'overdue'
+export type RecurringInterval = 'monthly' | 'yearly'
+export type RecurringKind = 'retainer' | 'hosting'
+
 /** תשלום מתוכנן בעסקה — צפי תאריך + סכום (מקור לחישוב הכנסה משוערת לפי חודש) */
 export interface DealScheduledPayment {
   id: string
@@ -787,10 +848,90 @@ export interface Deal {
   /** אחוז עמלת סוכן על תשלומים הקשורים לעסקה (מועתק לחשבונית בעת רישום תשלום) */
   commissionPercent: number
   status: DealStatus
+  /** Null on older rows — the screen treats that as signed. */
+  stage?: DealStage
+  projectId?: string
+  quoteId?: string
+  /** ₪. Mirrors agreedAmount; either field may be written. */
+  amountTotal?: number
+  depositAmount?: number
+  /** YYYY-MM-DD */
+  depositPaidAt?: string
+  deliveredAt?: string
+  /** YYYY-MM-DD */
+  paidInFullAt?: string
   notes?: string
   createdAt: string
   updatedAt?: string
   createdByUserId?: string
+}
+
+export interface Quote {
+  id: string
+  number?: string
+  slug?: string
+  url?: string
+  title?: string
+  leadId?: string
+  clientId?: string
+  dealId?: string
+  amountPreVat?: number
+  vatIncluded?: boolean
+  period: QuotePeriod
+  validUntil?: string
+  sentAt?: string
+  viewedAt?: string
+  decidedAt?: string
+  status: QuoteStatus
+  notes?: string
+  source?: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface DealPayment {
+  id: string
+  dealId: string
+  leadId?: string
+  clientId?: string
+  dueDate?: string
+  amount: number
+  kind: DealPaymentKind
+  status: DealPaymentStatus
+  paidAt?: string
+  invoiceId?: string
+  notes?: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface RecurringCharge {
+  id: string
+  dealId?: string
+  clientId?: string
+  projectId?: string
+  leadId?: string
+  title?: string
+  amount: number
+  interval: RecurringInterval
+  startDate: string
+  endDate?: string
+  nextDue?: string
+  active: boolean
+  kind: RecurringKind
+  notes?: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface LeadStageEvent {
+  id: string
+  leadId: string
+  fromStatus?: string
+  toStatus: string
+  changedAt: string
+  changedBy?: string
+  note?: string
 }
 
 /** סוג שרת האחסון */
@@ -876,6 +1017,8 @@ export interface Project {
   retainerLog?: RetainerEntry[]
   /** לפרויקט לקוח — חובה; לפרויקט פנימי — אופציונלי */
   clientId?: string
+  dealId?: string
+  leadId?: string
   /** ספק ביצוע (אופציונלי) */
   supplierId?: string
   status: ProjectStatus
