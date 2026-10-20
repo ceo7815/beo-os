@@ -63,6 +63,13 @@ describe('pipeline summary', () => {
           source: 'cold_email',
           createdAt: '2026-08-30T00:00:00Z',
         },
+        {
+          id: 'lost-but-signed',
+          status: 'lost',
+          estimatedValue: 50,
+          source: 'phone',
+          createdAt: '2026-10-01T00:00:00Z',
+        },
       ],
       quotes: [],
       deals: [
@@ -101,6 +108,13 @@ describe('pipeline summary', () => {
           amountTotal: 999,
           createdAt: '2026-10-01T00:00:00Z',
         },
+        {
+          id: 'd-lost',
+          stage: 'signed',
+          amountTotal: 777,
+          leadId: 'lost-but-signed',
+          signedAt: '2026-10-08T08:00:00Z',
+        },
       ],
       payments: [
         { id: 'p1', dealId: 'd1', amount: 500, status: 'scheduled', dueDate: '2026-10-01' },
@@ -115,12 +129,14 @@ describe('pipeline summary', () => {
       ],
     })
 
-    expect(summary.openPipelineAmount).toBe(2990 + 1799 + 4000 + 999)
-    expect(summary.openPipelineWeighted).toBe(2990 * 0.5 + 1799 + 4000 + 999)
+    expect(summary.openPipelineAmount).toBe(2990 + 1799 + 4000 + 999 + 777)
+    expect(summary.openPipelineWeighted).toBe(2990 * 0.5 + 1799 + 4000 + 999 + 777)
     expect(summary.estimateLabel).toBe('הערכה')
+    expect(summary.weightedIsEstimate).toBe(true)
+    expect(summary.stages.every((s) => s.weightedIsEstimate)).toBe(true)
     const archive = summary.stages.find((s) => s.stage === 'archive')
-    expect(archive?.count).toBe(2)
-    expect(archive?.amount).toBe(15100)
+    expect(archive?.count).toBe(3)
+    expect(archive?.amount).toBe(15150)
     expect(archive?.weightedAmount).toBe(0)
     expect(archive?.countsTowardOpen).toBe(false)
     expect(summary.stages.find((s) => s.stage === 'paid_in_full')?.countsTowardOpen).toBe(false)

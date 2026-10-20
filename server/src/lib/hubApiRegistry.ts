@@ -165,7 +165,7 @@ export function apiCatalog(): Record<string, unknown> {
       filters: 'status, clientId, projectId, assigneeId, ownerId, leadId, dealId, stage, source, quoteId, temperature, kind, q, dueFrom, dueTo',
       sub: 'POST tasks notes: sub=notes&id=<taskId>. POST leads activity|stage: sub=activity|stage&id=<leadId>. POST deals stage: sub=stage&id=<dealId>',
       meta: 'GET ?meta=schema',
-      pipeline: 'GET /api/pipeline/summary or GET /api/bot-data?entity=pipeline. openPipelineAmount is the plain total; openPipelineWeighted and stage.weightedAmount are הערכה. wonThisMonth uses signed_at (Asia/Jerusalem) and skips cancelled deals. collectedThisMonth sums payments with status paid and paid_at this month.',
+      pipeline: 'GET /api/pipeline/summary or GET /api/bot-data?entity=pipeline. openPipelineAmount is the plain total. openPipelineWeighted and stage.weightedAmount are estimates (weightedIsEstimate: true, estimateLabel הערכה). wonThisMonth uses signed_at (Asia/Jerusalem) and skips cancelled and lost deals. collectedThisMonth sums payments with status paid and paid_at this month.',
     },
     entities: Object.keys(TABLE),
     methods: {

@@ -151,6 +151,8 @@ export type StageSummary = {
   count: number
   amount: number
   weightedAmount: number
+  /** weightedAmount is a stage-default estimate, not cash. */
+  weightedIsEstimate: true
   countsTowardOpen: boolean
 }
 
@@ -159,12 +161,14 @@ export type PipelineSummary = {
   currency: 'ILS'
   stages: StageSummary[]
   openPipelineAmount: number
-  /** Weighted open total. Label this הערכה in any UI. */
+  /** Weighted open total. An estimate — see weightedIsEstimate. Label הערכה in the UI. */
   openPipelineWeighted: number
+  /** Every weighted figure in this payload is an estimate, not money collected. */
+  weightedIsEstimate: true
   /** Hebrew label for every weighted figure in this payload. */
   estimateLabel: 'הערכה'
   openCount: number
-  /** Deals whose signing date falls in this month, excluding cancelled. */
+  /** Deals whose signed_at falls in this month, excluding cancelled and lost. */
   wonThisMonth: { count: number; amount: number }
   /** deal_payments marked paid with paid_at in this month. */
   collectedThisMonth: { count: number; amount: number }
@@ -317,6 +321,7 @@ function emptyStage(
     count: 0,
     amount: 0,
     weightedAmount: 0,
+    weightedIsEstimate: true,
     countsTowardOpen,
   }
 }
@@ -344,8 +349,12 @@ export function buildPipelineSummary(input: {
   const sourceAll = new Map<string, { leads: number; won: number }>()
   const weekStart = weekStartSunday(today)
   const month = monthPrefix(today)
+  const lostLeadIds = new Set(leads.filter((l) => l.status === 'lost').map((l) => l.id))
   const wonLeadIds = new Set(
-    deals.filter((d) => dealStageOf(d) !== 'cancelled').map((d) => d.leadId).filter(Boolean) as string[],
+    deals
+      .filter((d) => !dealIsExcludedFromWon(d, lostLeadIds))
+      .map((d) => d.leadId)
+      .filter(Boolean) as string[],
   )
 
   for (const lead of leads) {
@@ -393,9 +402,8 @@ export function buildPipelineSummary(input: {
       row.amount += amount
       row.weightedAmount += weighted
     }
-    const cancelled = stage === 'cancelled' || deal.status === 'cancelled'
     const signedOn = israelYmd(deal.signedAt)
-    if (!cancelled && signedOn != null && signedOn.slice(0, 7) === month) {
+    if (!dealIsExcludedFromWon(deal, lostLeadIds) && signedOn != null && signedOn.slice(0, 7) === month) {
       wonCount += 1
       wonAmount += amount
     }
@@ -438,6 +446,7 @@ export function buildPipelineSummary(input: {
     stages,
     openPipelineAmount: roundMoney(openStages.reduce((s, r) => s + r.amount, 0)),
     openPipelineWeighted: roundMoney(openStages.reduce((s, r) => s + r.weightedAmount, 0)),
+    weightedIsEstimate: true,
     estimateLabel: 'הערכה',
     openCount: openStages.reduce((s, r) => s + r.count, 0),
     wonThisMonth: { count: wonCount, amount: roundMoney(wonAmount) },
@@ -461,6 +470,13 @@ export function buildPipelineSummary(input: {
       }))
       .sort((a, b) => b.leads - a.leads),
   }
+}
+
+/** Cancelled deals, a lost stage, or a deal whose lead is lost. */
+export function dealIsExcludedFromWon(deal: DealSnap, lostLeadIds: ReadonlySet<string>): boolean {
+  if (deal.stage === 'cancelled' || deal.stage === 'lost' || deal.status === 'cancelled') return true
+  if (dealStageOf(deal) === 'cancelled') return true
+  return Boolean(deal.leadId && lostLeadIds.has(deal.leadId))
 }
 
 function addDays(ymdValue: string, days: number): string {
